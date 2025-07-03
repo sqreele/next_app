@@ -1,36 +1,82 @@
 # ==============================================================================
-# File: my_app/crud.py   # # Description: Contains reusable functions to interact with the database.
+# File: backend/my_app/crud.py (Corrected)
+# Description: Fully asynchronous CRUD operations.
 # ==============================================================================
-from sqlalchemy.orm import Session
-from . import models, schemas, security
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from . import models, schemas
+from .security import get_password_hash
 
-def get_user(db: Session, user_id: int):
-    return db.query(models.User).filter(models.User.id == user_id).first()
+# --- User CRUD ---
+async def get_user(db: AsyncSession, user_id: int):
+    result = await db.execute(select(models.User).filter(models.User.id == user_id))
+    return result.scalars().first()
 
-def get_user_by_username(db: Session, username: str):
-    return db.query(models.User).filter(models.User.username == username).first()
+async def get_user_by_username(db: AsyncSession, username: str):
+    result = await db.execute(select(models.User).filter(models.User.username == username))
+    return result.scalars().first()
 
-def create_user(db: Session, user: schemas.UserCreate):
-    hashed_password = security.get_password_hash(user.password)
-    db_user = models.User(username=user.username, email=user.email, hashed_password=hashed_password)
+async def get_users(db: AsyncSession, skip: int = 0, limit: int = 100):
+    result = await db.execute(select(models.User).offset(skip).limit(limit))
+    return result.scalars().all()
+
+async def create_user(db: AsyncSession, user: schemas.UserCreate):
+    hashed_password = get_password_hash(user.password)
+    db_user = models.User(
+        username=user.username,
+        email=user.email,
+        hashed_password=hashed_password
+    )
     db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    db_profile = models.UserProfile(user_id=db_user.id)
-    db.add(db_profile)
-    db.commit()
-    db.refresh(db_profile)
+    await db.commit()
+    await db.refresh(db_user)
     return db_user
-    
-def get_machine(db: Session, machine_id: int):
-    return db.query(models.Machine).filter(models.Machine.id == machine_id).first()
 
-def get_room(db: Session, room_id: int):
-    return db.query(models.Room).filter(models.Room.id == room_id).first()
+# --- Property CRUD ---
+async def get_properties(db: AsyncSession, skip: int = 0, limit: int = 100):
+    result = await db.execute(select(models.Property).offset(skip).limit(limit))
+    return result.scalars().all()
 
-def create_work_order(db: Session, work_order: schemas.WorkOrderCreate, property_id: int):
+async def create_property(db: AsyncSession, property: schemas.PropertyCreate):
+    db_property = models.Property(name=property.name)
+    db.add(db_property)
+    await db.commit()
+    await db.refresh(db_property)
+    return db_property
+
+# --- Room CRUD ---
+async def get_rooms(db: AsyncSession, skip: int = 0, limit: int = 100):
+    result = await db.execute(select(models.Room).offset(skip).limit(limit))
+    return result.scalars().all()
+
+async def create_room(db: AsyncSession, room: schemas.RoomCreate, property_id: int):
+    db_room = models.Room(**room.dict(), property_id=property_id)
+    db.add(db_room)
+    await db.commit()
+    await db.refresh(db_room)
+    return db_room
+
+# --- Machine CRUD ---
+async def get_machines(db: AsyncSession, skip: int = 0, limit: int = 100):
+    result = await db.execute(select(models.Machine).offset(skip).limit(limit))
+    return result.scalars().all()
+
+async def create_machine(db: AsyncSession, machine: schemas.MachineCreate, property_id: int):
+    db_machine = models.Machine(**machine.dict(), property_id=property_id)
+    db.add(db_machine)
+    await db.commit()
+    await db.refresh(db_machine)
+    return db_machine
+
+# --- WorkOrder CRUD ---
+async def get_work_orders(db: AsyncSession, skip: int = 0, limit: int = 100):
+    result = await db.execute(select(models.WorkOrder).offset(skip).limit(limit))
+    return result.scalars().all()
+
+async def create_work_order(db: AsyncSession, work_order: schemas.WorkOrderCreate, property_id: int):
     db_work_order = models.WorkOrder(**work_order.dict(), property_id=property_id)
     db.add(db_work_order)
-    db.commit()
-    db.refresh(db_work_order)
+    await db.commit()
+    await db.refresh(db_work_order)
     return db_work_order
+
