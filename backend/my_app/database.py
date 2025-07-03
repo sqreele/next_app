@@ -1,7 +1,9 @@
+# ==============================================================================
+# File: backend/my_app/database.py (Corrected)
+# ==============================================================================
 import os
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker, declarative_base
 
 DB_USER = os.getenv('DB_USER', 'postgres')
 DB_PASSWORD = os.getenv('DB_PASSWORD', 'postgres')
@@ -11,15 +13,15 @@ DB_NAME = os.getenv('DB_NAME', 'fullstack_db')
 
 SQLALCHEMY_DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL.replace('+asyncpg', ''),  # sync for sessionmaker
-)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+# Use create_async_engine for async support
+engine = create_async_engine(SQLALCHEMY_DATABASE_URL, echo=True)
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close() 
+# Use AsyncSession for the sessionmaker
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+    class_=AsyncSession
+)
+
+Base = declarative_base()
