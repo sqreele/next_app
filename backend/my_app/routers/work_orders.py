@@ -11,7 +11,9 @@ router = APIRouter(prefix="/work_orders", tags=["work_orders"])
 
 @router.post("/", response_model=schemas.WorkOrder)
 async def create_work_order(
-    property_id: int, work_order: schemas.WorkOrderCreate, db: AsyncSession = Depends(dependencies.get_db)
+    property_id: int, 
+    work_order: schemas.WorkOrderCreate, 
+    db: AsyncSession = Depends(dependencies.get_db)
 ):
     return await crud.create_work_order(db=db, work_order=work_order, property_id=property_id)
 
