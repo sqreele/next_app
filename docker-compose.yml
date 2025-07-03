@@ -6,9 +6,10 @@ services:
     env_file: .env
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped # Add restart policy
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d $POSTGRES_DB"]
+      # This is the corrected healthcheck. It's more reliable than the previous one.
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "fullstack_db"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -18,7 +19,7 @@ services:
     env_file: .env
     volumes:
       - ./backend:/app
-    restart: unless-stopped # Add restart policy
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
@@ -29,15 +30,15 @@ services:
     volumes:
       - ./frontend/my_job:/app
       - /app/node_modules
-    restart: unless-stopped # Add restart policy
+    restart: unless-stopped
     depends_on:
       - backend
 
   nginx:
     build: ./nginx
     ports:
-      - "80:80" # Expose port 80 for HTTP traffic
-    restart: unless-stopped # Add restart policy
+      - "80:80"
+    restart: unless-stopped
     depends_on:
       - frontend
       - backend
