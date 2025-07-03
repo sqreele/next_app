@@ -1,32 +1,26 @@
 # ==============================================================================
-# File: my_app/routers/properties.py
-# Description: API endpoints for managing Properties.
+# File: backend/my_app/routers/properties.py (Corrected)
+# Description: Async property routes.
 # ==============================================================================
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
-from .. import crud, schemas, models, dependencies
+from .. import crud, schemas, dependencies
 
-router = APIRouter(prefix="/properties", tags=["Properties"])
+router = APIRouter(prefix="/properties", tags=["properties"])
 
-@router.post("/", response_model=schemas.Property, status_code=201)
-def create_property(
-    property: schemas.PropertyCreate, 
-    db: Session = Depends(dependencies.get_db),
-    current_user: models.User = Depends(dependencies.get_admin_user)
+@router.post("/", response_model=schemas.Property)
+async def create_property(
+    property: schemas.PropertyCreate, db: AsyncSession = Depends(dependencies.get_db)
 ):
-    db_property = crud.get_property_by_name(db, name=property.name)
-    if db_property:
-        raise HTTPException(status_code=400, detail="Property with this name already exists")
-    return crud.create_property(db=db, property=property)
+    return await crud.create_property(db=db, property=property)
 
 @router.get("/", response_model=List[schemas.Property])
-def read_properties(
-    db: Session = Depends(dependencies.get_db),
-    current_user: models.User = Depends(dependencies.get_current_active_user)
+async def read_properties(
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(dependencies.get_db),
 ):
-    if hasattr(current_user, 'profile') and current_user.profile.role == 'Admin':
-        return db.query(models.Property).all()
-    return current_user.profile.properties
-
+    properties = await crud.get_properties(db, skip=skip, limit=limit)
+    return properties
 
