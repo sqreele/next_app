@@ -1,19 +1,34 @@
 # ==============================================================================
-# File: my_app/routers/users.py
-# Description: API endpoints for user authentication.
+# File: backend/my_app/routers/users.py (Corrected)
+# Description: Async user and authentication routes.
 # ==============================================================================
+from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
-from datetime import timedelta
-from .. import crud, schemas, security, dependencies
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List
+from .. import crud, schemas, dependencies, security
 
-router = APIRouter(prefix="/users", tags=["Users"])
+router = APIRouter(prefix="/users", tags=["users"])
+
+@router.post("/", response_model=schemas.User)
+async def create_user(
+    user: schemas.UserCreate, db: AsyncSession = Depends(dependencies.get_db)
+):
+    db_user = await crud.get_user_by_username(db, username=user.username)
+    if db_user:
+        raise HTTPException(status_code=400, detail="Username already registered")
+    return await crud.create_user(db=db, user=user)
 
 @router.post("/token", response_model=schemas.Token)
-async def login_for_access_token(db: Session = Depends(dependencies.get_db), form_data: OAuth2PasswordRequestForm = Depends()):
-    user = crud.get_user_by_username(db, username=form_data.username)
-    if not user or not security.verify_password(form_data.password, user.hashed_password):
+async def login_for_access_token(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncSession = Depends(dependencies.get_db),
+):
+    user = await security.authenticate_user(
+        db, form_data.username, form_data.password
+    )
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -25,6 +40,8 @@ async def login_for_access_token(db: Session = Depends(dependencies.get_db), for
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
-@router.get("/me", response_model=schemas.User)
-async def read_users_me(current_user: schemas.User = Depends(dependencies.get_current_active_user)):
+@router.get("/me/", response_model=schemas.User)
+async def read_users_me(
+    current_user: schemas.User = Depends(dependencies.get_current_active_user),
+):
     return current_user
