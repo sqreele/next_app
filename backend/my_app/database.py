@@ -1,9 +1,13 @@
 # ==============================================================================
 # File: backend/my_app/database.py (Corrected)
+# Description: Configures the asynchronous database connection and Base model.
 # ==============================================================================
 import os
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
+
+# Define the declarative base here to avoid circular imports
+Base = declarative_base()
 
 DB_USER = os.getenv('DB_USER', 'postgres')
 DB_PASSWORD = os.getenv('DB_PASSWORD', 'postgres')
@@ -23,5 +27,3 @@ SessionLocal = sessionmaker(
     bind=engine,
     class_=AsyncSession
 )
-
-Base = declarative_base()
