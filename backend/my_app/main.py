@@ -1,97 +1,61 @@
 # ==============================================================================
-# File: my_app/admin.py
-# Description: SQLAdmin configuration for the admin panel.
+# File: backend/my_app/main.py (Corrected)
+# Description: Main FastAPI application setup.
 # ==============================================================================
-from sqladmin import ModelView
-from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from sqladmin import Admin
+from .database import engine, Base
+from .routers import users, properties, rooms, machines, work_orders
+from .connection_manager import manager
+from .admin import (
+    UserAdmin, 
+    UserProfileAdmin, 
+    PropertyAdmin, 
+    RoomAdmin, 
+    MachineAdmin, 
+    WorkOrderAdmin, 
+    WorkOrderFileAdmin
+)
 
-class UserAdmin(ModelView, model=User):
-    column_list = [User.id, User.username, User.email, User.is_active]
-    column_details_exclude_list = [User.hashed_password]
-    form_columns = [User.username, User.email, User.is_active]
-    column_searchable_list = [User.username, User.email]
-    column_sortable_list = [User.id, User.username, User.email, User.is_active]
-    name = "User"
-    name_plural = "Users"
-    icon = "fa-solid fa-user"
+app = FastAPI(title="Property Management API", version="1.0.0")
 
-class UserProfileAdmin(ModelView, model=UserProfile):
-    column_list = [UserProfile.id, UserProfile.user_id, UserProfile.role, UserProfile.position]
-    form_columns = [UserProfile.user_id, UserProfile.role, UserProfile.position]
-    column_searchable_list = [UserProfile.role, UserProfile.position]
-    column_sortable_list = [UserProfile.id, UserProfile.role, UserProfile.position]
-    name = "User Profile"
-    name_plural = "User Profiles"
-    icon = "fa-solid fa-id-card"
+# Setup Admin
+admin = Admin(app, engine)
+admin.add_view(UserAdmin)
+admin.add_view(UserProfileAdmin)
+admin.add_view(PropertyAdmin)
+admin.add_view(RoomAdmin)
+admin.add_view(MachineAdmin)
+admin.add_view(WorkOrderAdmin)
+admin.add_view(WorkOrderFileAdmin)
 
-class PropertyAdmin(ModelView, model=Property):
-    column_list = [Property.id, Property.name]
-    form_columns = [Property.name]
-    column_searchable_list = [Property.name]
-    column_sortable_list = [Property.id, Property.name]
-    name = "Property"
-    name_plural = "Properties"
-    icon = "fa-solid fa-building"
+async def create_db_and_tables():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
-class RoomAdmin(ModelView, model=Room):
-    column_list = [Room.id, Room.name, Room.number, Room.room_type, Room.is_active, Room.property_id]
-    form_columns = [Room.name, Room.number, Room.room_type, Room.is_active, Room.property_id]
-    column_searchable_list = [Room.name, Room.number, Room.room_type]
-    column_sortable_list = [Room.id, Room.name, Room.number, Room.room_type, Room.is_active]
-    name = "Room"
-    name_plural = "Rooms"
-    icon = "fa-solid fa-door-open"
+@app.on_event("startup")
+async def on_startup():
+    await create_db_and_tables()
 
-class MachineAdmin(ModelView, model=Machine):
-    column_list = [Machine.id, Machine.name, Machine.status, Machine.property_id, Machine.room_id]
-    form_columns = [Machine.name, Machine.status, Machine.property_id, Machine.room_id]
-    column_searchable_list = [Machine.name, Machine.status]
-    column_sortable_list = [Machine.id, Machine.name, Machine.status]
-    name = "Machine"
-    name_plural = "Machines"
-    icon = "fa-solid fa-robot"
+# Include routers
+app.include_router(users.router, prefix="/api/v1", tags=["users"])
+app.include_router(properties.router, prefix="/api/v1", tags=["properties"])
+app.include_router(rooms.router, prefix="/api/v1", tags=["rooms"])
+app.include_router(machines.router, prefix="/api/v1", tags=["machines"])
+app.include_router(work_orders.router, prefix="/api/v1", tags=["work_orders"])
 
-class WorkOrderAdmin(ModelView, model=WorkOrder):
-    column_list = [
-        WorkOrder.id, 
-        WorkOrder.task, 
-        WorkOrder.status, 
-        WorkOrder.priority, 
-        WorkOrder.due_date,
-        WorkOrder.property_id,
-        WorkOrder.machine_id,
-        WorkOrder.room_id,
-        WorkOrder.assigned_to_id
-    ]
-    form_columns = [
-        WorkOrder.task,
-        WorkOrder.description,
-        WorkOrder.status,
-        WorkOrder.priority,
-        WorkOrder.due_date,
-        WorkOrder.property_id,
-        WorkOrder.machine_id,
-        WorkOrder.room_id,
-        WorkOrder.assigned_to_id
-    ]
-    column_searchable_list = [WorkOrder.task, WorkOrder.description, WorkOrder.status, WorkOrder.priority]
-    column_sortable_list = [
-        WorkOrder.id, 
-        WorkOrder.task, 
-        WorkOrder.status, 
-        WorkOrder.priority, 
-        WorkOrder.due_date,
-        WorkOrder.created_at
-    ]
-    name = "Work Order"
-    name_plural = "Work Orders"
-    icon = "fa-solid fa-list-check"
+@app.websocket("/ws/{client_id}")
+async def websocket_endpoint(websocket: WebSocket, client_id: int):
+    await manager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            await manager.send_personal_message(f"You wrote: {data}", websocket)
+            await manager.broadcast(f"Client #{client_id} says: {data}")
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        await manager.broadcast(f"Client #{client_id} left the chat")
 
-class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
-    column_list = [WorkOrderFile.id, WorkOrderFile.file_path, WorkOrderFile.upload_type, WorkOrderFile.work_order_id]
-    form_columns = [WorkOrderFile.file_path, WorkOrderFile.upload_type, WorkOrderFile.work_order_id]
-    column_searchable_list = [WorkOrderFile.file_path, WorkOrderFile.upload_type]
-    column_sortable_list = [WorkOrderFile.id, WorkOrderFile.file_path, WorkOrderFile.upload_type]
-    name = "Work Order File"
-    name_plural = "Work Order Files"
-    icon = "fa-solid fa-file"
+@app.get("/")
+async def root():
+    return {"message": "Property Management API is running"}
