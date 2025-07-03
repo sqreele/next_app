@@ -2,7 +2,7 @@
 # File: backend/my_app/main.py (Corrected)
 # Description: Main FastAPI application setup.
 # ==============================================================================
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from starlette_admin.contrib.sqla import Admin
 from .database import engine, Base
 from .models import User, UserProfile, Property, Room, Machine, WorkOrder
@@ -23,7 +23,6 @@ admin.mount_to(app)
 
 async def create_db_and_tables():
     async with engine.begin() as conn:
-        # Use run_sync for creating tables with SQLAlchemy's metadata
         await conn.run_sync(Base.metadata.create_all)
 
 @app.on_event("startup")
@@ -46,5 +45,5 @@ async def websocket_endpoint(websocket: WebSocket, client_id: int):
             await manager.broadcast(f"Client #{client_id} says: {data}")
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-        await manager.broadcast(f"Client #{client_id} left the chat")
+        await manager.broadcast(f"Client #{client_id} left the chat"
 
