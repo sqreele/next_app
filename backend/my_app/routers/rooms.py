@@ -1,23 +1,25 @@
-
 # ==============================================================================
-# File: my_app/routers/rooms.py
-# Description: API endpoints for managing Rooms.
+# File: backend/my_app/routers/rooms.py (Corrected)
+# Description: Async room routes.
 # ==============================================================================
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
-from .. import schemas, models, dependencies
+from .. import crud, schemas, dependencies
 
-router = APIRouter(prefix="/rooms", tags=["Rooms"])
+router = APIRouter(prefix="/rooms", tags=["rooms"])
+
+@router.post("/", response_model=schemas.Room)
+async def create_room(
+    property_id: int, room: schemas.RoomCreate, db: AsyncSession = Depends(dependencies.get_db)
+):
+    return await crud.create_room(db=db, room=room, property_id=property_id)
 
 @router.get("/", response_model=List[schemas.Room])
-def read_rooms(
-    db: Session = Depends(dependencies.get_db),
-    current_user: models.User = Depends(dependencies.get_current_active_user)
+async def read_rooms(
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(dependencies.get_db),
 ):
-    if current_user.profile.role == 'Admin':
-        return db.query(models.Room).all()
-    
-    user_properties = current_user.profile.properties
-    return db.query(models.Room).filter(models.Room.properties.any(models.Property.id.in_([p.id for p in user_properties]))).all()
-
+    rooms = await crud.get_rooms(db, skip=skip, limit=limit)
+    return rooms
