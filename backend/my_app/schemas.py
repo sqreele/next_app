@@ -2,7 +2,7 @@
 # File: backend/my_app/schemas.py (Corrected and Improved)
 # Description: Pydantic models for data validation and serialization.
 # ==============================================================================
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import List, Optional
 from datetime import date, datetime
 
@@ -23,8 +23,9 @@ class PropertyCreate(PropertyBase):
 
 class Property(PropertyBase):
     id: int
+    
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # --- Room Schemas ---
 class RoomBase(BaseModel):
@@ -34,13 +35,14 @@ class RoomBase(BaseModel):
     is_active: bool = True
 
 class RoomCreate(RoomBase):
-    property_id: int
+    pass
 
 class Room(RoomBase):
     id: int
     property_id: int
+    
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # --- Machine Schemas ---
 class MachineBase(BaseModel):
@@ -49,13 +51,14 @@ class MachineBase(BaseModel):
     room_id: Optional[int] = None
 
 class MachineCreate(MachineBase):
-    property_id: int
+    pass
 
 class Machine(MachineBase):
     id: int
     property_id: int
+    
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # --- WorkOrder Schemas ---
 class WorkOrderBase(BaseModel):
@@ -64,22 +67,23 @@ class WorkOrderBase(BaseModel):
     status: str = 'Pending'
     priority: str = 'Medium'
     due_date: Optional[date] = None
-
-class WorkOrderCreate(WorkOrderBase):
-    property_id: int
     machine_id: Optional[int] = None
     room_id: Optional[int] = None
     assigned_to_id: Optional[int] = None
+
+class WorkOrderCreate(WorkOrderBase):
+    pass
 
 class WorkOrder(WorkOrderBase):
     id: int
     property_id: int
     created_at: datetime
     completed_at: Optional[datetime] = None
+    
     class Config:
-        orm_mode = True
+        from_attributes = True
 
-# --- UserProfile Schemas (New) ---
+# --- UserProfile Schemas ---
 class UserProfileBase(BaseModel):
     role: Optional[str] = 'Technician'
     position: Optional[str] = None
@@ -90,15 +94,14 @@ class UserProfileCreate(UserProfileBase):
 class UserProfile(UserProfileBase):
     id: int
     user_id: int
-    properties: List[Property] = [] # Display associated properties
-
+    
     class Config:
-        orm_mode = True
+        from_attributes = True
 
-# --- User Schemas (Improved) ---
+# --- User Schemas ---
 class UserBase(BaseModel):
     username: str
-    email: str
+    email: EmailStr
 
 class UserCreate(UserBase):
     password: str
@@ -106,7 +109,7 @@ class UserCreate(UserBase):
 class User(UserBase):
     id: int
     is_active: bool
-    profile: Optional[UserProfile] = None # Link to the UserProfile schema
-    work_orders_assigned: List[WorkOrder] = []
+    profile: Optional[UserProfile] = None
+    
     class Config:
-        orm_mode = True
+        from_attributes = True
