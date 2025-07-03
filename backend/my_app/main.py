@@ -1,10 +1,11 @@
 # ==============================================================================
-# File: backend/my_app/main.py (Corrected)
+# File: backend/my_app/main.py (Fixed for SQLAdmin)
 # Description: Main FastAPI application setup.
 # ==============================================================================
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from sqladmin import Admin
-from .database import engine, Base
+from sqlalchemy import create_engine
+from .database import engine as async_engine, Base, SQLALCHEMY_DATABASE_URL
 from .routers import users, properties, rooms, machines, work_orders
 from .connection_manager import manager
 from .admin import (
@@ -25,8 +26,14 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# Setup Admin - This creates /admin route
-admin = Admin(app, engine)
+# Create a synchronous engine for SQLAdmin
+sync_engine = create_engine(
+    SQLALCHEMY_DATABASE_URL.replace("+asyncpg", ""), 
+    echo=True
+)
+
+# Setup Admin with synchronous engine
+admin = Admin(app, sync_engine)
 admin.add_view(UserAdmin)
 admin.add_view(UserProfileAdmin)
 admin.add_view(PropertyAdmin)
@@ -36,7 +43,7 @@ admin.add_view(WorkOrderAdmin)
 admin.add_view(WorkOrderFileAdmin)
 
 async def create_db_and_tables():
-    async with engine.begin() as conn:
+    async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
 @app.on_event("startup")
