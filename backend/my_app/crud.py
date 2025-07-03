@@ -79,4 +79,13 @@ async def create_work_order(db: AsyncSession, work_order: schemas.WorkOrderCreat
     await db.commit()
     await db.refresh(db_work_order)
     return db_work_order
+# Add this function to your existing crud.py
+async def get_machines_by_property(db: AsyncSession, property_id: int, skip: int = 0, limit: int = 100):
+    result = await db.execute(
+        select(models.Machine)
+        .filter(models.Machine.property_id == property_id)
+        .offset(skip)
+        .limit(limit)
+    )
+    return result.scalars().all()    
 
