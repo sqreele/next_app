@@ -34,11 +34,11 @@ services:
         condition: service_healthy
 
   frontend:
-    build: ./frontend
+    build: ./frontend/my_job  # Updated path
     ports:
       - "3000:3000"
     volumes:
-      - ./frontend:/app
+      - ./frontend/my_job:/app  # Updated path
       - /app/node_modules
     depends_on:
       - backend
