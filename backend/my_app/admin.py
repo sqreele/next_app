@@ -107,17 +107,15 @@ class RoomAdmin(ModelView, model=Room):
     icon = "fa-solid fa-door-open"
 
 class MachineAdmin(ModelView, model=Machine):
-    column_list = [Machine.id, Machine.name, Machine.status, Machine.property, Machine.room]
-    form_columns = [Machine.property, Machine.name, Machine.status, Machine.room]  # Use relationships instead of IDs
+    column_list = [Machine.id, Machine.name, Machine.status, Machine.property_id, Machine.room_id]
+    form_columns = [Machine.property_id, Machine.name, Machine.status, Machine.room_id]
     column_searchable_list = [Machine.name, Machine.status]
     column_sortable_list = [Machine.id, Machine.name, Machine.status]
     
-    # Remove form_ajax_refs - this is not compatible with SQLAdmin
-    
     form_args = {
-        'property': {  # Note: using 'property' instead of 'property_id'
-            'label': 'Property (Required)',
-            'description': 'Select the property this machine belongs to'
+        'property_id': {
+            'label': 'Property ID (Required)',
+            'description': 'Enter the property ID (1 for MaintenancePro Thailand, 2 for MaintenancePro China)'
         },
         'name': {
             'label': 'Machine Name',
@@ -128,9 +126,9 @@ class MachineAdmin(ModelView, model=Machine):
             'description': 'Current status of the machine',
             'default': 'Operational'
         },
-        'room': {  # Note: using 'room' instead of 'room_id'
-            'label': 'Room (Optional)',
-            'description': 'Select a room if the machine is located in a specific room'
+        'room_id': {
+            'label': 'Room ID (Optional)',
+            'description': 'Enter the room ID if the machine is located in a specific room'
         }
     }
     
