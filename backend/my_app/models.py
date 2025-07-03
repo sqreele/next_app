@@ -17,6 +17,7 @@ user_property_association = Table(
     Column('property_id', Integer, ForeignKey('properties.id'))
 )
 
+
 class User(Base):
     __tablename__ = 'users'
     id = Column(Integer, primary_key=True, index=True)
@@ -26,6 +27,8 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     profile = relationship("UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
     work_orders_assigned = relationship("WorkOrder", back_populates="assigned_to")
+    def __str__(self):
+        return self.username
 
 class UserProfile(Base):
     __tablename__ = 'userprofiles'
@@ -35,6 +38,8 @@ class UserProfile(Base):
     position = Column(String, nullable=True)
     user = relationship("User", back_populates="profile")
     properties = relationship("Property", secondary=user_property_association)
+    def __str__(self):
+        return self.username
 
 class Property(Base):
     __tablename__ = 'properties'
@@ -43,6 +48,8 @@ class Property(Base):
     rooms = relationship("Room", back_populates="property", cascade="all, delete-orphan")
     machines = relationship("Machine", back_populates="property", cascade="all, delete-orphan")
     work_orders = relationship("WorkOrder", back_populates="property", cascade="all, delete-orphan")
+    def __str__(self):
+        return self.username
 
 class Room(Base):
     __tablename__ = 'rooms'
@@ -55,6 +62,8 @@ class Room(Base):
     property = relationship("Property", back_populates="rooms")
     machines = relationship("Machine", back_populates="room")
     work_orders = relationship("WorkOrder", back_populates="room")
+    def __str__(self):
+        return self.username
 
 class Machine(Base):
     __tablename__ = 'machines'
@@ -66,6 +75,8 @@ class Machine(Base):
     property = relationship("Property", back_populates="machines")
     room = relationship("Room", back_populates="machines")
     work_orders = relationship("WorkOrder", back_populates="machine")
+    def __str__(self):
+        return self.username
 
 class WorkOrder(Base):
     __tablename__ = 'workorders'
@@ -86,6 +97,8 @@ class WorkOrder(Base):
     room = relationship("Room", back_populates="work_orders")
     assigned_to = relationship("User", back_populates="work_orders_assigned")
     files = relationship("WorkOrderFile", back_populates="work_order", cascade="all, delete-orphan")
+    def __str__(self):
+        return self.username
 
 class WorkOrderFile(Base):
     __tablename__ = 'workorderfiles'
@@ -94,3 +107,5 @@ class WorkOrderFile(Base):
     upload_type = Column(String, default='Other')
     work_order_id = Column(Integer, ForeignKey('workorders.id'))
     work_order = relationship("WorkOrder", back_populates="files")
+    def __str__(self):
+        return self.username
