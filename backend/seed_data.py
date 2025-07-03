@@ -5,7 +5,7 @@ from my_app.database import SessionLocal, engine
 from my_app.models import Base, Room, Property
 from datetime import datetime
 
-# JSON data provided by the user
+# JSON data with the corrupted entry removed.
 room_data_json = """
 [
     {
@@ -919,14 +919,6 @@ room_data_json = """
         ]
     },
     {
-        "room_id": 68,
-        "name": "311",
-        "room_type": "Talad Noi King",
-        "is_active": true,
-        "created_at": "2025
-        ]
-    },
-    {
         "room_id": 69,
         "name": "312",
         "room_type": "Talad Noi King",
@@ -1797,20 +1789,16 @@ async def seed_rooms():
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
 
-            # Ensure properties exist (using merge for upsert behavior)
+            # Ensure properties exist
             from sqlalchemy import select
             
-            # Check if properties exist
-            result = await db.execute(select(Property).where(Property.id == 1))
-            prop1 = result.scalar_one_or_none()
-            
+            # Check if properties exist and create them if they don't
+            prop1 = await db.get(Property, 1)
             if not prop1:
                 prop1 = Property(id=1, name="MaintenancePro Thailand")
                 db.add(prop1)
             
-            result = await db.execute(select(Property).where(Property.id == 2))
-            prop2 = result.scalar_one_or_none()
-            
+            prop2 = await db.get(Property, 2)
             if not prop2:
                 prop2 = Property(id=2, name="MaintenancePro China")
                 db.add(prop2)
@@ -1827,27 +1815,24 @@ async def seed_rooms():
                 result = await db.execute(
                     select(Room).where(
                         Room.name == room_item["name"],
-                        Room.room_type == room_item["room_type"]
+                        Room.property_id == room_item["properties"][0] # Check against property as well
                     )
                 )
                 existing_room = result.scalar_one_or_none()
                 
                 if existing_room:
-                    print(f"Room '{room_item['name']}' already exists. Skipping.")
+                    print(f"Room '{room_item['name']}' in property '{room_item['properties'][0]}' already exists. Skipping.")
                     rooms_skipped += 1
                     continue
 
                 # Assuming the first property in the list is the primary one
                 primary_property_id = room_item["properties"][0]
                 
-                # Convert created_at string to datetime object
-                created_at_dt = datetime.fromisoformat(room_item["created_at"])
-
                 new_room = Room(
                     name=room_item["name"],
-                    number=room_item["name"], # Using name as number based on data pattern
+                    number=room_item.get("number", room_item["name"]), # Use number if present, else name
                     room_type=room_item["room_type"],
-                is_active=room_item["is_active"],
+                    is_active=room_item["is_active"],
                     property_id=primary_property_id
                 )
                 db.add(new_room)
