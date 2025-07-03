@@ -1,21 +1,25 @@
 # ==============================================================================
-# File: my_app/routers/machines.py
-# Description: API endpoints for managing Machines.
+# File: backend/my_app/routers/machines.py (Corrected)
+# Description: Async machine routes.
 # ==============================================================================
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
-from .. import schemas, models, dependencies
+from .. import crud, schemas, dependencies
 
-router = APIRouter(prefix="/machines", tags=["Machines"])
+router = APIRouter(prefix="/machines", tags=["machines"])
+
+@router.post("/", response_model=schemas.Machine)
+async def create_machine(
+    property_id: int, machine: schemas.MachineCreate, db: AsyncSession = Depends(dependencies.get_db)
+):
+    return await crud.create_machine(db=db, machine=machine, property_id=property_id)
 
 @router.get("/", response_model=List[schemas.Machine])
-def read_machines(
-    db: Session = Depends(dependencies.get_db),
-    current_user: models.User = Depends(dependencies.get_current_active_user)
+async def read_machines(
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(dependencies.get_db),
 ):
-    if current_user.profile.role == 'Admin':
-        return db.query(models.Machine).all()
-        
-    user_property_ids = [p.id for p in current_user.profile.properties]
-    return db.query(models.Machine).filter(models.Machine.property_id.in_(user_property_ids)).all()
+    machines = await crud.get_machines(db, skip=skip, limit=limit)
+    return machines
