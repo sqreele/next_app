@@ -4,12 +4,13 @@
 # ==============================================================================
 from sqlalchemy import (
     Column, Integer, String, ForeignKey, DateTime, Date,
-    Boolean, Table
+    Boolean, Table, Text
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from .database import Base  # Import Base from database.py
+from .database import Base
 
+# Association table for many-to-many relationship between UserProfile and Property
 user_property_association = Table(
     'user_property_association', Base.metadata,
     Column('user_profile_id', Integer, ForeignKey('userprofiles.id')),
@@ -18,92 +19,123 @@ user_property_association = Table(
 
 class User(Base):
     __tablename__ = 'users'
+    
     id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True, nullable=False)
-    email = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
+    username = Column(String(50), unique=True, index=True, nullable=False)
+    email = Column(String(100), unique=True, index=True, nullable=False)
+    hashed_password = Column(String(255), nullable=False)
     is_active = Column(Boolean, default=True)
+    
+    # Relationships
     profile = relationship("UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
     work_orders_assigned = relationship("WorkOrder", back_populates="assigned_to")
+    
     def __str__(self):
         return self.username
 
 class UserProfile(Base):
     __tablename__ = 'userprofiles'
+    
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
-    role = Column(String, default='Technician')
-    position = Column(String, nullable=True)
+    user_id = Column(Integer, ForeignKey('users.id'), unique=True)
+    role = Column(String(50), default='Technician')
+    position = Column(String(100), nullable=True)
+    
+    # Relationships
     user = relationship("User", back_populates="profile")
-    properties = relationship("Property", secondary=user_property_association)
+    properties = relationship("Property", secondary=user_property_association, back_populates="user_profiles")
+    
     def __str__(self):
-        return self.user.username if self.user else f"Profile {self.id}"
+        return f"{self.user.username} - {self.role}" if self.user else f"Profile {self.id}"
 
 class Property(Base):
     __tablename__ = 'properties'
+    
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True)
+    name = Column(String(100), unique=True, index=True, nullable=False)
+    
+    # Relationships
     rooms = relationship("Room", back_populates="property", cascade="all, delete-orphan")
     machines = relationship("Machine", back_populates="property", cascade="all, delete-orphan")
     work_orders = relationship("WorkOrder", back_populates="property", cascade="all, delete-orphan")
+    user_profiles = relationship("UserProfile", secondary=user_property_association, back_populates="properties")
+    
     def __str__(self):
         return self.name
 
 class Room(Base):
     __tablename__ = 'rooms'
+    
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    number = Column(String, nullable=True)
-    room_type = Column(String, nullable=True)
+    name = Column(String(100), index=True, nullable=False)
+    number = Column(String(20), nullable=True)
+    room_type = Column(String(50), nullable=True)
     is_active = Column(Boolean, default=True)
-    property_id = Column(Integer, ForeignKey('properties.id'))
+    property_id = Column(Integer, ForeignKey('properties.id'), nullable=False)
+    
+    # Relationships
     property = relationship("Property", back_populates="rooms")
     machines = relationship("Machine", back_populates="room")
     work_orders = relationship("WorkOrder", back_populates="room")
+    
     def __str__(self):
-        return self.name
+        return f"{self.name} ({self.property.name})" if self.property else self.name
 
 class Machine(Base):
     __tablename__ = 'machines'
+    
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    status = Column(String, default='Operational')
-    property_id = Column(Integer, ForeignKey('properties.id'))
+    name = Column(String(100), index=True, nullable=False)
+    status = Column(String(50), default='Operational')
+    property_id = Column(Integer, ForeignKey('properties.id'), nullable=False)
     room_id = Column(Integer, ForeignKey('rooms.id'), nullable=True)
+    
+    # Relationships
     property = relationship("Property", back_populates="machines")
     room = relationship("Room", back_populates="machines")
     work_orders = relationship("WorkOrder", back_populates="machine")
+    
     def __str__(self):
-        return self.name
+        return f"{self.name} ({self.property.name})" if self.property else self.name
 
 class WorkOrder(Base):
     __tablename__ = 'workorders'
+    
     id = Column(Integer, primary_key=True, index=True)
-    task = Column(String, index=True)
-    description = Column(String, nullable=True)
-    status = Column(String, default='Pending')
-    priority = Column(String, default='Medium')
-    due_date = Column(Date)
+    task = Column(String(200), index=True, nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String(50), default='Pending')
+    priority = Column(String(50), default='Medium')
+    due_date = Column(Date, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
-    property_id = Column(Integer, ForeignKey('properties.id'))
+    
+    # Foreign Keys
+    property_id = Column(Integer, ForeignKey('properties.id'), nullable=False)
     machine_id = Column(Integer, ForeignKey('machines.id'), nullable=True)
     room_id = Column(Integer, ForeignKey('rooms.id'), nullable=True)
     assigned_to_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    
+    # Relationships
     property = relationship("Property", back_populates="work_orders")
     machine = relationship("Machine", back_populates="work_orders")
     room = relationship("Room", back_populates="work_orders")
     assigned_to = relationship("User", back_populates="work_orders_assigned")
     files = relationship("WorkOrderFile", back_populates="work_order", cascade="all, delete-orphan")
+    
     def __str__(self):
-        return self.task
+        return f"{self.task} - {self.status}"
 
 class WorkOrderFile(Base):
     __tablename__ = 'workorderfiles'
+    
     id = Column(Integer, primary_key=True, index=True)
-    file_path = Column(String, nullable=False)
-    upload_type = Column(String, default='Other')
-    work_order_id = Column(Integer, ForeignKey('workorders.id'))
+    file_path = Column(String(500), nullable=False)
+    upload_type = Column(String(50), default='Other')
+    work_order_id = Column(Integer, ForeignKey('workorders.id'), nullable=False)
+    
+    # Relationships
     work_order = relationship("WorkOrder", back_populates="files")
+    
     def __str__(self):
-        return self.file_path
+        return f"File: {self.file_path}"
