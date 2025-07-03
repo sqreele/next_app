@@ -1,21 +1,50 @@
-# ==============================================================================
-# File: my_app/main.py
-# Description: The main entry point for the FastAPI application.
-# ==============================================================================
 from sqladmin import ModelView
+from sqlalchemy import select
 from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile
 
+class RoomAdmin(ModelView, model=Room):
+    column_list = [Room.id, Room.name, Room.number, Room.room_type, Room.is_active, Room.property_id]
+    form_columns = [Room.name, Room.number, Room.room_type, Room.is_active, Room.property_id]
+    column_searchable_list = [Room.name, Room.number, Room.room_type]
+    column_sortable_list = [Room.id, Room.name, Room.number, Room.room_type, Room.is_active]
+    
+    name = "Room"
+    name_plural = "Rooms"
+    icon = "fa-solid fa-door-open"
+    
+    # Add form configuration to make property selection easier
+    form_args = {
+        'name': {'description': 'Enter the room name'},
+        'number': {'description': 'Enter the room number (optional)'},
+        'room_type': {'description': 'Enter the room type'},
+        'property_id': {'description': 'Select the property this room belongs to'}
+    }
+    
+    # Override form creation to add property choices
+    async def create_form(self, request):
+        form = await super().create_form(request)
+        return form
+    
+    async def edit_form(self, request, obj):
+        form = await super().edit_form(request, obj)
+        return form
+
+# Keep all other admin classes the same...
 class UserAdmin(ModelView, model=User):
-    column_list = [User.id, User.username, User.email, "profile"]
+    column_list = [User.id, User.username, User.email, User.is_active]
     column_details_exclude_list = [User.hashed_password]
-    form_columns = [User.username, User.email, User.is_active, "profile"]
+    form_columns = [User.username, User.email, User.is_active]
+    column_searchable_list = [User.username, User.email]
+    column_sortable_list = [User.id, User.username, User.email, User.is_active]
     name = "User"
     name_plural = "Users"
     icon = "fa-solid fa-user"
 
 class UserProfileAdmin(ModelView, model=UserProfile):
-    column_list = [UserProfile.id, "user", "role", "position"]
-    form_columns = [UserProfile.user, UserProfile.role, UserProfile.position, UserProfile.properties]
+    column_list = [UserProfile.id, UserProfile.user_id, UserProfile.role, UserProfile.position]
+    form_columns = [UserProfile.user_id, UserProfile.role, UserProfile.position]
+    column_searchable_list = [UserProfile.role, UserProfile.position]
+    column_sortable_list = [UserProfile.id, UserProfile.role, UserProfile.position]
     name = "User Profile"
     name_plural = "User Profiles"
     icon = "fa-solid fa-id-card"
@@ -23,31 +52,62 @@ class UserProfileAdmin(ModelView, model=UserProfile):
 class PropertyAdmin(ModelView, model=Property):
     column_list = [Property.id, Property.name]
     form_columns = [Property.name]
+    column_searchable_list = [Property.name]
+    column_sortable_list = [Property.id, Property.name]
     name = "Property"
     name_plural = "Properties"
     icon = "fa-solid fa-building"
 
-class RoomAdmin(ModelView, model=Room):
-    column_list = [Room.id, Room.name, Room.number, Room.room_type, Room.is_active]
-    form_columns = [Room.name, Room.number, Room.room_type, Room.is_active, "properties"]
-    name = "Room"
-    name_plural = "Rooms"
-    icon = "fa-solid fa-door-open"
-
 class MachineAdmin(ModelView, model=Machine):
-    column_list = [Machine.id, Machine.name, Machine.status, "room", "property"]
-    form_columns = [Machine.name, Machine.status, "property", "room"]
-    column_labels = {Machine.room: "Room", Machine.property: "Property"}
+    column_list = [Machine.id, Machine.name, Machine.status, Machine.property_id, Machine.room_id]
+    form_columns = [Machine.name, Machine.status, Machine.property_id, Machine.room_id]
+    column_searchable_list = [Machine.name, Machine.status]
+    column_sortable_list = [Machine.id, Machine.name, Machine.status]
     name = "Machine"
     name_plural = "Machines"
     icon = "fa-solid fa-robot"
 
 class WorkOrderAdmin(ModelView, model=WorkOrder):
-    column_list = [WorkOrder.id, WorkOrder.task, WorkOrder.status, WorkOrder.priority, "machine", "room"]
-    column_labels = {WorkOrder.machine: "Machine", WorkOrder.room: "Room"}
+    column_list = [
+        WorkOrder.id, 
+        WorkOrder.task, 
+        WorkOrder.status, 
+        WorkOrder.priority, 
+        WorkOrder.due_date,
+        WorkOrder.property_id,
+        WorkOrder.machine_id,
+        WorkOrder.room_id,
+        WorkOrder.assigned_to_id
+    ]
+    form_columns = [
+        WorkOrder.task,
+        WorkOrder.description,
+        WorkOrder.status,
+        WorkOrder.priority,
+        WorkOrder.due_date,
+        WorkOrder.property_id,
+        WorkOrder.machine_id,
+        WorkOrder.room_id,
+        WorkOrder.assigned_to_id
+    ]
+    column_searchable_list = [WorkOrder.task, WorkOrder.description, WorkOrder.status, WorkOrder.priority]
+    column_sortable_list = [
+        WorkOrder.id, 
+        WorkOrder.task, 
+        WorkOrder.status, 
+        WorkOrder.priority, 
+        WorkOrder.due_date,
+        WorkOrder.created_at
+    ]
     name = "Work Order"
     name_plural = "Work Orders"
     icon = "fa-solid fa-list-check"
 
 class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
-    column_list = [WorkOrderFile.id, WorkOrderFile.file_path]
+    column_list = [WorkOrderFile.id, WorkOrderFile.file_path, WorkOrderFile.upload_type, WorkOrderFile.work_order_id]
+    form_columns = [WorkOrderFile.file_path, WorkOrderFile.upload_type, WorkOrderFile.work_order_id]
+    column_searchable_list = [WorkOrderFile.file_path, WorkOrderFile.upload_type]
+    column_sortable_list = [WorkOrderFile.id, WorkOrderFile.file_path, WorkOrderFile.upload_type]
+    name = "Work Order File"
+    name_plural = "Work Order Files"
+    icon = "fa-solid fa-file"
