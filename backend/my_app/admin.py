@@ -107,15 +107,15 @@ class RoomAdmin(ModelView, model=Room):
     icon = "fa-solid fa-door-open"
 
 class MachineAdmin(ModelView, model=Machine):
-    column_list = [Machine.id, Machine.name, Machine.status, Machine.property_id, Machine.room_id]
-    form_columns = [Machine.property_id, Machine.name, Machine.status, Machine.room_id]
+    column_list = [Machine.id, Machine.name, Machine.status, "property.name", "room.name"]
+    form_columns = [Machine.property, Machine.name, Machine.status, Machine.room]  # Use relationship objects
     column_searchable_list = [Machine.name, Machine.status]
     column_sortable_list = [Machine.id, Machine.name, Machine.status]
     
     form_args = {
-        'property_id': {
-            'label': 'Property ID (Required)',
-            'description': 'Enter the property ID (1 for MaintenancePro Thailand, 2 for MaintenancePro China)'
+        'property': {
+            'label': 'Property (Required)',
+            'description': 'Select the property this machine belongs to'
         },
         'name': {
             'label': 'Machine Name',
@@ -123,12 +123,11 @@ class MachineAdmin(ModelView, model=Machine):
         },
         'status': {
             'label': 'Machine Status',
-            'description': 'Current status of the machine',
-            'default': 'Operational'
+            'description': 'Current status of the machine'
         },
-        'room_id': {
-            'label': 'Room ID (Optional)',
-            'description': 'Enter the room ID if the machine is located in a specific room'
+        'room': {
+            'label': 'Room (Optional)',
+            'description': 'Select a room if the machine is located in a specific room'
         }
     }
     
