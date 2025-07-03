@@ -108,9 +108,21 @@ class RoomAdmin(ModelView, model=Room):
 
 class MachineAdmin(ModelView, model=Machine):
     column_list = [Machine.id, Machine.name, Machine.status, Machine.property_id, Machine.room_id]
-    form_columns = [Machine.property_id, Machine.name, Machine.status, Machine.room_id]
+    form_columns = [Machine.property_id, Machine.name, Machine.status, Machine.room_id]  # Make sure property_id is first
     column_searchable_list = [Machine.name, Machine.status]
     column_sortable_list = [Machine.id, Machine.name, Machine.status]
+    
+    # Add this to ensure the relationship fields work properly
+    form_ajax_refs = {
+        "property": {
+            "fields": ("name",),
+            "order_by": ("name",)
+        },
+        "room": {
+            "fields": ("name",),
+            "order_by": ("name",)
+        }
+    }
     
     form_args = {
         'property_id': {
