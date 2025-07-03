@@ -1,22 +1,20 @@
 # ==============================================================================
-# File: my_app/models.py
-# Description: Defines the database schema using SQLAlchemy ORM.
+# File: backend/my_app/models.py (Corrected)
+# Description: Defines the database schema using the imported Base.
 # ==============================================================================
 from sqlalchemy import (
     Column, Integer, String, ForeignKey, DateTime, Date,
     Boolean, Table
 )
-from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-
-Base = declarative_base()
+from .database import Base  # Import Base from database.py
 
 user_property_association = Table(
     'user_property_association', Base.metadata,
     Column('user_profile_id', Integer, ForeignKey('userprofiles.id')),
     Column('property_id', Integer, ForeignKey('properties.id'))
 )
-
 
 class User(Base):
     __tablename__ = 'users'
@@ -39,7 +37,7 @@ class UserProfile(Base):
     user = relationship("User", back_populates="profile")
     properties = relationship("Property", secondary=user_property_association)
     def __str__(self):
-        return self.username
+        return self.user.username if self.user else f"Profile {self.id}"
 
 class Property(Base):
     __tablename__ = 'properties'
@@ -49,7 +47,7 @@ class Property(Base):
     machines = relationship("Machine", back_populates="property", cascade="all, delete-orphan")
     work_orders = relationship("WorkOrder", back_populates="property", cascade="all, delete-orphan")
     def __str__(self):
-        return self.username
+        return self.name
 
 class Room(Base):
     __tablename__ = 'rooms'
@@ -63,7 +61,7 @@ class Room(Base):
     machines = relationship("Machine", back_populates="room")
     work_orders = relationship("WorkOrder", back_populates="room")
     def __str__(self):
-        return self.username
+        return self.name
 
 class Machine(Base):
     __tablename__ = 'machines'
@@ -76,7 +74,7 @@ class Machine(Base):
     room = relationship("Room", back_populates="machines")
     work_orders = relationship("WorkOrder", back_populates="machine")
     def __str__(self):
-        return self.username
+        return self.name
 
 class WorkOrder(Base):
     __tablename__ = 'workorders'
@@ -93,12 +91,12 @@ class WorkOrder(Base):
     room_id = Column(Integer, ForeignKey('rooms.id'), nullable=True)
     assigned_to_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     property = relationship("Property", back_populates="work_orders")
-    machine = relationship("Machine", back_populates="work_orders") # Corrected from "machine"
+    machine = relationship("Machine", back_populates="work_orders")
     room = relationship("Room", back_populates="work_orders")
     assigned_to = relationship("User", back_populates="work_orders_assigned")
     files = relationship("WorkOrderFile", back_populates="work_order", cascade="all, delete-orphan")
     def __str__(self):
-        return self.username
+        return self.task
 
 class WorkOrderFile(Base):
     __tablename__ = 'workorderfiles'
@@ -108,4 +106,4 @@ class WorkOrderFile(Base):
     work_order_id = Column(Integer, ForeignKey('workorders.id'))
     work_order = relationship("WorkOrder", back_populates="files")
     def __str__(self):
-        return self.username
+        return self.file_path
