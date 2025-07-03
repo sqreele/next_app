@@ -1,38 +1,30 @@
+
 version: '3.8'
 
 services:
   db:
     image: postgres:15-alpine
-    environment:
-      POSTGRES_DB: fullstack_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+    env_file: .env
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d $POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   backend:
     build: ./backend
-    # Ports are no longer exposed directly to the host
+    env_file: .env
     volumes:
       - ./backend:/app
-    environment:
-      - DEBUG=1
-      - DB_HOST=db
-      - DB_NAME=fullstack_db
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
     depends_on:
       db:
         condition: service_healthy
 
   frontend:
-    build: ./frontend/my_job
-    # Ports are no longer exposed directly to the host
+    build:
+      context: ./frontend/my_job
     volumes:
       - ./frontend/my_job:/app
       - /app/node_modules
@@ -42,7 +34,7 @@ services:
   nginx:
     build: ./nginx
     ports:
-      - "80:80" # Expose port 80 to the outside world
+      - "80:80" # Expose port 80 for HTTP traffic
     depends_on:
       - frontend
       - backend
