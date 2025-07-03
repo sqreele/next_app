@@ -1,5 +1,6 @@
 import json
-from sqlalchemy.orm import Session
+import asyncio
+from sqlalchemy.ext.asyncio import AsyncSession
 from my_app.database import SessionLocal, engine
 from my_app.models import Base, Room, Property
 from datetime import datetime
@@ -922,9 +923,7 @@ room_data_json = """
         "name": "311",
         "room_type": "Talad Noi King",
         "is_active": true,
-        "created_at": "2025-03-26T14:57:22.856000+07:00",
-        "properties": [
-            1
+        "created_at": "2025
         ]
     },
     {
@@ -1791,65 +1790,81 @@ room_data_json = """
 ]
 """
 
-def seed_rooms():
-    db: Session = SessionLocal()
-    try:
-        # Create tables if they don't exist
-        Base.metadata.create_all(bind=engine)
+async def seed_rooms():
+    async with SessionLocal() as db:
+        try:
+            # Create tables if they don't exist
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
 
-        # Ensure properties exist
-        prop1 = db.query(Property).filter(Property.id == 1).first()
-        if not prop1:
-            prop1 = Property(id=1, name="MaintenancePro Thailand")
-            db.add(prop1)
-        
-        prop2 = db.query(Property).filter(Property.id == 2).first()
-        if not prop2:
-            prop2 = Property(id=2, name="MaintenancePro China")
-            db.add(prop2)
-        
-        db.commit()
-
-        rooms_data = json.loads(room_data_json)
-        
-        for room_item in rooms_data:
-            # Check if room already exists to avoid duplicates
-            # Using name and room_type as a composite key for checking
-            existing_room = db.query(Room).filter(
-                Room.name == room_item["name"],
-                Room.room_type == room_item["room_type"]
-            ).first()
+            # Ensure properties exist (using merge for upsert behavior)
+            from sqlalchemy import select
             
-            if existing_room:
-                print(f"Room '{room_item['name']}' already exists. Skipping.")
-                continue
-
-            # Assuming the first property in the list is the primary one
-            primary_property_id = room_item["properties"][0]
+            # Check if properties exist
+            result = await db.execute(select(Property).where(Property.id == 1))
+            prop1 = result.scalar_one_or_none()
             
-            # Convert created_at string to datetime object
-            # The format from JSON includes timezone, which SQLAlchemy's DateTime(timezone=True) handles
-            created_at_dt = datetime.fromisoformat(room_item["created_at"])
+            if not prop1:
+                prop1 = Property(id=1, name="MaintenancePro Thailand")
+                db.add(prop1)
+            
+            result = await db.execute(select(Property).where(Property.id == 2))
+            prop2 = result.scalar_one_or_none()
+            
+            if not prop2:
+                prop2 = Property(id=2, name="MaintenancePro China")
+                db.add(prop2)
+            
+            await db.commit()
 
-            new_room = Room(
-                id=room_item["room_id"],
-                name=room_item["name"],
-                number=room_item["name"], # Using name as number based on data pattern
-                room_type=room_item["room_type"],
+            rooms_data = json.loads(room_data_json)
+            
+            rooms_added = 0
+            rooms_skipped = 0
+            
+            for room_item in rooms_data:
+                # Check if room already exists to avoid duplicates
+                result = await db.execute(
+                    select(Room).where(
+                        Room.name == room_item["name"],
+                        Room.room_type == room_item["room_type"]
+                    )
+                )
+                existing_room = result.scalar_one_or_none()
+                
+                if existing_room:
+                    print(f"Room '{room_item['name']}' already exists. Skipping.")
+                    rooms_skipped += 1
+                    continue
+
+                # Assuming the first property in the list is the primary one
+                primary_property_id = room_item["properties"][0]
+                
+                # Convert created_at string to datetime object
+                created_at_dt = datetime.fromisoformat(room_item["created_at"])
+
+                new_room = Room(
+                    name=room_item["name"],
+                    number=room_item["name"], # Using name as number based on data pattern
+                    room_type=room_item["room_type"],
                 is_active=room_item["is_active"],
-                created_at=created_at_dt,
-                property_id=primary_property_id
-            )
-            db.add(new_room)
-        
-        db.commit()
-        print("Successfully seeded rooms data.")
+                    property_id=primary_property_id
+                )
+                db.add(new_room)
+                rooms_added += 1
+            
+            await db.commit()
+            print(f"Successfully seeded rooms data. Added: {rooms_added}, Skipped: {rooms_skipped}")
 
-    finally:
-        db.close()
+        except Exception as e:
+            print(f"Error seeding rooms: {e}")
+            await db.rollback()
+            raise
 
-if __name__ == "__main__":
+async def main():
     print("Seeding database with initial room data...")
-    seed_rooms()
+    await seed_rooms()
     print("Seeding finished.")
 
+if __name__ == "__main__":
+    asyncio.run(main())
