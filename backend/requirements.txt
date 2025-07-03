@@ -8,3 +8,4 @@ sqladmin
 psycopg2-binary 
 passlib[bcrypt]
 python-jose[cryptography]
+starlette-admin
