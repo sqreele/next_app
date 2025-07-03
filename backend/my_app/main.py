@@ -3,7 +3,7 @@
 # Description: Main FastAPI application setup.
 # ==============================================================================
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from starlette_admin.contrib.sqla import Admin
+from sqladmin import Admin
 from .database import engine, Base
 from .models import User, UserProfile, Property, Room, Machine, WorkOrder
 from .routers import users, properties, rooms, machines, work_orders
