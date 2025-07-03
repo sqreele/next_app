@@ -1,11 +1,12 @@
 # ==============================================================================
-# File: backend/my_app/schemas.py (Corrected and Added)
+# File: backend/my_app/schemas.py (Corrected and Improved)
 # Description: Pydantic models for data validation and serialization.
 # ==============================================================================
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import date, datetime
 
+# --- Token Schemas ---
 class Token(BaseModel):
     access_token: str
     token_type: str
@@ -13,6 +14,7 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     username: Optional[str] = None
 
+# --- Property Schemas ---
 class PropertyBase(BaseModel):
     name: str
 
@@ -24,6 +26,7 @@ class Property(PropertyBase):
     class Config:
         orm_mode = True
 
+# --- Room Schemas ---
 class RoomBase(BaseModel):
     name: str
     number: Optional[str] = None
@@ -39,6 +42,7 @@ class Room(RoomBase):
     class Config:
         orm_mode = True
 
+# --- Machine Schemas ---
 class MachineBase(BaseModel):
     name: str
     status: str = 'Operational'
@@ -53,6 +57,7 @@ class Machine(MachineBase):
     class Config:
         orm_mode = True
 
+# --- WorkOrder Schemas ---
 class WorkOrderBase(BaseModel):
     task: str
     description: Optional[str] = None
@@ -74,6 +79,23 @@ class WorkOrder(WorkOrderBase):
     class Config:
         orm_mode = True
 
+# --- UserProfile Schemas (New) ---
+class UserProfileBase(BaseModel):
+    role: Optional[str] = 'Technician'
+    position: Optional[str] = None
+
+class UserProfileCreate(UserProfileBase):
+    pass
+
+class UserProfile(UserProfileBase):
+    id: int
+    user_id: int
+    properties: List[Property] = [] # Display associated properties
+
+    class Config:
+        orm_mode = True
+
+# --- User Schemas (Improved) ---
 class UserBase(BaseModel):
     username: str
     email: str
@@ -84,6 +106,7 @@ class UserCreate(UserBase):
 class User(UserBase):
     id: int
     is_active: bool
+    profile: Optional[UserProfile] = None # Link to the UserProfile schema
     work_orders_assigned: List[WorkOrder] = []
     class Config:
         orm_mode = True
