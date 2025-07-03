@@ -7,8 +7,6 @@ services:
       POSTGRES_DB: fullstack_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -19,8 +17,7 @@ services:
 
   backend:
     build: ./backend
-    ports:
-      - "8000:8000"
+    # Ports are no longer exposed directly to the host
     volumes:
       - ./backend:/app
     environment:
@@ -34,13 +31,20 @@ services:
         condition: service_healthy
 
   frontend:
-    build: ./frontend/my_job  # Updated path
-    ports:
-      - "3000:3000"
+    build: ./frontend/my_job
+    # Ports are no longer exposed directly to the host
     volumes:
-      - ./frontend/my_job:/app  # Updated path
+      - ./frontend/my_job:/app
       - /app/node_modules
     depends_on:
+      - backend
+
+  nginx:
+    build: ./nginx
+    ports:
+      - "80:80" # Expose port 80 to the outside world
+    depends_on:
+      - frontend
       - backend
 
 volumes:
