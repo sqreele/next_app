@@ -1,4 +1,3 @@
-// src/services/users-api.ts (Updated for your backend)
 import apiClient from '@/lib/api-client'
 import { AxiosResponse } from 'axios'
 import { User, CreateUserData, LoginCredentials, LoginResponse } from '@/types/user'
@@ -29,8 +28,9 @@ export interface UsersFilters {
 }
 
 class UsersAPI {
-  private readonly endpoint = '/v1/users'
-  private readonly authEndpoint = '/auth'
+  // Use the correct path that matches your FastAPI routes
+  private readonly endpoint = '/api/v1/users'
+  private readonly authEndpoint = '/api/auth'
 
   /**
    * Register new user
@@ -41,7 +41,7 @@ class UsersAPI {
       username: data.username,
       email: data.email,
       password: data.password,
-      confirm_password: data.confirmPassword, // snake_case for API
+      confirm_password: data.confirmPassword,
       profile: {
         role: data.profile.role,
         position: data.profile.position
@@ -49,7 +49,10 @@ class UsersAPI {
     }
 
     try {
-      // Try the users endpoint for registration
+      console.log('Attempting registration with data:', apiData)
+      console.log('POST to:', this.endpoint)
+      
+      // Use the users endpoint for registration
       const response: AxiosResponse<User> = await apiClient.post(this.endpoint, apiData)
       
       return {
@@ -103,37 +106,6 @@ class UsersAPI {
   }
 
   /**
-   * Get a single user by ID
-   */
-  async getUser(id: number): Promise<User> {
-    const response: AxiosResponse<User> = await apiClient.get(`${this.endpoint}/${id}`)
-    return response.data
-  }
-
-  /**
-   * Create a new user (admin function)
-   */
-  async createUser(data: CreateUserData): Promise<User> {
-    const response: AxiosResponse<User> = await apiClient.post(this.endpoint, data)
-    return response.data
-  }
-
-  /**
-   * Update an existing user
-   */
-  async updateUser(id: number, data: Partial<CreateUserData>): Promise<User> {
-    const response: AxiosResponse<User> = await apiClient.patch(`${this.endpoint}/${id}`, data)
-    return response.data
-  }
-
-  /**
-   * Delete a user
-   */
-  async deleteUser(id: number): Promise<void> {
-    await apiClient.delete(`${this.endpoint}/${id}`)
-  }
-
-  /**
    * Check if username is available
    */
   async checkUsernameAvailability(username: string): Promise<{ available: boolean }> {
@@ -181,9 +153,26 @@ class UsersAPI {
     }
   }
 
-  /**
-   * Update user status (active/inactive)
-   */
+  // Other methods...
+  async getUser(id: number): Promise<User> {
+    const response: AxiosResponse<User> = await apiClient.get(`${this.endpoint}/${id}`)
+    return response.data
+  }
+
+  async createUser(data: CreateUserData): Promise<User> {
+    const response: AxiosResponse<User> = await apiClient.post(this.endpoint, data)
+    return response.data
+  }
+
+  async updateUser(id: number, data: Partial<CreateUserData>): Promise<User> {
+    const response: AxiosResponse<User> = await apiClient.patch(`${this.endpoint}/${id}`, data)
+    return response.data
+  }
+
+  async deleteUser(id: number): Promise<void> {
+    await apiClient.delete(`${this.endpoint}/${id}`)
+  }
+
   async updateUserStatus(id: number, is_active: boolean): Promise<User> {
     const response: AxiosResponse<User> = await apiClient.patch(
       `${this.endpoint}/${id}`, 
@@ -192,23 +181,14 @@ class UsersAPI {
     return response.data
   }
 
-  /**
-   * Get users by role
-   */
   async getUsersByRole(role: string): Promise<User[]> {
     return this.getUsers({ role })
   }
 
-  /**
-   * Get active users only
-   */
   async getActiveUsers(): Promise<User[]> {
     return this.getUsers({ is_active: true })
   }
 
-  /**
-   * Search users
-   */
   async searchUsers(query: string): Promise<User[]> {
     return this.getUsers({ search: query })
   }
