@@ -139,9 +139,9 @@ export default function LoginPage() {
         </form>
         
         <div className="mt-4 text-sm text-gray-500">
-          Don't have an account?{' '}
-          <Link href="/register" className="text-green-600 underline">
-            Sign up
+          Forgot your password?{' '}
+          <Link href="/forgot-password" className="text-green-600 underline">
+            Reset it
           </Link>
         </div>
       </div>
