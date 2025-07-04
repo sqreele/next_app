@@ -70,7 +70,7 @@ class UsersAPI {
    */
   async login(credentials: LoginCredentials): Promise<LoginResponse> {
     const response: AxiosResponse<LoginResponse> = await apiClient.post(
-      `${this.authEndpoint}/login`, 
+      `${this.authEndpoint}/token`, 
       credentials
     )
     return response.data
