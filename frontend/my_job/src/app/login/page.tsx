@@ -1,3 +1,4 @@
+// src/app/login/page.tsx (Updated to include registration link)
 'use client'
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
@@ -21,7 +22,7 @@ export default function LoginPage() {
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      router.push('/')
+      router.push('/dashboard')
     }
   }, [isAuthenticated, router])
 
@@ -61,7 +62,7 @@ export default function LoginPage() {
       })
       
       toast.success('Login successful!')
-      router.push('/')
+      router.push('/dashboard')
     } catch (error) {
       // Error is already handled in the store and displayed via toast
       console.error('Login error:', error)
@@ -138,11 +139,19 @@ export default function LoginPage() {
           </Button>
         </form>
         
-        <div className="mt-4 text-sm text-gray-500">
-          Forgot your password?{' '}
-          <Link href="/forgot-password" className="text-green-600 underline">
-            Reset it
-          </Link>
+        <div className="mt-4 text-sm text-gray-500 space-y-2">
+          <div className="text-center">
+            Forgot your password?{' '}
+            <Link href="/forgot-password" className="text-green-600 hover:text-green-500 font-medium">
+              Reset it
+            </Link>
+          </div>
+          <div className="text-center">
+            Don't have an account?{' '}
+            <Link href="/register" className="text-green-600 hover:text-green-500 font-medium">
+              Sign up
+            </Link>
+          </div>
         </div>
       </div>
     </div>
