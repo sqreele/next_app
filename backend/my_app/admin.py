@@ -1,25 +1,23 @@
 # ==============================================================================
-# File: my_app/admin.py
+# File: my_app/admin.py (Corrected)
 # Description: SQLAdmin configuration for the admin panel.
 # ==============================================================================
 from sqladmin import ModelView
 from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile
-from .security import get_password_hash  # Import the password hashing function
-from typing import Any
-from starlette.requests import Request
-
+# No longer need get_password_hash, Any, or Request here
 
 class UserAdmin(ModelView, model=User):
     column_list = [User.id, User.username, User.email, User.is_active]
     column_details_exclude_list = [User.hashed_password]
 
-    # Add a virtual "password" field to the form
+    # The form now uses the 'password' property from the User model
     form_columns = [
         User.username,
         User.email,
-        "password",
+        "password",  # This refers to the property on the User model
         User.is_active,
     ]
+    # Ensure the password field is treated as a password input
     form_overrides = {"password": {"type": "password"}}
 
     column_searchable_list = [User.username, User.email]
@@ -40,24 +38,17 @@ class UserAdmin(ModelView, model=User):
         },
         'password': {
             'label': 'Password',
-            'description': 'Required for new users. To change an existing password, enter a new one.'
+            'description': 'Enter a password. Will be automatically hashed.'
         },
     }
 
     name = "User"
     name_plural = "Users"
     icon = "fa-solid fa-user"
-    async def on_model_change(
-        self, data: dict, model: Any, is_created: bool, request: Request
-    ) -> None:
-        """
-        This method is called when a model is created or updated.
-        We use it to hash the password before saving it to the database.
-        """
-        if data["password"]:
-            model.hashed_password = get_password_hash(data["password"])
+    
+    # The on_model_change method has been removed. The model now handles it.
 
-
+# (The rest of your admin.py file remains the same)
 class UserProfileAdmin(ModelView, model=UserProfile):
     column_list = [
         UserProfile.id,
