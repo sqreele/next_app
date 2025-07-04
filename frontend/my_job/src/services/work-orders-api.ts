@@ -63,7 +63,7 @@ export interface ApiError {
 }
 
 class WorkOrdersAPI {
-  private readonly endpoint = '/v1/work_orders'
+  private readonly endpoint = '/api/v1/work_orders'
 
   /**
    * Get all work orders with optional filters
