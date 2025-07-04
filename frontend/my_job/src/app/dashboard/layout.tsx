@@ -1,10 +1,12 @@
-// src/app/(dashboard)/layout.tsx
+// src/app/dashboard/layout.tsx (Updated)
 'use client'
 
 import React, { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useAuthStore } from '@/stores/auth-store'
+import { Header } from '@/components/layout/header'
 import {
   ClipboardDocumentListIcon,
   WrenchScrewdriverIcon,
@@ -18,8 +20,6 @@ import {
   QuestionMarkCircleIcon,
   Bars3Icon,
   XMarkIcon,
-  BellIcon,
-  MagnifyingGlassIcon,
   PlusIcon,
   HomeIcon,
   DevicePhoneMobileIcon,
@@ -51,13 +51,7 @@ interface NavigationItem {
   iconSolid: React.ComponentType<{ className?: string }>
   badge?: number
   children?: NavigationItem[]
-}
-
-interface User {
-  name: string
-  email: string
-  role: string
-  avatar?: string
+  adminOnly?: boolean
 }
 
 interface DashboardLayoutProps {
@@ -65,7 +59,7 @@ interface DashboardLayoutProps {
 }
 
 // Navigation configuration
-const navigation: NavigationItem[] = [
+const getNavigation = (userRole: string): NavigationItem[] => [
   {
     name: 'Dashboard',
     href: '/dashboard',
@@ -113,6 +107,16 @@ const navigation: NavigationItem[] = [
     ],
   },
   {
+    name: 'Machines',
+    href: '/machines',
+    icon: CubeIcon,
+    iconSolid: CubeSolid,
+    children: [
+      { name: 'All Machines', href: '/machines', icon: CubeIcon, iconSolid: CubeSolid },
+      { name: 'Add Machine', href: '/machines/create', icon: PlusIcon, iconSolid: PlusIcon },
+    ],
+  },
+  {
     name: 'Technicians',
     href: '/technicians',
     icon: UsersIcon,
@@ -123,6 +127,18 @@ const navigation: NavigationItem[] = [
       { name: 'Skills', href: '/technicians/skills', icon: CubeIcon, iconSolid: CubeSolid },
       { name: 'Schedules', href: '/technicians/schedules', icon: CalendarIcon, iconSolid: CalendarIcon },
       { name: 'Availability', href: '/technicians/availability', icon: ClockIcon, iconSolid: ClockIcon },
+    ],
+  },
+  {
+    name: 'Users',
+    href: '/users',
+    icon: UserCircleIcon,
+    iconSolid: UserSolid,
+    adminOnly: true,
+    children: [
+      { name: 'All Users', href: '/users', icon: UserCircleIcon, iconSolid: UserSolid },
+      { name: 'Add User', href: '/users/create', icon: PlusIcon, iconSolid: PlusIcon },
+      { name: 'Roles', href: '/users/roles', icon: CubeIcon, iconSolid: CubeSolid },
     ],
   },
   {
@@ -188,7 +204,7 @@ const navigation: NavigationItem[] = [
       { name: 'Offline Sync', href: '/mobile/offline', icon: DevicePhoneMobileIcon, iconSolid: MobileSolid },
     ],
   },
-]
+].filter(item => !item.adminOnly || userRole === 'Admin')
 
 const secondaryNavigation: NavigationItem[] = [
   {
@@ -205,36 +221,22 @@ const secondaryNavigation: NavigationItem[] = [
   },
 ]
 
-// Mock user data
-const user: User = {
-  name: 'John Technician',
-  email: 'john@company.com',
-  role: 'Senior Technician',
-  avatar: '/avatars/john.jpg',
-}
-
-// Quick stats for dashboard
-const quickStats = [
-  { name: 'Open Work Orders', value: 12, color: 'text-red-600', bgColor: 'bg-red-50' },
-  { name: 'In Progress', value: 8, color: 'text-yellow-600', bgColor: 'bg-yellow-50' },
-  { name: 'Completed Today', value: 15, color: 'text-green-600', bgColor: 'bg-green-50' },
-  { name: 'Overdue', value: 3, color: 'text-red-600', bgColor: 'bg-red-50' },
-]
-
-// Recent notifications
-const notifications = [
-  { id: 1, message: 'New work order assigned', time: '2 min ago', type: 'info' },
-  { id: 2, message: 'Asset maintenance due', time: '5 min ago', type: 'warning' },
-  { id: 3, message: 'Low inventory alert', time: '10 min ago', type: 'error' },
-]
-
 function classNames(...classes: string[]) {
   return classes.filter(Boolean).join(' ')
 }
 
 // Sidebar Component
-function Sidebar({ sidebarOpen, setSidebarOpen }: { sidebarOpen: boolean; setSidebarOpen: (open: boolean) => void }) {
+function Sidebar({ 
+  sidebarOpen, 
+  setSidebarOpen, 
+  user 
+}: { 
+  sidebarOpen: boolean
+  setSidebarOpen: (open: boolean) => void
+  user: any
+}) {
   const pathname = usePathname()
+  const navigation = getNavigation(user?.profile?.role || '')
 
   return (
     <>
@@ -260,7 +262,7 @@ function Sidebar({ sidebarOpen, setSidebarOpen }: { sidebarOpen: boolean; setSid
                 <div className="flex h-16 items-center justify-between px-6 border-b border-gray-200">
                   <div className="flex items-center">
                     <WrenchScrewdriverIcon className="h-8 w-8 text-blue-600" />
-                    <span className="ml-2 text-xl font-bold text-gray-900">WorkOrder Pro</span>
+                    <span className="ml-2 text-xl font-bold text-gray-900">PMCS</span>
                   </div>
                   <button
                     onClick={() => setSidebarOpen(false)}
@@ -269,7 +271,7 @@ function Sidebar({ sidebarOpen, setSidebarOpen }: { sidebarOpen: boolean; setSid
                     <XMarkIcon className="h-6 w-6" />
                   </button>
                 </div>
-                <SidebarContent pathname={pathname} />
+                <SidebarContent pathname={pathname} navigation={navigation} user={user} />
               </motion.div>
             </>
           )}
@@ -281,9 +283,9 @@ function Sidebar({ sidebarOpen, setSidebarOpen }: { sidebarOpen: boolean; setSid
         <div className="flex min-h-0 flex-1 flex-col bg-white border-r border-gray-200">
           <div className="flex h-16 items-center px-6 border-b border-gray-200">
             <WrenchScrewdriverIcon className="h-8 w-8 text-blue-600" />
-            <span className="ml-2 text-xl font-bold text-gray-900">WorkOrder Pro</span>
+            <span className="ml-2 text-xl font-bold text-gray-900">PMCS</span>
           </div>
-          <SidebarContent pathname={pathname} />
+          <SidebarContent pathname={pathname} navigation={navigation} user={user} />
         </div>
       </div>
     </>
@@ -291,7 +293,15 @@ function Sidebar({ sidebarOpen, setSidebarOpen }: { sidebarOpen: boolean; setSid
 }
 
 // Sidebar Content Component
-function SidebarContent({ pathname }: { pathname: string }) {
+function SidebarContent({ 
+  pathname, 
+  navigation,
+  user 
+}: { 
+  pathname: string
+  navigation: NavigationItem[]
+  user: any
+}) {
   const [expandedItems, setExpandedItems] = useState<string[]>([])
 
   const toggleExpanded = (itemName: string) => {
@@ -442,6 +452,7 @@ function SidebarContent({ pathname }: { pathname: string }) {
                 <IconComponent
                   className={classNames(
                     isItemActive ? 'text-blue-500' : 'text-gray-400 group-hover:text-gray-500',
+                    'mr-3 h-5 w-5 flex// Continuing SidebarContent component...
                     'mr-3 h-5 w-5 flex-shrink-0'
                   )}
                 />
@@ -457,139 +468,12 @@ function SidebarContent({ pathname }: { pathname: string }) {
         <div className="flex items-center">
           <div className="h-10 w-10 rounded-full bg-blue-500 flex items-center justify-center">
             <span className="text-white font-medium text-sm">
-              {user.name.split(' ').map(n => n[0]).join('')}
+              {user?.username?.substring(0, 2).toUpperCase() || 'U'}
             </span>
           </div>
           <div className="ml-3 flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">{user.name}</p>
-            <p className="text-xs text-gray-500 truncate">{user.role}</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// Header Component
-function Header({ setSidebarOpen }: { setSidebarOpen: (open: boolean) => void }) {
-  const [showNotifications, setShowNotifications] = useState(false)
-
-  return (
-    <div className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8">
-      <button
-        type="button"
-        className="-m-2.5 p-2.5 text-gray-700 lg:hidden"
-        onClick={() => setSidebarOpen(true)}
-      >
-        <span className="sr-only">Open sidebar</span>
-        <Bars3Icon className="h-6 w-6" aria-hidden="true" />
-      </button>
-
-      {/* Separator */}
-      <div className="h-6 w-px bg-gray-200 lg:hidden" aria-hidden="true" />
-
-      <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6">
-        {/* Search */}
-        <div className="relative flex flex-1 items-center">
-          <div className="relative w-full max-w-md">
-            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-              <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
-            </div>
-            <input
-              className="block w-full rounded-md border-0 py-1.5 pl-10 pr-3 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
-              placeholder="Search work orders, assets, customers..."
-              type="search"
-            />
-          </div>
-        </div>
-
-        {/* Quick Stats */}
-        <div className="hidden lg:flex lg:items-center lg:gap-x-4">
-          {quickStats.map((stat) => (
-            <div key={stat.name} className={classNames(stat.bgColor, 'rounded-lg px-3 py-2')}>
-              <div className="text-xs font-medium text-gray-600">{stat.name}</div>
-              <div className={classNames(stat.color, 'text-lg font-semibold')}>{stat.value}</div>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-x-4 lg:gap-x-6">
-          {/* Quick Action Button */}
-          <Link
-            href="/work-orders/create"
-            className="inline-flex items-center gap-x-1.5 rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-          >
-            <PlusIcon className="-ml-0.5 h-5 w-5" aria-hidden="true" />
-            New Work Order
-          </Link>
-
-          {/* Notifications */}
-          <div className="relative">
-            <button
-              type="button"
-              className="-m-2.5 p-2.5 text-gray-400 hover:text-gray-500"
-              onClick={() => setShowNotifications(!showNotifications)}
-            >
-              <span className="sr-only">View notifications</span>
-              <BellIcon className="h-6 w-6" aria-hidden="true" />
-              {notifications.length > 0 && (
-                <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-xs text-white flex items-center justify-center">
-                  {notifications.length}
-                </span>
-              )}
-            </button>
-
-            {/* Notifications Dropdown */}
-            <AnimatePresence>
-              {showNotifications && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  className="absolute right-0 z-10 mt-2 w-80 origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none"
-                >
-                  <div className="px-4 py-3 border-b border-gray-200">
-                    <h3 className="text-sm font-medium text-gray-900">Notifications</h3>
-                  </div>
-                  <div className="max-h-64 overflow-y-auto">
-                    {notifications.map((notification) => (
-                      <div key={notification.id} className="px-4 py-3 hover:bg-gray-50">
-                        <p className="text-sm text-gray-900">{notification.message}</p>
-                        <p className="text-xs text-gray-500 mt-1">{notification.time}</p>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="px-4 py-3 border-t border-gray-200">
-                    <Link href="/notifications" className="text-sm text-blue-600 hover:text-blue-500">
-                      View all notifications
-                    </Link>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Separator */}
-          <div className="hidden lg:block lg:h-6 lg:w-px lg:bg-gray-200" aria-hidden="true" />
-
-          {/* Profile dropdown */}
-          <div className="relative">
-            <button
-              type="button"
-              className="-m-1.5 flex items-center p-1.5"
-            >
-              <span className="sr-only">Open user menu</span>
-              <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center">
-                <span className="text-white font-medium text-sm">
-                  {user.name.split(' ').map(n => n[0]).join('')}
-                </span>
-              </div>
-              <span className="hidden lg:flex lg:items-center">
-                <span className="ml-4 text-sm font-semibold leading-6 text-gray-900" aria-hidden="true">
-                  {user.name}
-                </span>
-              </span>
-            </button>
+            <p className="text-sm font-medium text-gray-900 truncate">{user?.username || 'User'}</p>
+            <p className="text-xs text-gray-500 truncate">{user?.profile?.role || 'Role'}</p>
           </div>
         </div>
       </div>
@@ -600,6 +484,7 @@ function Header({ setSidebarOpen }: { setSidebarOpen: (open: boolean) => void })
 // Main Layout Component
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { user, isAuthenticated } = useAuthStore()
 
   // Close sidebar when clicking outside on mobile
   useEffect(() => {
@@ -613,12 +498,32 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
+  if (!isAuthenticated || !user) {
+    return null
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <Sidebar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
+      <Sidebar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} user={user} />
 
       <div className="lg:pl-80">
-        <Header setSidebarOpen={setSidebarOpen} />
+        <Header />
+
+        {/* Mobile menu button */}
+        <div className="lg:hidden">
+          <div className="flex items-center justify-between bg-white border-b border-gray-200 px-4 py-3">
+            <button
+              type="button"
+              className="text-gray-500 hover:text-gray-600"
+              onClick={() => setSidebarOpen(true)}
+            >
+              <span className="sr-only">Open sidebar</span>
+              <Bars3Icon className="h-6 w-6" aria-hidden="true" />
+            </button>
+            <h1 className="text-lg font-medium text-gray-900">Dashboard</h1>
+            <div className="w-6"></div> {/* Spacer for centering */}
+          </div>
+        </div>
 
         <main className="py-6">
           <div className="px-4 sm:px-6 lg:px-8">
