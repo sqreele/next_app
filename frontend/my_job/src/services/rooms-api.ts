@@ -43,7 +43,7 @@ export interface RoomResponse {
 }
 
 class RoomsAPI {
-  private readonly endpoint = '/rooms'
+  private readonly endpoint = '/api/v1/rooms'
 
   /**
    * Get all rooms with optional filters
