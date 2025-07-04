@@ -29,11 +29,14 @@ class User(Base):
     profile = relationship("UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
     work_orders_assigned = relationship("WorkOrder", back_populates="assigned_to")
 
-   
+    @property
+    def password(self):
+        """Password property getter - returns None since we don't want to expose hashed passwords"""
+        return None
 
     @password.setter
     def password(self, password: str):
-        # --- FIX IS HERE ---
+        """Password property setter - hashes the password and stores it"""
         # By importing the function inside the method, we break the circular dependency at startup.
         from .security import get_password_hash
         
@@ -43,7 +46,7 @@ class User(Base):
     def __str__(self):
         return self.username
 
-# (The rest of the file remains the same as your version)
+# (The rest of your models remain the same)
 class UserProfile(Base):
     __tablename__ = 'userprofiles'
     id = Column(Integer, primary_key=True, index=True)
