@@ -5,12 +5,6 @@
 from sqladmin import ModelView
 from wtforms import PasswordField
 from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile
-# No longer need get_password_hash, Any, or Request here
-
-from wtforms import PasswordField
-from sqladmin import ModelView
-
-
 
 class UserAdmin(ModelView, model=User):
     column_list = [User.id, User.username, User.email, User.is_active]
@@ -26,12 +20,14 @@ class UserAdmin(ModelView, model=User):
 
     async def scaffold_form_class(self):
         form_class = await super().scaffold_form_class()
-        form_class.password = PasswordField("Password")
+        # Add password field to the form
+        form_class.password = PasswordField("Password", description="Leave blank to keep current password")
         return form_class
 
     async def on_model_change(self, request, form, model, is_created):
         from .security import get_password_hash
-        if form.password.data:
+        # Only update password if it's provided and not empty
+        if hasattr(form, 'password') and form.password and form.password.data:
             model.hashed_password = get_password_hash(form.password.data)
 
     form_args = {
@@ -53,8 +49,7 @@ class UserAdmin(ModelView, model=User):
     name_plural = "Users"
     icon = "fa-solid fa-user"
 
-
-# (The rest of your admin.py file remains the same)
+# The rest of your admin classes remain the same...
 class UserProfileAdmin(ModelView, model=UserProfile):
     column_list = [
         UserProfile.id,
@@ -85,7 +80,6 @@ class UserProfileAdmin(ModelView, model=UserProfile):
     name_plural = "User Profiles"
     icon = "fa-solid fa-id-card"
 
-
 class PropertyAdmin(ModelView, model=Property):
     column_list = [Property.id, Property.name]
     form_columns = [Property.name]
@@ -102,7 +96,6 @@ class PropertyAdmin(ModelView, model=Property):
     name = "Property"
     name_plural = "Properties"
     icon = "fa-solid fa-building"
-
 
 class RoomAdmin(ModelView, model=Room):
     column_list = [
@@ -156,7 +149,6 @@ class RoomAdmin(ModelView, model=Room):
     name_plural = "Rooms"
     icon = "fa-solid fa-door-open"
 
-
 class MachineAdmin(ModelView, model=Machine):
     column_list = [Machine.id, Machine.name, Machine.status, "property.name", "room.name"]
     form_columns = [
@@ -164,7 +156,7 @@ class MachineAdmin(ModelView, model=Machine):
         Machine.name,
         Machine.status,
         Machine.room,
-    ]  # Use relationship objects
+    ]
     column_searchable_list = [Machine.name, Machine.status]
     column_sortable_list = [Machine.id, Machine.name, Machine.status]
 
@@ -190,7 +182,6 @@ class MachineAdmin(ModelView, model=Machine):
     name = "Machine"
     name_plural = "Machines"
     icon = "fa-solid fa-robot"
-
 
 class WorkOrderAdmin(ModelView, model=WorkOrder):
     column_list = [
@@ -274,7 +265,6 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
     name = "Work Order"
     name_plural = "Work Orders"
     icon = "fa-solid fa-list-check"
-
 
 class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
     column_list = [
