@@ -9,7 +9,7 @@ from .database import engine as async_engine, Base, SQLALCHEMY_DATABASE_URL
 from .routers import users, properties, rooms, machines, work_orders
 from .connection_manager import manager
 from .admin import (
-    UserAdmin, 
+    UserAdminFinal,  # Changed from UserAdmin to UserAdminFinal
     UserProfileAdmin, 
     PropertyAdmin, 
     RoomAdmin, 
@@ -33,9 +33,8 @@ sync_engine = create_engine(
 )
 
 # Setup Admin with synchronous engine
-admin.add_view(UserAdminFinal) 
 admin = Admin(app, sync_engine)
-admin.add_view(UserAdmin)
+admin.add_view(UserAdminFinal)  # Use UserAdminFinal instead of UserAdmin
 admin.add_view(UserProfileAdmin)
 admin.add_view(PropertyAdmin)
 admin.add_view(RoomAdmin)
