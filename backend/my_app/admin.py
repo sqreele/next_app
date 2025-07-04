@@ -3,25 +3,31 @@
 # Description: SQLAdmin configuration for the admin panel.
 # ==============================================================================
 from sqladmin import ModelView
+from wtforms import PasswordField
 from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile
 # No longer need get_password_hash, Any, or Request here
 
 class UserAdmin(ModelView, model=User):
     column_list = [User.id, User.username, User.email, User.is_active]
     column_details_exclude_list = [User.hashed_password]
+    column_searchable_list = [User.username, User.email]
+    column_sortable_list = [User.id, User.username, User.email, User.is_active]
 
-    # The form now uses the 'password' property from the User model
     form_columns = [
         User.username,
         User.email,
-        "password",  # This refers to the property on the User model
         User.is_active,
     ]
-    # Ensure the password field is treated as a password input
-    form_overrides = {"password": {"type": "password"}}
 
-    column_searchable_list = [User.username, User.email]
-    column_sortable_list = [User.id, User.username, User.email, User.is_active]
+    async def scaffold_form_class(self):
+        form_class = await super().scaffold_form_class()
+        form_class.password = PasswordField('Password')
+        return form_class
+
+    async def on_model_change(self, form, model, is_created):
+        from .security import get_password_hash  # import only here to avoid circular import
+        if form.password.data:
+            model.hashed_password = get_password_hash(form.password.data)
 
     form_args = {
         'username': {
@@ -36,17 +42,11 @@ class UserAdmin(ModelView, model=User):
             'label': 'Active User',
             'description': 'Check if user is active'
         },
-        'password': {
-            'label': 'Password',
-            'description': 'Enter a password. Will be automatically hashed.'
-        },
     }
 
     name = "User"
     name_plural = "Users"
     icon = "fa-solid fa-user"
-    
-    # The on_model_change method has been removed. The model now handles it.
 
 # (The rest of your admin.py file remains the same)
 class UserProfileAdmin(ModelView, model=UserProfile):
