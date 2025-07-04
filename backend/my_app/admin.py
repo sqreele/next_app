@@ -3,8 +3,9 @@
 # Description: SQLAdmin configuration for the admin panel.
 # ==============================================================================
 from sqladmin import ModelView
-from wtforms import PasswordField, ValidationError
+from wtforms import PasswordField, Form
 from wtforms.validators import Optional, DataRequired
+from sqlalchemy import inspect
 from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile
 
 class UserAdmin(ModelView, model=User):
@@ -13,19 +14,55 @@ class UserAdmin(ModelView, model=User):
     column_searchable_list = [User.username, User.email]
     column_sortable_list = [User.id, User.username, User.email, User.is_active]
 
+    # Include the password field in form_columns
     form_columns = [
         User.username,
         User.email,
         User.is_active,
+        "password",  # Add password as a string to include custom field
     ]
 
-    async def scaffold_form_class(self):
-        form_class = await super().scaffold_form_class()
-        form_class.password = PasswordField(
-            "Password", 
+    # Override form creation to add password field
+    def create_form(self, obj=None):
+        form_class = self.get_form()
+        
+        # Add password field if not already present
+        if not hasattr(form_class, 'password'):
+            form_class.password = PasswordField(
+                "Password",
+                validators=[Optional()],
+                description="Required for new users. Leave blank to keep current password when editing."
+            )
+        
+        if obj:
+            # For existing objects, populate form with current data
+            form = form_class(obj=obj)
+        else:
+            # For new objects
+            form = form_class()
+            
+        return form
+
+    def get_form(self):
+        """Get the form class for this model."""
+        from wtforms_sqlalchemy.orm import model_form
+        from wtforms import Form
+        
+        # Create base form from model
+        base_form = model_form(
+            User,
+            base_class=Form,
+            exclude=['hashed_password', 'id']  # Exclude sensitive fields
+        )
+        
+        # Add password field
+        base_form.password = PasswordField(
+            "Password",
+            validators=[Optional()],
             description="Required for new users. Leave blank to keep current password when editing."
         )
-        return form_class
+        
+        return base_form
 
     async def insert_model(self, request, data):
         from .security import get_password_hash
@@ -66,7 +103,8 @@ class UserAdmin(ModelView, model=User):
         
         # Update model attributes
         for key, value in data_copy.items():
-            setattr(model, key, value)
+            if hasattr(model, key):
+                setattr(model, key, value)
         
         # Update password only if provided
         if password:
@@ -95,6 +133,151 @@ class UserAdmin(ModelView, model=User):
     name_plural = "Users"
     icon = "fa-solid fa-user"
 
+# Alternative approach using form_extra_fields (if the above doesn't work)
+class UserAdminAlternative(ModelView, model=User):
+    column_list = [User.id, User.username, User.email, User.is_active]
+    column_details_exclude_list = [User.hashed_password]
+    column_searchable_list = [User.username, User.email]
+    column_sortable_list = [User.id, User.username, User.email, User.is_active]
+
+    form_columns = [
+        User.username,
+        User.email,
+        User.is_active,
+    ]
+
+    # Add extra fields to the form
+    form_extra_fields = {
+        'password': PasswordField(
+            'Password',
+            validators=[Optional()],
+            description="Required for new users. Leave blank to keep current password when editing."
+        )
+    }
+
+    async def insert_model(self, request, data):
+        from .security import get_password_hash
+        
+        password = data.get('password', '')
+        if not password:
+            raise ValueError("Password is required for new users")
+        
+        data_copy = dict(data)
+        data_copy.pop('password', None)
+        
+        model = self.model(**data_copy)
+        model.hashed_password = get_password_hash(password)
+        
+        request.state.session.add(model)
+        await request.state.session.commit()
+        await request.state.session.refresh(model)
+        return model
+
+    async def update_model(self, request, pk, data):
+        from .security import get_password_hash
+        
+        model = await request.state.session.get(self.model, pk)
+        if not model:
+            raise ValueError("User not found")
+        
+        password = data.get('password', '')
+        data_copy = dict(data)
+        data_copy.pop('password', None)
+        
+        for key, value in data_copy.items():
+            if hasattr(model, key):
+                setattr(model, key, value)
+        
+        if password:
+            model.hashed_password = get_password_hash(password)
+        
+        await request.state.session.commit()
+        await request.state.session.refresh(model)
+        return model
+
+    form_args = {
+        'username': {
+            'label': 'Username',
+            'description': 'Enter a unique username'
+        },
+        'email': {
+            'label': 'Email Address',
+            'description': 'Enter a valid email address'
+        },
+        'is_active': {
+            'label': 'Active User',
+            'description': 'Check if user is active'
+        },
+    }
+
+    name = "User"
+    name_plural = "Users"
+    icon = "fa-solid fa-user"
+
+# Third approach - Most compatible with SQLAdmin
+class UserAdminFinal(ModelView, model=User):
+    column_list = [User.id, User.username, User.email, User.is_active]
+    column_details_exclude_list = [User.hashed_password]
+    column_searchable_list = [User.username, User.email]
+    column_sortable_list = [User.id, User.username, User.email, User.is_active]
+
+    form_columns = [
+        User.username,
+        User.email,
+        User.is_active,
+    ]
+
+    async def scaffold_form_class(self):
+        """Override to add custom password field"""
+        form_class = await super().scaffold_form_class()
+        
+        # Add password field
+        setattr(form_class, 'password', PasswordField(
+            'Password',
+            validators=[Optional()],
+            description="Required for new users. Leave blank to keep current password when editing.",
+            render_kw={"placeholder": "Enter password"}
+        ))
+        
+        return form_class
+
+    async def on_model_change(self, data, model, is_created, request):
+        """Handle password changes"""
+        from .security import get_password_hash
+        
+        # Check if password is in the data
+        password = None
+        if hasattr(data, 'password'):
+            password = data.password.data if hasattr(data.password, 'data') else data.password
+        elif isinstance(data, dict) and 'password' in data:
+            password = data['password']
+            
+        if is_created and not password:
+            raise ValueError("Password is required for new users")
+            
+        if password:
+            model.hashed_password = get_password_hash(password)
+
+    form_args = {
+        'username': {
+            'label': 'Username',
+            'description': 'Enter a unique username'
+        },
+        'email': {
+            'label': 'Email Address',
+            'description': 'Enter a valid email address'
+        },
+        'is_active': {
+            'label': 'Active User',
+            'description': 'Check if user is active'
+        },
+    }
+
+    name = "User"
+    name_plural = "Users"
+    icon = "fa-solid fa-user"
+
+# Rest of your admin classes remain the same...
 class UserProfileAdmin(ModelView, model=UserProfile):
     column_list = [
         UserProfile.id,
