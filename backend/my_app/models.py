@@ -29,9 +29,7 @@ class User(Base):
     profile = relationship("UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
     work_orders_assigned = relationship("WorkOrder", back_populates="assigned_to")
 
-    @property
-    def password(self):
-        raise AttributeError('password is not a readable attribute')
+   
 
     @password.setter
     def password(self, password: str):
