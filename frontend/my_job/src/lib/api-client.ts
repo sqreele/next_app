@@ -1,9 +1,10 @@
-// src/lib/api-client.ts (Updated)
+// src/lib/api-client.ts (Updated for Docker setup)
 import axios, { AxiosInstance, AxiosResponse } from 'axios'
 import { toast } from 'sonner'
 
 // Create axios instance with default config
 const apiClient: AxiosInstance = axios.create({
+  // Use relative URLs since nginx should proxy API requests
   baseURL: process.env.NEXT_PUBLIC_API_URL || '/api',
   timeout: 10000,
   headers: {
@@ -31,7 +32,7 @@ apiClient.interceptors.request.use(
     
     // Log requests in development
     if (process.env.NODE_ENV === 'development') {
-      console.log(`🚀 ${config.method?.toUpperCase()} ${config.url}`, config.data)
+      console.log(`🚀 ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`, config.data)
     }
     
     return config
