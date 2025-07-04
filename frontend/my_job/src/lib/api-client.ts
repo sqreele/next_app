@@ -1,4 +1,4 @@
-// src/lib/api-client.ts
+// src/lib/api-client.ts (Updated)
 import axios, { AxiosInstance, AxiosResponse } from 'axios'
 import { toast } from 'sonner'
 
@@ -14,10 +14,19 @@ const apiClient: AxiosInstance = axios.create({
 // Request interceptor for adding auth token
 apiClient.interceptors.request.use(
   (config) => {
-    // Add auth token if available
-    const token = localStorage.getItem('auth-token')
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
+    // Get token from localStorage (for SSR safety)
+    if (typeof window !== 'undefined') {
+      const authStorage = localStorage.getItem('auth-storage')
+      if (authStorage) {
+        try {
+          const parsed = JSON.parse(authStorage)
+          if (parsed.state?.token) {
+            config.headers.Authorization = `Bearer ${parsed.state.token}`
+          }
+        } catch (error) {
+          console.error('Error parsing auth storage:', error)
+        }
+      }
     }
     
     // Log requests in development
@@ -51,10 +60,16 @@ apiClient.interceptors.response.use(
       
       switch (status) {
         case 401:
-          // Unauthorized - redirect to login
-          localStorage.removeItem('auth-token')
-          window.location.href = '/login'
-          toast.error('Session expired. Please login again.')
+          // Unauthorized - logout user
+          if (typeof window !== 'undefined') {
+            // Dynamically import to avoid circular dependency
+            import('@/stores/auth-store').then(({ useAuthStore }) => {
+              useAuthStore.getState().logout()
+            })
+            toast.error('Session expired. Please login again.')
+            // Redirect to login page
+            window.location.href = '/login'
+          }
           break
           
         case 403:
@@ -69,10 +84,14 @@ apiClient.interceptors.response.use(
           
         case 422:
           // Validation error
-          const validationErrors = data.errors || data.message
-          if (typeof validationErrors === 'object') {
+          const validationErrors = data.errors || data.detail || data.message
+          if (typeof validationErrors === 'object' && Array.isArray(validationErrors)) {
+            validationErrors.forEach((error: any) => {
+              toast.error(error.msg || error.message || error)
+            })
+          } else if (typeof validationErrors === 'object') {
             Object.values(validationErrors).forEach((error: any) => {
-              toast.error(error)
+              toast.error(Array.isArray(error) ? error[0] : error)
             })
           } else {
             toast.error(validationErrors || 'Validation error')
@@ -85,7 +104,7 @@ apiClient.interceptors.response.use(
           break
           
         default:
-          toast.error(data.message || 'An unexpected error occurred.')
+          toast.error(data.message || data.detail || 'An unexpected error occurred.')
       }
     } else if (error.request) {
       // Request was made but no response received
