@@ -1,12 +1,14 @@
-// src/components/layout/header.tsx
+// src/components/layout/header.tsx (Updated - Continued)
 'use client'
 
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,15 +18,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
-  Sheet,
-  SheetContent,
-  SheetTrigger,
-} from '@/components/ui/sheet'
-import {
   MagnifyingGlassIcon,
   BellIcon,
   PlusIcon,
-  Bars3Icon,
   UserCircleIcon,
   CogIcon,
   ArrowRightOnRectangleIcon,
@@ -45,13 +41,8 @@ const notifications = [
 
 export function Header() {
   const router = useRouter()
+  const { user, logout, isAuthenticated } = useAuthStore()
   const [searchQuery, setSearchQuery] = useState('')
-  const [now, setNow] = useState(Date.now())
-
-  useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 60000)
-    return () => clearInterval(interval)
-  }, [])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -60,28 +51,27 @@ export function Header() {
     }
   }
 
+  const handleLogout = () => {
+    logout()
+    router.push('/login')
+  }
+
   const unreadCount = notifications.filter(n => n.unread).length
+
+  if (!isAuthenticated || !user) {
+    return null
+  }
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
       <div className="flex h-16 items-center gap-4 px-4 sm:px-6 lg:px-8">
-        {/* Mobile menu button */}
-        <Sheet>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="sm" className="lg:hidden">
-              <Bars3Icon className="h-5 w-5" />
-              <span className="sr-only">Toggle menu</span>
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="w-80">
-            {/* Mobile navigation content */}
-            <div className="mt-6">
-              <nav className="space-y-2">
-                {/* Add mobile navigation items here */}
-              </nav>
-            </div>
-          </SheetContent>
-        </Sheet>
+        {/* Logo */}
+        <Link href="/" className="flex items-center gap-2 mr-6">
+          <div className="bg-green-500 rounded-lg h-8 w-8 flex items-center justify-center">
+            <span className="text-white font-bold text-sm">P</span>
+          </div>
+          <span className="font-semibold text-gray-900 hidden sm:block">PMCS</span>
+        </Link>
 
         {/* Search */}
         <div className="flex flex-1 items-center gap-4">
@@ -89,7 +79,7 @@ export function Header() {
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <Input
               type="search"
-              placeholder="Search work orders, assets, customers..."
+              placeholder="Search work orders, assets, users..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10 pr-4"
@@ -173,17 +163,22 @@ export function Header() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center">
-                  <span className="text-sm font-medium text-white">JD</span>
-                </div>
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback>
+                    {user.username.substring(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56" align="end" forceMount>
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">John Doe</p>
+                  <p className="text-sm font-medium leading-none">{user.username}</p>
                   <p className="text-xs leading-none text-muted-foreground">
-                    john.doe@company.com
+                    {user.email}
+                  </p>
+                  <p className="text-xs leading-none text-muted-foreground">
+                    {user.profile.role} - {user.profile.position}
                   </p>
                 </div>
               </DropdownMenuLabel>
@@ -200,45 +195,21 @@ export function Header() {
                   Settings
                 </Link>
               </DropdownMenuItem>
+              {user.profile.role === 'Admin' && (
+                <DropdownMenuItem asChild>
+                  <Link href="/users">
+                    <UserCircleIcon className="mr-2 h-4 w-4" />
+                    Manage Users
+                  </Link>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={handleLogout}>
                 <ArrowRightOnRectangleIcon className="mr-2 h-4 w-4" />
                 Log out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-
-          {/* User Properties Sheet */}
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
-                  <UserCircleIcon className="h-5 w-5 text-blue-600" />
-                </div>
-                <span className="sr-only">Open user properties</span>
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="right" className="w-80 p-6">
-              <div className="flex flex-col items-center gap-4">
-                <div className="h-16 w-16 rounded-full bg-blue-500 flex items-center justify-center mb-2">
-                  <span className="text-2xl font-bold text-white">JD</span>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-semibold">John Doe</div>
-                  <div className="text-sm text-gray-500">john.doe@company.com</div>
-                  <div className="text-xs text-gray-400 mt-1">Role: Admin</div>
-                </div>
-                <div className="w-full mt-4">
-                  <div className="font-medium mb-2 text-gray-700">Quick Settings</div>
-                  <div className="space-y-2">
-                    <Button variant="secondary" className="w-full">Profile</Button>
-                    <Button variant="secondary" className="w-full">Settings</Button>
-                    <Button variant="default" className="w-full">Log out</Button>
-                  </div>
-                </div>
-              </div>
-            </SheetContent>
-          </Sheet>
         </div>
       </div>
     </header>
