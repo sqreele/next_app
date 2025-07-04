@@ -41,7 +41,7 @@ export interface MachineResponse {
 }
 
 class MachinesAPI {
-  private readonly endpoint = '/machines'
+  private readonly endpoint = '/api/v1/machines'
 
   /**
    * Get all machines with optional filters
