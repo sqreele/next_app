@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 // Create axios instance with default config
 const apiClient: AxiosInstance = axios.create({
   // Use relative URLs since nginx should proxy API requests
-  baseURL: process.env.NEXT_PUBLIC_API_URL || '/api',
+  baseURL: process.env.NEXT_PUBLIC_API_URL || '',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
