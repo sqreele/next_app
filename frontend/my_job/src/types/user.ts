@@ -1,4 +1,4 @@
-// src/types/user.ts
+// src/types/user.ts (Updated to include registration types)
 export interface UserProfile {
   id: number
   user_id: number
@@ -23,6 +23,17 @@ export interface CreateUserData {
   }
 }
 
+export interface RegisterData {
+  username: string
+  email: string
+  password: string
+  confirmPassword: string
+  profile: {
+    role: 'Admin' | 'Technician' | 'Manager' | 'Supervisor'
+    position: string
+  }
+}
+
 export interface LoginCredentials {
   username?: string
   email?: string
@@ -32,6 +43,12 @@ export interface LoginCredentials {
 export interface LoginResponse {
   access_token: string
   token_type: string
+}
+
+export interface RegisterResponse {
+  user: User
+  access_token?: string
+  message: string
 }
 
 export interface AuthState {
