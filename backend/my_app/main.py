@@ -33,6 +33,7 @@ sync_engine = create_engine(
 )
 
 # Setup Admin with synchronous engine
+admin.add_view(UserAdminFinal) 
 admin = Admin(app, sync_engine)
 admin.add_view(UserAdmin)
 admin.add_view(UserProfileAdmin)
