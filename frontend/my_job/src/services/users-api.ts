@@ -1,4 +1,4 @@
-// src/services/users-api.ts (Updated to include registration)
+// src/services/users-api.ts (Updated for your backend)
 import apiClient from '@/lib/api-client'
 import { AxiosResponse } from 'axios'
 import { User, CreateUserData, LoginCredentials, LoginResponse } from '@/types/user'
@@ -36,11 +36,30 @@ class UsersAPI {
    * Register new user
    */
   async register(data: RegisterData): Promise<RegisterResponse> {
-    const response: AxiosResponse<RegisterResponse> = await apiClient.post(
-      `${this.authEndpoint}/register`, 
-      data
-    )
-    return response.data
+    // Transform the data to match your API structure
+    const apiData = {
+      username: data.username,
+      email: data.email,
+      password: data.password,
+      confirm_password: data.confirmPassword, // snake_case for API
+      profile: {
+        role: data.profile.role,
+        position: data.profile.position
+      }
+    }
+
+    try {
+      // Try the users endpoint for registration
+      const response: AxiosResponse<User> = await apiClient.post(this.endpoint, apiData)
+      
+      return {
+        user: response.data,
+        message: 'User registered successfully'
+      }
+    } catch (error: any) {
+      console.error('Registration API error:', error)
+      throw error
+    }
   }
 
   /**
@@ -92,7 +111,7 @@ class UsersAPI {
   }
 
   /**
-   * Create a new user
+   * Create a new user (admin function)
    */
   async createUser(data: CreateUserData): Promise<User> {
     const response: AxiosResponse<User> = await apiClient.post(this.endpoint, data)
@@ -115,14 +134,62 @@ class UsersAPI {
   }
 
   /**
+   * Check if username is available
+   */
+  async checkUsernameAvailability(username: string): Promise<{ available: boolean }> {
+    try {
+      const response: AxiosResponse<{ available: boolean }> = await apiClient.get(
+        `${this.endpoint}/check-username?username=${encodeURIComponent(username)}`
+      )
+      return response.data
+    } catch (error: any) {
+      // If endpoint doesn't exist, try checking by getting all users
+      if (error?.response?.status === 404) {
+        try {
+          const users = await this.getUsers({ search: username })
+          const exists = users.some(user => user.username.toLowerCase() === username.toLowerCase())
+          return { available: !exists }
+        } catch {
+          return { available: true }
+        }
+      }
+      throw error
+    }
+  }
+
+  /**
+   * Check if email is available
+   */
+  async checkEmailAvailability(email: string): Promise<{ available: boolean }> {
+    try {
+      const response: AxiosResponse<{ available: boolean }> = await apiClient.get(
+        `${this.endpoint}/check-email?email=${encodeURIComponent(email)}`
+      )
+      return response.data
+    } catch (error: any) {
+      // If endpoint doesn't exist, try checking by getting all users
+      if (error?.response?.status === 404) {
+        try {
+          const users = await this.getUsers()
+          const exists = users.some(user => user.email.toLowerCase() === email.toLowerCase())
+          return { available: !exists }
+        } catch {
+          return { available: true }
+        }
+      }
+      throw error
+    }
+  }
+
+  /**
    * Update user status (active/inactive)
    */
   async updateUserStatus(id: number, is_active: boolean): Promise<User> {
-    return this.updateUser(id, { 
-      email: undefined, // Don't update email
-      username: undefined, // Don't update username
-      profile: undefined // Don't update profile
-    })
+    const response: AxiosResponse<User> = await apiClient.patch(
+      `${this.endpoint}/${id}`, 
+      { is_active }
+    )
+    return response.data
   }
 
   /**
@@ -144,26 +211,6 @@ class UsersAPI {
    */
   async searchUsers(query: string): Promise<User[]> {
     return this.getUsers({ search: query })
-  }
-
-  /**
-   * Check if username is available
-   */
-  async checkUsernameAvailability(username: string): Promise<{ available: boolean }> {
-    const response: AxiosResponse<{ available: boolean }> = await apiClient.get(
-      `${this.authEndpoint}/check-username?username=${encodeURIComponent(username)}`
-    )
-    return response.data
-  }
-
-  /**
-   * Check if email is available
-   */
-  async checkEmailAvailability(email: string): Promise<{ available: boolean }> {
-    const response: AxiosResponse<{ available: boolean }> = await apiClient.get(
-      `${this.authEndpoint}/check-email?email=${encodeURIComponent(email)}`
-    )
-    return response.data
   }
 }
 
