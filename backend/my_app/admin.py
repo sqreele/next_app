@@ -4,14 +4,28 @@
 # ==============================================================================
 from sqladmin import ModelView
 from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile
+from .security import get_password_hash  # Import the password hashing function
+from typing import Any
+from starlette.requests import Request
+
 
 class UserAdmin(ModelView, model=User):
     column_list = [User.id, User.username, User.email, User.is_active]
     column_details_exclude_list = [User.hashed_password]
-    form_columns = [User.username, User.email, User.is_active]
+
+    # Add a password field to the form for creation
+    form_columns = [
+        User.username,
+        User.email,
+        User.is_active,
+        "password",  # This is a virtual field
+    ]
+    # Make the password field write-only in the form and of type 'password'
+    form_overrides = {"password": {"type": "password"}}
+
     column_searchable_list = [User.username, User.email]
     column_sortable_list = [User.id, User.username, User.email, User.is_active]
-    
+
     form_args = {
         'username': {
             'label': 'Username',
@@ -24,19 +38,40 @@ class UserAdmin(ModelView, model=User):
         'is_active': {
             'label': 'Active User',
             'description': 'Check if user is active'
-        }
+        },
+        # Add form arguments for the new password field
+        'password': {
+            'label': 'Password',
+            'description': 'Enter a password. The password will be hashed automatically.'
+        },
     }
-    
+
     name = "User"
     name_plural = "Users"
     icon = "fa-solid fa-user"
 
+    async def on_model_change(
+        self, data: dict, model: Any, is_created: bool, request: Request
+    ) -> None:
+        """
+        This method is called when a model is created or updated.
+        We use it to hash the password before saving it to the database.
+        """
+        if data["password"]:
+            model.hashed_password = get_password_hash(data["password"])
+
+
 class UserProfileAdmin(ModelView, model=UserProfile):
-    column_list = [UserProfile.id, UserProfile.user_id, UserProfile.role, UserProfile.position]
+    column_list = [
+        UserProfile.id,
+        UserProfile.user_id,
+        UserProfile.role,
+        UserProfile.position,
+    ]
     form_columns = [UserProfile.user_id, UserProfile.role, UserProfile.position]
     column_searchable_list = [UserProfile.role, UserProfile.position]
     column_sortable_list = [UserProfile.id, UserProfile.role, UserProfile.position]
-    
+
     form_args = {
         'user_id': {
             'label': 'User (Required)',
@@ -49,36 +84,57 @@ class UserProfileAdmin(ModelView, model=UserProfile):
         'position': {
             'label': 'Position',
             'description': 'Enter the user position (optional)'
-        }
+        },
     }
-    
+
     name = "User Profile"
     name_plural = "User Profiles"
     icon = "fa-solid fa-id-card"
+
 
 class PropertyAdmin(ModelView, model=Property):
     column_list = [Property.id, Property.name]
     form_columns = [Property.name]
     column_searchable_list = [Property.name]
     column_sortable_list = [Property.id, Property.name]
-    
+
     form_args = {
         'name': {
             'label': 'Property Name',
             'description': 'Enter a unique property name'
         }
     }
-    
+
     name = "Property"
     name_plural = "Properties"
     icon = "fa-solid fa-building"
 
+
 class RoomAdmin(ModelView, model=Room):
-    column_list = [Room.id, Room.name, Room.number, Room.room_type, Room.is_active, Room.property_id]
-    form_columns = [Room.property_id, Room.name, Room.number, Room.room_type, Room.is_active]
+    column_list = [
+        Room.id,
+        Room.name,
+        Room.number,
+        Room.room_type,
+        Room.is_active,
+        Room.property_id,
+    ]
+    form_columns = [
+        Room.property_id,
+        Room.name,
+        Room.number,
+        Room.room_type,
+        Room.is_active,
+    ]
     column_searchable_list = [Room.name, Room.number, Room.room_type]
-    column_sortable_list = [Room.id, Room.name, Room.number, Room.room_type, Room.is_active]
-    
+    column_sortable_list = [
+        Room.id,
+        Room.name,
+        Room.number,
+        Room.room_type,
+        Room.is_active,
+    ]
+
     form_args = {
         'property_id': {
             'label': 'Property (Required)',
@@ -99,19 +155,25 @@ class RoomAdmin(ModelView, model=Room):
         'is_active': {
             'label': 'Active Room',
             'description': 'Check if room is active and available'
-        }
+        },
     }
-    
+
     name = "Room"
     name_plural = "Rooms"
     icon = "fa-solid fa-door-open"
 
+
 class MachineAdmin(ModelView, model=Machine):
     column_list = [Machine.id, Machine.name, Machine.status, "property.name", "room.name"]
-    form_columns = [Machine.property, Machine.name, Machine.status, Machine.room]  # Use relationship objects
+    form_columns = [
+        Machine.property,
+        Machine.name,
+        Machine.status,
+        Machine.room,
+    ]  # Use relationship objects
     column_searchable_list = [Machine.name, Machine.status]
     column_sortable_list = [Machine.id, Machine.name, Machine.status]
-    
+
     form_args = {
         'property': {
             'label': 'Property (Required)',
@@ -128,24 +190,25 @@ class MachineAdmin(ModelView, model=Machine):
         'room': {
             'label': 'Room (Optional)',
             'description': 'Select a room if the machine is located in a specific room'
-        }
+        },
     }
-    
+
     name = "Machine"
     name_plural = "Machines"
     icon = "fa-solid fa-robot"
 
+
 class WorkOrderAdmin(ModelView, model=WorkOrder):
     column_list = [
-        WorkOrder.id, 
-        WorkOrder.task, 
-        WorkOrder.status, 
-        WorkOrder.priority, 
+        WorkOrder.id,
+        WorkOrder.task,
+        WorkOrder.status,
+        WorkOrder.priority,
         WorkOrder.due_date,
         WorkOrder.property_id,
         WorkOrder.machine_id,
         WorkOrder.room_id,
-        WorkOrder.assigned_to_id
+        WorkOrder.assigned_to_id,
     ]
     form_columns = [
         WorkOrder.property_id,
@@ -156,18 +219,23 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         WorkOrder.due_date,
         WorkOrder.machine_id,
         WorkOrder.room_id,
-        WorkOrder.assigned_to_id
+        WorkOrder.assigned_to_id,
     ]
-    column_searchable_list = [WorkOrder.task, WorkOrder.description, WorkOrder.status, WorkOrder.priority]
+    column_searchable_list = [
+        WorkOrder.task,
+        WorkOrder.description,
+        WorkOrder.status,
+        WorkOrder.priority,
+    ]
     column_sortable_list = [
-        WorkOrder.id, 
-        WorkOrder.task, 
-        WorkOrder.status, 
-        WorkOrder.priority, 
+        WorkOrder.id,
+        WorkOrder.task,
+        WorkOrder.status,
+        WorkOrder.priority,
         WorkOrder.due_date,
-        WorkOrder.created_at
+        WorkOrder.created_at,
     ]
-    
+
     form_args = {
         'property_id': {
             'label': 'Property (Required)',
@@ -206,19 +274,33 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         'assigned_to_id': {
             'label': 'Assigned To (Optional)',
             'description': 'Assign this work order to a specific user'
-        }
+        },
     }
-    
+
     name = "Work Order"
     name_plural = "Work Orders"
     icon = "fa-solid fa-list-check"
 
+
 class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
-    column_list = [WorkOrderFile.id, WorkOrderFile.file_path, WorkOrderFile.upload_type, WorkOrderFile.work_order_id]
-    form_columns = [WorkOrderFile.work_order_id, WorkOrderFile.file_path, WorkOrderFile.upload_type]
+    column_list = [
+        WorkOrderFile.id,
+        WorkOrderFile.file_path,
+        WorkOrderFile.upload_type,
+        WorkOrderFile.work_order_id,
+    ]
+    form_columns = [
+        WorkOrderFile.work_order_id,
+        WorkOrderFile.file_path,
+        WorkOrderFile.upload_type,
+    ]
     column_searchable_list = [WorkOrderFile.file_path, WorkOrderFile.upload_type]
-    column_sortable_list = [WorkOrderFile.id, WorkOrderFile.file_path, WorkOrderFile.upload_type]
-    
+    column_sortable_list = [
+        WorkOrderFile.id,
+        WorkOrderFile.file_path,
+        WorkOrderFile.upload_type,
+    ]
+
     form_args = {
         'work_order_id': {
             'label': 'Work Order (Required)',
@@ -232,9 +314,9 @@ class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
             'label': 'File Type',
             'description': 'Specify the type of file (e.g., Image, Document, etc.)',
             'default': 'Other'
-        }
+        },
     }
-    
+
     name = "Work Order File"
     name_plural = "Work Order Files"
     icon = "fa-solid fa-file"
