@@ -29,6 +29,13 @@ class User(Base):
     profile = relationship("UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
     work_orders_assigned = relationship("WorkOrder", back_populates="assigned_to")
 
+    def __init__(self, **kwargs):
+        # Handle password during initialization
+        password = kwargs.pop('password', None)
+        super().__init__(**kwargs)
+        if password:
+            self.password = password
+
     @property
     def password(self):
         """Password property getter - returns None since we don't want to expose hashed passwords"""
@@ -37,7 +44,6 @@ class User(Base):
     @password.setter
     def password(self, password: str):
         """Password property setter - hashes the password and stores it"""
-        # By importing the function inside the method, we break the circular dependency at startup.
         from .security import get_password_hash
         
         if password:
@@ -46,7 +52,6 @@ class User(Base):
     def __str__(self):
         return self.username
 
-# (The rest of your models remain the same)
 class UserProfile(Base):
     __tablename__ = 'userprofiles'
     id = Column(Integer, primary_key=True, index=True)
