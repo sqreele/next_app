@@ -3,7 +3,8 @@
 # Description: SQLAdmin configuration for the admin panel.
 # ==============================================================================
 from sqladmin import ModelView
-from wtforms import PasswordField
+from wtforms import PasswordField, ValidationError
+from wtforms.validators import Optional, DataRequired
 from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile
 
 class UserAdmin(ModelView, model=User):
@@ -20,15 +21,60 @@ class UserAdmin(ModelView, model=User):
 
     async def scaffold_form_class(self):
         form_class = await super().scaffold_form_class()
-        # Add password field to the form
-        form_class.password = PasswordField("Password", description="Leave blank to keep current password")
+        form_class.password = PasswordField(
+            "Password", 
+            description="Required for new users. Leave blank to keep current password when editing."
+        )
         return form_class
 
-    async def on_model_change(self, request, form, model, is_created):
+    async def insert_model(self, request, data):
         from .security import get_password_hash
-        # Only update password if it's provided and not empty
-        if hasattr(form, 'password') and form.password and form.password.data:
-            model.hashed_password = get_password_hash(form.password.data)
+        
+        # Extract password from form data
+        password = data.get('password', '')
+        if not password:
+            raise ValueError("Password is required for new users")
+        
+        # Remove password from data dict to avoid conflict
+        data_copy = dict(data)
+        data_copy.pop('password', None)
+        
+        # Create the model instance
+        model = self.model(**data_copy)
+        model.hashed_password = get_password_hash(password)
+        
+        # Add to session and commit
+        request.state.session.add(model)
+        await request.state.session.commit()
+        await request.state.session.refresh(model)
+        return model
+
+    async def update_model(self, request, pk, data):
+        from .security import get_password_hash
+        
+        # Get the existing model
+        model = await request.state.session.get(self.model, pk)
+        if not model:
+            raise ValueError("User not found")
+        
+        # Extract password from form data
+        password = data.get('password', '')
+        
+        # Remove password from data dict to avoid conflict
+        data_copy = dict(data)
+        data_copy.pop('password', None)
+        
+        # Update model attributes
+        for key, value in data_copy.items():
+            setattr(model, key, value)
+        
+        # Update password only if provided
+        if password:
+            model.hashed_password = get_password_hash(password)
+        
+        await request.state.session.commit()
+        await request.state.session.refresh(model)
+        return model
 
     form_args = {
         'username': {
@@ -49,7 +95,6 @@ class UserAdmin(ModelView, model=User):
     name_plural = "Users"
     icon = "fa-solid fa-user"
 
-# The rest of your admin classes remain the same...
 class UserProfileAdmin(ModelView, model=UserProfile):
     column_list = [
         UserProfile.id,
