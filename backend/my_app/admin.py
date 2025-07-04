@@ -10,6 +10,8 @@ from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkO
 from wtforms import PasswordField
 from sqladmin import ModelView
 
+
+
 class UserAdmin(ModelView, model=User):
     column_list = [User.id, User.username, User.email, User.is_active]
     column_details_exclude_list = [User.hashed_password]
@@ -24,7 +26,7 @@ class UserAdmin(ModelView, model=User):
 
     async def scaffold_form_class(self):
         form_class = await super().scaffold_form_class()
-        form_class.password = PasswordField('Password')
+        form_class.password = PasswordField("Password")
         return form_class
 
     async def on_model_change(self, request, form, model, is_created):
