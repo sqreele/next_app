@@ -25,7 +25,7 @@ export interface ApiError {
 }
 
 class PropertiesAPI {
-  private readonly endpoint = '/v1/properties'
+  private readonly endpoint = '/api/v1/properties'
 
   /**
    * Get all properties with optional filters
