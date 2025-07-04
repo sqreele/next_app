@@ -13,14 +13,13 @@ class UserAdmin(ModelView, model=User):
     column_list = [User.id, User.username, User.email, User.is_active]
     column_details_exclude_list = [User.hashed_password]
 
-    # Add a password field to the form for creation
+    # Add a virtual "password" field to the form
     form_columns = [
         User.username,
         User.email,
+        "password",
         User.is_active,
-        "password",  # This is a virtual field
     ]
-    # Make the password field write-only in the form and of type 'password'
     form_overrides = {"password": {"type": "password"}}
 
     column_searchable_list = [User.username, User.email]
@@ -39,17 +38,15 @@ class UserAdmin(ModelView, model=User):
             'label': 'Active User',
             'description': 'Check if user is active'
         },
-        # Add form arguments for the new password field
         'password': {
             'label': 'Password',
-            'description': 'Enter a password. The password will be hashed automatically.'
+            'description': 'Required for new users. To change an existing password, enter a new one.'
         },
     }
 
     name = "User"
     name_plural = "Users"
     icon = "fa-solid fa-user"
-
     async def on_model_change(
         self, data: dict, model: Any, is_created: bool, request: Request
     ) -> None:
