@@ -9,6 +9,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .database import Base
+# Make sure this import path is correct for your project structure
+from .security import get_password_hash
 
 # Association table for many-to-many relationship between UserProfile and Property
 user_property_association = Table(
@@ -29,9 +31,27 @@ class User(Base):
     # Relationships
     profile = relationship("UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
     work_orders_assigned = relationship("WorkOrder", back_populates="assigned_to")
+
+    # --- START OF THE FIX ---
+    @property
+    def password(self):
+        """This is a write-only property to prevent password leakage."""
+        raise AttributeError('password is not a readable attribute')
+
+    @password.setter
+    def password(self, password: str):
+        """
+        This setter automatically hashes the password when it's set
+        and stores it in the 'hashed_password' field.
+        """
+        if password:
+            self.hashed_password = get_password_hash(password)
+    # --- END OF THE FIX ---
     
     def __str__(self):
         return self.username
+
+# ... (the rest of the file is the same)
 
 class UserProfile(Base):
     __tablename__ = 'userprofiles'
@@ -41,7 +61,6 @@ class UserProfile(Base):
     role = Column(String(50), default='Technician')
     position = Column(String(100), nullable=True)
     
-    # Relationships
     user = relationship("User", back_populates="profile")
     properties = relationship("Property", secondary=user_property_association, back_populates="user_profiles")
     
@@ -54,7 +73,6 @@ class Property(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), unique=True, index=True, nullable=False)
     
-    # Relationships
     rooms = relationship("Room", back_populates="property", cascade="all, delete-orphan")
     machines = relationship("Machine", back_populates="property", cascade="all, delete-orphan")
     work_orders = relationship("WorkOrder", back_populates="property", cascade="all, delete-orphan")
@@ -73,7 +91,6 @@ class Room(Base):
     is_active = Column(Boolean, default=True)
     property_id = Column(Integer, ForeignKey('properties.id'), nullable=False)
     
-    # Relationships
     property = relationship("Property", back_populates="rooms")
     machines = relationship("Machine", back_populates="room")
     work_orders = relationship("WorkOrder", back_populates="room")
@@ -90,7 +107,6 @@ class Machine(Base):
     property_id = Column(Integer, ForeignKey('properties.id'), nullable=False)
     room_id = Column(Integer, ForeignKey('rooms.id'), nullable=True)
     
-    # Relationships
     property = relationship("Property", back_populates="machines")
     room = relationship("Room", back_populates="machines")
     work_orders = relationship("WorkOrder", back_populates="machine")
@@ -110,13 +126,11 @@ class WorkOrder(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
     
-    # Foreign Keys
     property_id = Column(Integer, ForeignKey('properties.id'), nullable=False)
     machine_id = Column(Integer, ForeignKey('machines.id'), nullable=True)
     room_id = Column(Integer, ForeignKey('rooms.id'), nullable=True)
     assigned_to_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     
-    # Relationships
     property = relationship("Property", back_populates="work_orders")
     machine = relationship("Machine", back_populates="work_orders")
     room = relationship("Room", back_populates="work_orders")
@@ -134,7 +148,6 @@ class WorkOrderFile(Base):
     upload_type = Column(String(50), default='Other')
     work_order_id = Column(Integer, ForeignKey('workorders.id'), nullable=False)
     
-    # Relationships
     work_order = relationship("WorkOrder", back_populates="files")
     
     def __str__(self):
