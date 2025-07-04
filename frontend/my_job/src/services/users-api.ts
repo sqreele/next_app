@@ -30,7 +30,7 @@ export interface UsersFilters {
 class UsersAPI {
   // Use the correct path that matches your FastAPI routes
   private readonly endpoint = '/api/v1/users'
-  private readonly authEndpoint = '/api/auth'
+  private readonly authEndpoint = '/api/v1/users'
 
   /**
    * Register new user
