@@ -1,7 +1,7 @@
-// src/stores/auth-store.ts
+// src/stores/auth-store.ts (Updated with registration)
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { usersAPI } from '@/services/users-api'
+import { usersAPI, RegisterData, RegisterResponse } from '@/services/users-api'
 import { User, LoginCredentials, LoginResponse } from '@/types/user'
 
 interface AuthState {
@@ -20,10 +20,15 @@ interface AuthState {
   clearError: () => void
   
   // Auth Actions
+  register: (data: RegisterData) => Promise<RegisterResponse>
   login: (credentials: LoginCredentials) => Promise<void>
   logout: () => void
   getCurrentUser: () => Promise<void>
   checkAuth: () => Promise<boolean>
+  
+  // Validation helpers
+  checkUsernameAvailability: (username: string) => Promise<boolean>
+  checkEmailAvailability: (email: string) => Promise<boolean>
   
   // Utilities
   hasRole: (role: string) => boolean
@@ -69,6 +74,32 @@ export const useAuthStore = create<AuthState>()(
       setLoading: (loading) => set({ loading }),
       setError: (error) => set({ error }),
       clearError: () => set({ error: null }),
+
+      // Registration
+      register: async (data) => {
+        set({ loading: true, error: null })
+        
+        try {
+          const registerResponse = await usersAPI.register(data)
+          
+          // If registration includes auto-login token
+          if (registerResponse.access_token) {
+            get().setToken(registerResponse.access_token)
+            get().setUser(registerResponse.user)
+          }
+          
+          return registerResponse
+        } catch (error: any) {
+          const errorMessage = error?.response?.data?.message || 
+                             error?.response?.data?.detail ||
+                             error?.message || 
+                             'Registration failed'
+          set({ error: errorMessage })
+          throw error
+        } finally {
+          set({ loading: false })
+        }
+      },
 
       // Auth actions
       login: async (credentials) => {
@@ -151,6 +182,27 @@ export const useAuthStore = create<AuthState>()(
         } catch (error) {
           get().logout()
           return false
+        }
+      },
+
+      // Validation helpers
+      checkUsernameAvailability: async (username) => {
+        try {
+          const result = await usersAPI.checkUsernameAvailability(username)
+          return result.available
+        } catch (error) {
+          console.error('Error checking username availability:', error)
+          return true // Assume available if check fails
+        }
+      },
+
+      checkEmailAvailability: async (email) => {
+        try {
+          const result = await usersAPI.checkEmailAvailability(email)
+          return result.available
+        } catch (error) {
+          console.error('Error checking email availability:', error)
+          return true // Assume available if check fails
         }
       },
 
