@@ -7,6 +7,9 @@ from wtforms import PasswordField
 from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile
 # No longer need get_password_hash, Any, or Request here
 
+from wtforms import PasswordField
+from sqladmin import ModelView
+
 class UserAdmin(ModelView, model=User):
     column_list = [User.id, User.username, User.email, User.is_active]
     column_details_exclude_list = [User.hashed_password]
@@ -24,8 +27,8 @@ class UserAdmin(ModelView, model=User):
         form_class.password = PasswordField('Password')
         return form_class
 
-    async def on_model_change(self, form, model, is_created):
-        from .security import get_password_hash  # import only here to avoid circular import
+    async def on_model_change(self, request, form, model, is_created):
+        from .security import get_password_hash
         if form.password.data:
             model.hashed_password = get_password_hash(form.password.data)
 
@@ -47,6 +50,7 @@ class UserAdmin(ModelView, model=User):
     name = "User"
     name_plural = "Users"
     icon = "fa-solid fa-user"
+
 
 # (The rest of your admin.py file remains the same)
 class UserProfileAdmin(ModelView, model=UserProfile):
