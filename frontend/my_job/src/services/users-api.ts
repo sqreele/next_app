@@ -1,7 +1,24 @@
-// src/services/users-api.ts
+// src/services/users-api.ts (Updated to include registration)
 import apiClient from '@/lib/api-client'
 import { AxiosResponse } from 'axios'
 import { User, CreateUserData, LoginCredentials, LoginResponse } from '@/types/user'
+
+export interface RegisterData {
+  username: string
+  email: string
+  password: string
+  confirmPassword: string
+  profile: {
+    role: 'Admin' | 'Technician' | 'Manager' | 'Supervisor'
+    position: string
+  }
+}
+
+export interface RegisterResponse {
+  user: User
+  access_token?: string
+  message: string
+}
 
 export interface UsersFilters {
   role?: string
@@ -14,6 +31,17 @@ export interface UsersFilters {
 class UsersAPI {
   private readonly endpoint = '/v1/users'
   private readonly authEndpoint = '/auth'
+
+  /**
+   * Register new user
+   */
+  async register(data: RegisterData): Promise<RegisterResponse> {
+    const response: AxiosResponse<RegisterResponse> = await apiClient.post(
+      `${this.authEndpoint}/register`, 
+      data
+    )
+    return response.data
+  }
 
   /**
    * Login user
@@ -117,7 +145,30 @@ class UsersAPI {
   async searchUsers(query: string): Promise<User[]> {
     return this.getUsers({ search: query })
   }
+
+  /**
+   * Check if username is available
+   */
+  async checkUsernameAvailability(username: string): Promise<{ available: boolean }> {
+    const response: AxiosResponse<{ available: boolean }> = await apiClient.get(
+      `${this.authEndpoint}/check-username?username=${encodeURIComponent(username)}`
+    )
+    return response.data
+  }
+
+  /**
+   * Check if email is available
+   */
+  async checkEmailAvailability(email: string): Promise<{ available: boolean }> {
+    const response: AxiosResponse<{ available: boolean }> = await apiClient.get(
+      `${this.authEndpoint}/check-email?email=${encodeURIComponent(email)}`
+    )
+    return response.data
+  }
 }
 
 // Export singleton instance
 export const usersAPI = new UsersAPI()
+
+// Export types
+export type { RegisterData, RegisterResponse }
