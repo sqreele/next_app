@@ -1,4 +1,4 @@
-// src/stores/auth-store.ts (Updated with registration)
+// src/stores/auth-store.ts (Complete Fixed Version)
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { usersAPI, RegisterData, RegisterResponse } from '@/services/users-api'
@@ -134,38 +134,65 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      // Fixed getCurrentUser to prevent recursive calls
       getCurrentUser: async () => {
         const { token } = get()
+        
         if (!token) {
           throw new Error('No token available')
         }
+
         set({ loading: true, error: null })
+        
         try {
           const user = await usersAPI.getCurrentUser()
-          get().setUser(user)
+          set({ 
+            user, 
+            isAuthenticated: true,
+            loading: false,
+            error: null 
+          })
         } catch (error: any) {
           const errorMessage = error?.response?.data?.message || 
                              error?.message || 
                              'Failed to get user profile'
-          set({ error: errorMessage })
+          
+          set({ 
+            error: errorMessage,
+            loading: false
+          })
+          
           if (error?.response?.status === 401) {
             get().logout()
           }
           throw error
-        } finally {
-          set({ loading: false })
         }
       },
 
+      // Fixed checkAuth method to prevent infinite loops
       checkAuth: async () => {
-        const { token } = get()
+        const { token, isAuthenticated, user } = get()
+        
+        // If no token, definitely not authenticated
         if (!token) {
+          set({ 
+            user: null, 
+            isAuthenticated: false, 
+            token: null 
+          })
           return false
         }
+
+        // If already authenticated and have user data, skip check
+        if (isAuthenticated && user) {
+          return true
+        }
+
         try {
           await get().getCurrentUser()
           return true
         } catch (error) {
+          console.error('Auth check failed:', error)
           get().logout()
           return false
         }
@@ -218,7 +245,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      storage,
+      storage, // Now properly defined above
     }
   )
 )

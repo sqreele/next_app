@@ -1,6 +1,7 @@
-// src/components/auth/ProtectedRoute.tsx
+// src/components/auth/ProtectedRoute.tsx (Fixed)
 'use client'
-import React, { useEffect, useState } from 'react'
+
+import React, { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -18,40 +19,51 @@ export function ProtectedRoute({
   const router = useRouter()
   const { isAuthenticated, user, loading, checkAuth } = useAuthStore()
   const [isChecking, setIsChecking] = useState(true)
+  const [hasRedirected, setHasRedirected] = useState(false)
+
+  const verifyAuth = useCallback(async () => {
+    if (hasRedirected) return
+
+    try {
+      setIsChecking(true)
+      
+      const isValid = await checkAuth()
+      
+      if (!isValid && !hasRedirected) {
+        setHasRedirected(true)
+        router.push(redirectTo)
+        return
+      }
+      
+      // Check role if required
+      if (requiredRole && user?.profile?.role !== requiredRole && !hasRedirected) {
+        setHasRedirected(true)
+        router.push('/unauthorized')
+        return
+      }
+      
+    } catch (error) {
+      console.error('Auth check failed:', error)
+      if (!hasRedirected) {
+        setHasRedirected(true)
+        router.push(redirectTo)
+      }
+    } finally {
+      setIsChecking(false)
+    }
+  }, [checkAuth, requiredRole, router, redirectTo, user?.profile?.role, hasRedirected])
 
   useEffect(() => {
-    const verifyAuth = async () => {
-      try {
-        const isValid = await checkAuth()
-        
-        if (!isValid) {
-          router.push(redirectTo)
-          return
-        }
-        
-        // Check role if required
-        if (requiredRole && user?.profile?.role !== requiredRole) {
-          router.push('/unauthorized')
-          return
-        }
-        
-      } catch (error) {
-        console.error('Auth check failed:', error)
-        router.push(redirectTo)
-      } finally {
-        setIsChecking(false)
-      }
-    }
-
-    if (!isAuthenticated) {
+    if (!isAuthenticated && !loading && !hasRedirected) {
+      setHasRedirected(true)
       router.push(redirectTo)
-    } else {
+    } else if (isAuthenticated && user) {
       verifyAuth()
     }
-  }, [isAuthenticated, user, requiredRole, router, redirectTo, checkAuth])
+  }, [isAuthenticated, user, loading, verifyAuth, router, redirectTo, hasRedirected])
 
   // Show loading spinner while checking authentication
-  if (isChecking || loading) {
+  if (isChecking || loading || hasRedirected) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -62,8 +74,13 @@ export function ProtectedRoute({
     )
   }
 
-  // Don't render children if not authenticated or checking
-  if (!isAuthenticated) {
+  // Don't render children if not authenticated
+  if (!isAuthenticated || !user) {
+    return null
+  }
+
+  // Check role requirement
+  if (requiredRole && user.profile?.role !== requiredRole) {
     return null
   }
 
