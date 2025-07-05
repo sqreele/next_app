@@ -4,8 +4,7 @@ import { toast } from 'sonner'
 
 // Create axios instance with default config
 const apiClient: AxiosInstance = axios.create({
-  // Use relative URLs since nginx should proxy API requests
-  baseURL: process.env.NEXT_PUBLIC_API_URL || '',
+  // For Docker setup, use relative URLs (no baseURL needed)
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -32,7 +31,7 @@ apiClient.interceptors.request.use(
     
     // Log requests in development
     if (process.env.NODE_ENV === 'development') {
-      console.log(`🚀 ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`, config.data)
+      console.log(`🚀 ${config.method?.toUpperCase()} ${config.url}`, config.data)
     }
     
     return config

@@ -8,6 +8,8 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from .. import crud, schemas, dependencies, security
+from sqlalchemy.future import select
+from .. import models
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -45,3 +47,19 @@ async def read_users_me(
     current_user: schemas.User = Depends(dependencies.get_current_active_user),
 ):
     return current_user
+
+@router.get("/check-username/{username}")
+async def check_username_availability(
+    username: str, db: AsyncSession = Depends(dependencies.get_db)
+):
+    """Check if a username is available for registration."""
+    user = await crud.get_user_by_username(db, username=username)
+    return {"available": user is None}
+
+@router.get("/check-email/{email}")
+async def check_email_availability(
+    email: str, db: AsyncSession = Depends(dependencies.get_db)
+):
+    """Check if an email is available for registration."""
+    user = await crud.get_user_by_email(db, email=email)
+    return {"available": user is None}

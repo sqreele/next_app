@@ -61,7 +61,7 @@ class UserProfile(Base):
     user = relationship("User", back_populates="profile")
     properties = relationship("Property", secondary=user_property_association, back_populates="user_profiles")
     def __str__(self):
-        return f"{self.user.username} - {self.role}" if self.user else f"Profile {self.id}"
+        return f"Profile {self.id} - {self.role}"
 
 class Property(Base):
     __tablename__ = 'properties'

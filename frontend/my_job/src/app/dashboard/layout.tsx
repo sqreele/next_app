@@ -452,7 +452,6 @@ function SidebarContent({
                 <IconComponent
                   className={classNames(
                     isItemActive ? 'text-blue-500' : 'text-gray-400 group-hover:text-gray-500',
-                    'mr-3 h-5 w-5 flex// Continuing SidebarContent component...
                     'mr-3 h-5 w-5 flex-shrink-0'
                   )}
                 />
@@ -485,6 +484,12 @@ function SidebarContent({
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { user, isAuthenticated } = useAuthStore()
+  const [hydrated, setHydrated] = useState(false)
+
+  // Hydration check
+  useEffect(() => {
+    setHydrated(true)
+  }, [])
 
   // Close sidebar when clicking outside on mobile
   useEffect(() => {
@@ -497,6 +502,17 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
+
+  if (!hydrated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    )
+  }
 
   if (!isAuthenticated || !user) {
     return null

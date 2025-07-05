@@ -66,7 +66,7 @@ interface WorkOrderState {
   // API Actions
   fetchWorkOrders: (filters?: WorkOrderFilters) => Promise<void>
   fetchWorkOrder: (id: number) => Promise<void>
-  createWorkOrder: (data: CreateWorkOrderData) => Promise<WorkOrder>
+  createWorkOrder: (data: CreateWorkOrderData, property_id: number) => Promise<WorkOrder>
   updateWorkOrderData: (id: number, data: Partial<WorkOrder>) => Promise<void>
   removeWorkOrder: (id: number) => Promise<void>
   updateWorkOrderStatus: (id: number, status: WorkOrder['status']) => Promise<void>
@@ -260,11 +260,11 @@ export const useWorkOrderStore = create<WorkOrderState>()(
           }
         },
 
-        createWorkOrder: async (data) => {
+        createWorkOrder: async (data, property_id: number = 1) => {
           set({ loading: true, error: null })
           
           try {
-            const newWorkOrder = await workOrdersAPI.createWorkOrder(data)
+            const newWorkOrder = await workOrdersAPI.createWorkOrder(data, property_id)
             get().addWorkOrder(newWorkOrder)
             return newWorkOrder
           } catch (error: any) {

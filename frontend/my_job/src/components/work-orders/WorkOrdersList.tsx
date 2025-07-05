@@ -1,8 +1,7 @@
-
 // src/components/work-orders/WorkOrdersList.tsx
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { useWorkOrderStore } from '@/stores/work-orders-store'
 import { useMachineStore } from '@/stores/machines-store'
 import { useRoomStore } from '@/stores/rooms-store'
@@ -52,7 +51,7 @@ export function WorkOrdersList() {
     fetchMachines()
     fetchRooms()
     fetchTechnicians()
-  }, [fetchWorkOrders, fetchMachines, fetchRooms, fetchTechnicians])
+  }, [])
 
   const filteredWorkOrders = getFilteredWorkOrders()
 
@@ -98,17 +97,17 @@ export function WorkOrdersList() {
   }
 
   const getMachineName = (machine_id: number) => {
-    const machine = machines.find(m => m.id === machine_id)
+    const machine = (machines ?? []).find(m => m.id === machine_id)
     return machine ? machine.name : `Machine ${machine_id}`
   }
 
   const getRoomName = (room_id: number) => {
-    const room = rooms.find(r => r.id === room_id)
+    const room = (rooms ?? []).find(r => r.id === room_id)
     return room ? `${room.name} (${room.number})` : `Room ${room_id}`
   }
 
   const getTechnicianName = (assigned_to_id: number) => {
-    const technician = technicians.find(t => t.id === assigned_to_id)
+    const technician = (technicians ?? []).find(t => t.id === assigned_to_id)
     return technician ? technician.username : `User ${assigned_to_id}`
   }
 

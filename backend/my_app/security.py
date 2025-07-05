@@ -11,6 +11,9 @@ from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+# Import models to fix the NameError
+from . import models
+
 # --- FIX IS HERE ---
 # This special block is only 'True' for type checkers, not when the app is running.
 # This breaks the import loop.

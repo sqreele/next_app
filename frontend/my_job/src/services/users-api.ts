@@ -41,7 +41,6 @@ class UsersAPI {
       username: data.username,
       email: data.email,
       password: data.password,
-      confirm_password: data.confirmPassword,
       profile: {
         role: data.profile.role,
         position: data.profile.position
@@ -69,9 +68,19 @@ class UsersAPI {
    * Login user
    */
   async login(credentials: LoginCredentials): Promise<LoginResponse> {
+    // Create form data for OAuth2PasswordRequestForm
+    const formData = new FormData()
+    formData.append('username', credentials.username)
+    formData.append('password', credentials.password)
+
     const response: AxiosResponse<LoginResponse> = await apiClient.post(
       `${this.authEndpoint}/token`, 
-      credentials
+      formData,
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      }
     )
     return response.data
   }
@@ -111,7 +120,7 @@ class UsersAPI {
   async checkUsernameAvailability(username: string): Promise<{ available: boolean }> {
     try {
       const response: AxiosResponse<{ available: boolean }> = await apiClient.get(
-        `${this.endpoint}/check-username?username=${encodeURIComponent(username)}`
+        `${this.endpoint}/check-username/${encodeURIComponent(username)}`
       )
       return response.data
     } catch (error: any) {
@@ -135,7 +144,7 @@ class UsersAPI {
   async checkEmailAvailability(email: string): Promise<{ available: boolean }> {
     try {
       const response: AxiosResponse<{ available: boolean }> = await apiClient.get(
-        `${this.endpoint}/check-email?email=${encodeURIComponent(email)}`
+        `${this.endpoint}/check-email/${encodeURIComponent(email)}`
       )
       return response.data
     } catch (error: any) {
@@ -196,6 +205,3 @@ class UsersAPI {
 
 // Export singleton instance
 export const usersAPI = new UsersAPI()
-
-// Export types
-export type { RegisterData, RegisterResponse }

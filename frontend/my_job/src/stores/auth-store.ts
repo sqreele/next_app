@@ -1,8 +1,18 @@
 // src/stores/auth-store.ts (Updated with registration)
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import { usersAPI, RegisterData, RegisterResponse } from '@/services/users-api'
 import { User, LoginCredentials, LoginResponse } from '@/types/user'
+
+// SSR-safe storage for Zustand persist
+const storage =
+  typeof window !== 'undefined'
+    ? createJSONStorage(() => window.localStorage)
+    : {
+        getItem: (_: string) => null,
+        setItem: (_: string, __: unknown) => {},
+        removeItem: (_: string) => {},
+      }
 
 interface AuthState {
   // State
@@ -57,10 +67,8 @@ export const useAuthStore = create<AuthState>()(
 
       setToken: (token) => {
         set({ token, isAuthenticated: !!token })
-        
         // Update axios default headers
         if (token) {
-          // Dynamically import to avoid SSR issues
           import('@/lib/api-client').then(({ default: apiClient }) => {
             apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`
           })
@@ -78,16 +86,12 @@ export const useAuthStore = create<AuthState>()(
       // Registration
       register: async (data) => {
         set({ loading: true, error: null })
-        
         try {
           const registerResponse = await usersAPI.register(data)
-          
-          // If registration includes auto-login token
           if (registerResponse.access_token) {
             get().setToken(registerResponse.access_token)
             get().setUser(registerResponse.user)
           }
-          
           return registerResponse
         } catch (error: any) {
           const errorMessage = error?.response?.data?.message || 
@@ -104,15 +108,10 @@ export const useAuthStore = create<AuthState>()(
       // Auth actions
       login: async (credentials) => {
         set({ loading: true, error: null })
-        
         try {
           const loginResponse: LoginResponse = await usersAPI.login(credentials)
-          
           get().setToken(loginResponse.access_token)
-          
-          // Get user profile after successful login
           await get().getCurrentUser()
-          
         } catch (error: any) {
           const errorMessage = error?.response?.data?.message || 
                              error?.response?.data?.detail ||
@@ -126,20 +125,13 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
-        set({ 
-          user: null, 
-          token: null, 
-          isAuthenticated: false, 
-          error: null 
-        })
-        
-        // Clear axios headers
+        set({ user: null, token: null, isAuthenticated: false, error: null })
         import('@/lib/api-client').then(({ default: apiClient }) => {
           delete apiClient.defaults.headers.common['Authorization']
         })
-        
-        // Clear localStorage
-        localStorage.removeItem('auth-storage')
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('auth-storage')
+        }
       },
 
       getCurrentUser: async () => {
@@ -147,9 +139,7 @@ export const useAuthStore = create<AuthState>()(
         if (!token) {
           throw new Error('No token available')
         }
-
         set({ loading: true, error: null })
-        
         try {
           const user = await usersAPI.getCurrentUser()
           get().setUser(user)
@@ -158,12 +148,9 @@ export const useAuthStore = create<AuthState>()(
                              error?.message || 
                              'Failed to get user profile'
           set({ error: errorMessage })
-          
-          // If unauthorized, logout
           if (error?.response?.status === 401) {
             get().logout()
           }
-          
           throw error
         } finally {
           set({ loading: false })
@@ -175,7 +162,6 @@ export const useAuthStore = create<AuthState>()(
         if (!token) {
           return false
         }
-
         try {
           await get().getCurrentUser()
           return true
@@ -232,14 +218,12 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      partialize: (state) => ({
-        user: state.user,
-        token: state.token,
-        isAuthenticated: state.isAuthenticated,
-      }),
+      storage,
     }
   )
 )
 
-// Initialize auth on store creation
-useAuthStore.getState().setToken(useAuthStore.getState().token)
+// Initialize auth on store creation (only on client side)
+if (typeof window !== 'undefined') {
+  useAuthStore.getState().setToken(useAuthStore.getState().token)
+}

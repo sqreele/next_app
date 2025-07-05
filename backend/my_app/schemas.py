@@ -105,6 +105,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    profile: Optional[UserProfileCreate] = None
 
 class User(UserBase):
     id: int

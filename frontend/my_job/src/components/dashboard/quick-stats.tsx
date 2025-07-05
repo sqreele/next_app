@@ -1,7 +1,7 @@
 // src/components/dashboard/quick-stats.tsx
 'use client'
 
-import React from 'react'
+import React, { useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -14,6 +14,7 @@ import {
   ArrowTrendingDownIcon,
 } from '@heroicons/react/24/outline'
 import { cn } from '@/lib/utils'
+import { useWorkOrderStore } from '@/stores/work-orders-store'
 
 interface StatCard {
   title: string
@@ -26,41 +27,6 @@ interface StatCard {
   color: 'blue' | 'yellow' | 'green' | 'red'
   description: string
 }
-
-const stats: StatCard[] = [
-  {
-    title: 'Open Work Orders',
-    value: 24,
-    change: { value: '+12%', type: 'increase' },
-    icon: ClipboardDocumentListIcon,
-    color: 'blue',
-    description: 'Active work orders requiring attention',
-  },
-  {
-    title: 'In Progress',
-    value: 18,
-    change: { value: '+5%', type: 'increase' },
-    icon: ClockIcon,
-    color: 'yellow',
-    description: 'Work orders currently being worked on',
-  },
-  {
-    title: 'Completed Today',
-    value: 32,
-    change: { value: '+18%', type: 'increase' },
-    icon: CheckCircleIcon,
-    color: 'green',
-    description: 'Work orders completed in the last 24 hours',
-  },
-  {
-    title: 'Overdue',
-    value: 5,
-    change: { value: '-25%', type: 'decrease' },
-    icon: ExclamationTriangleIcon,
-    color: 'red',
-    description: 'Work orders past their due date',
-  },
-]
 
 const colorClasses = {
   blue: {
@@ -86,9 +52,62 @@ const colorClasses = {
 }
 
 export function QuickStats() {
+  const { stats, loading, fetchWorkOrders } = useWorkOrderStore()
+
+  useEffect(() => {
+    fetchWorkOrders()
+  }, [])
+
+  const statCards: StatCard[] = [
+    {
+      title: 'Open Work Orders',
+      value: stats.pending,
+      change: { value: '+0%', type: 'neutral' },
+      icon: ClipboardDocumentListIcon,
+      color: 'blue',
+      description: 'Active work orders requiring attention',
+    },
+    {
+      title: 'In Progress',
+      value: stats.inProgress,
+      change: { value: '+0%', type: 'neutral' },
+      icon: ClockIcon,
+      color: 'yellow',
+      description: 'Work orders currently being worked on',
+    },
+    {
+      title: 'Completed Today',
+      value: stats.completed,
+      change: { value: '+0%', type: 'neutral' },
+      icon: CheckCircleIcon,
+      color: 'green',
+      description: 'Work orders completed in the last 24 hours',
+    },
+    {
+      title: 'Overdue',
+      value: stats.overdue,
+      change: { value: '-0%', type: 'neutral' },
+      icon: ExclamationTriangleIcon,
+      color: 'red',
+      description: 'Work orders past their due date',
+    },
+  ]
+
+  if (loading) {
+    return (
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="animate-pulse">
+            <div className="h-32 bg-gray-200 rounded-lg"></div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-      {stats.map((stat, index) => (
+      {statCards.map((stat, index) => (
         <motion.div
           key={stat.title}
           initial={{ opacity: 0, y: 20 }}

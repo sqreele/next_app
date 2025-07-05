@@ -2,11 +2,17 @@
 # File: backend/my_app/main.py (Fixed for SQLAdmin)
 # Description: Main FastAPI application setup.
 # ==============================================================================
+from dotenv import load_dotenv
+load_dotenv()
+
+import os
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from sqladmin import Admin
 from sqlalchemy import create_engine
 from .database import engine as async_engine, Base, SQLALCHEMY_DATABASE_URL
-from .routers import users, properties, rooms, machines, work_orders
+from .routers import users, properties, rooms, machines, work_orders, auth  # Add auth here
 from .connection_manager import manager
 from .admin import (
     UserAdminFinal,  # Changed from UserAdmin to UserAdminFinal
@@ -24,6 +30,21 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",  # This ensures /docs works
     redoc_url="/redoc"
+)
+
+# Add Session middleware for OAuth
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SECRET_KEY", "your-secret-key-here-change-in-production")
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, specify your frontend domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Create a synchronous engine for SQLAdmin
@@ -56,6 +77,7 @@ app.include_router(properties.router, prefix="/api/v1", tags=["properties"])
 app.include_router(rooms.router, prefix="/api/v1", tags=["rooms"])
 app.include_router(machines.router, prefix="/api/v1", tags=["machines"])
 app.include_router(work_orders.router, prefix="/api/v1", tags=["work_orders"])
+app.include_router(auth.router)  # Changed from auth_router to auth.router
 
 @app.get("/")
 async def root():
@@ -76,3 +98,6 @@ async def websocket_endpoint(websocket: WebSocket, client_id: int):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
         await manager.broadcast(f"Client #{client_id} left the chat")
+
+secret_key = os.getenv("SECRET_KEY")
+google_client_id = os.getenv("GOOGLE_CLIENT_ID")
