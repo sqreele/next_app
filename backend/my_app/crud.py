@@ -144,5 +144,13 @@ async def get_machines_by_property(db: AsyncSession, property_id: int, skip: int
         .offset(skip)
         .limit(limit)
     )
-    return result.scalars().all()    
+    return result.scalars().all()
 
+# Add WorkOrderFile CRUD for new fields
+async def create_work_order_file(db: AsyncSession, file: schemas.WorkOrderFileCreate):
+    db_file = models.WorkOrderFile(**file.dict())
+    db.add(db_file)
+    await db.commit()
+    await db.refresh(db_file)
+    return db_file
+    

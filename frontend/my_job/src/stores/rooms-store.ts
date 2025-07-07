@@ -1,4 +1,4 @@
-// src/stores/rooms-store.ts
+// src/stores/rooms-store.ts (Fixed)
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { roomsAPI, Room, CreateRoomData, RoomFilters } from '@/services/rooms-api'
@@ -56,7 +56,7 @@ interface RoomState {
 export const useRoomStore = create<RoomState>()(
   persist(
     (set, get) => ({
-      // Initial state
+      // Initial state - ENSURE rooms is always an array
       rooms: [],
       selectedRoom: null,
       filters: {},
@@ -70,12 +70,12 @@ export const useRoomStore = create<RoomState>()(
 
       // Basic state management
       setRooms: (rooms) => {
-        set({ rooms })
+        set({ rooms: rooms || [] }) // Ensure rooms is never null/undefined
       },
 
       addRoom: (room) => {
         set((state) => ({
-          rooms: [room, ...state.rooms],
+          rooms: [room, ...(state.rooms || [])], // Safe array spreading
           pagination: {
             ...state.pagination,
             total: state.pagination.total + 1
@@ -85,7 +85,7 @@ export const useRoomStore = create<RoomState>()(
 
       updateRoom: (id, updates) => {
         set((state) => ({
-          rooms: state.rooms.map((room) =>
+          rooms: (state.rooms || []).map((room) =>
             room.id === id ? { ...room, ...updates } : room
           ),
           selectedRoom: state.selectedRoom?.id === id 
@@ -96,7 +96,7 @@ export const useRoomStore = create<RoomState>()(
 
       deleteRoom: (id) => {
         set((state) => ({
-          rooms: state.rooms.filter((room) => room.id !== id),
+          rooms: (state.rooms || []).filter((room) => room.id !== id),
           selectedRoom: state.selectedRoom?.id === id ? null : state.selectedRoom,
           pagination: {
             ...state.pagination,
@@ -126,8 +126,9 @@ export const useRoomStore = create<RoomState>()(
 
       getFilteredRooms: () => {
         const { rooms, filters } = get()
+        const safeRooms = rooms || [] // Ensure rooms is an array
         
-        return rooms.filter((room) => {
+        return safeRooms.filter((room) => {
           // Room type filter
           if (filters.room_type && room.room_type !== filters.room_type) return false
           
@@ -176,20 +177,23 @@ export const useRoomStore = create<RoomState>()(
             limit: pagination.limit,
           }
           
+          console.log('Fetching rooms with filters:', queryFilters)
           const response = await roomsAPI.getRooms(queryFilters)
+          console.log('Rooms API response:', response)
           
           set({ 
-            rooms: response.data,
+            rooms: response.data || [], // Ensure rooms is always an array
             pagination: {
               ...pagination,
-              total: response.total,
+              total: response.total || 0,
               page: response.page || pagination.page,
               limit: response.limit || pagination.limit,
             }
           })
+          console.log('Rooms set in store:', response.data || [])
         } catch (error: any) {
           const errorMessage = error?.response?.data?.message || error?.message || 'Failed to fetch rooms'
-          set({ error: errorMessage })
+          set({ error: errorMessage, rooms: [] }) // Set empty array on error
           console.error('Error fetching rooms:', error)
         } finally {
           set({ loading: false })
@@ -274,21 +278,25 @@ export const useRoomStore = create<RoomState>()(
         }
       },
 
-      // Utilities
+      // Utilities - FIXED: Added null checks
       getActiveRooms: () => {
-        return get().rooms.filter(room => room.is_active)
+        const { rooms } = get()
+        return (rooms || []).filter(room => room.is_active)
       },
 
       getRoomsByType: (room_type) => {
-        return get().rooms.filter(room => room.room_type === room_type)
+        const { rooms } = get()
+        return (rooms || []).filter(room => room.room_type === room_type)
       },
 
       getRoomsByProperty: (property_id) => {
-        return get().rooms.filter(room => room.property_id === property_id)
+        const { rooms } = get()
+        return (rooms || []).filter(room => room.property_id === property_id)
       },
 
       getRoomByNumber: (number) => {
-        return get().rooms.find(room => room.number === number)
+        const { rooms } = get()
+        return (rooms || []).find(room => room.number === number)
       },
 
       refreshRooms: async () => {
@@ -299,7 +307,7 @@ export const useRoomStore = create<RoomState>()(
     {
       name: 'rooms-storage',
       partialize: (state) => ({
-        rooms: state.rooms,
+        rooms: state.rooms || [], // Ensure rooms is always an array in persistence
         filters: state.filters,
         pagination: state.pagination,
       }),

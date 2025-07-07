@@ -249,6 +249,9 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         WorkOrder.machine_id,
         WorkOrder.room_id,
         WorkOrder.assigned_to_id,
+        WorkOrder.before_image_path,
+        WorkOrder.after_image_path,
+        WorkOrder.pdf_file_path,
     ]
     form_columns = [
         WorkOrder.property_id,
@@ -260,6 +263,9 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         WorkOrder.machine_id,
         WorkOrder.room_id,
         WorkOrder.assigned_to_id,
+        WorkOrder.before_image_path,
+        WorkOrder.after_image_path,
+        WorkOrder.pdf_file_path,
     ]
     column_searchable_list = [
         WorkOrder.task,
@@ -315,6 +321,18 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
             'label': 'Assigned To (Optional)',
             'description': 'Assign this work order to a specific user'
         },
+        'before_image_path': {
+            'label': 'Before Image Path',
+            'description': 'Path to the before image (optional)'
+        },
+        'after_image_path': {
+            'label': 'After Image Path',
+            'description': 'Path to the after image (optional)'
+        },
+        'pdf_file_path': {
+            'label': 'PDF File Path',
+            'description': 'Path to the PDF or document (optional)'
+        },
     }
 
     name = "Work Order"
@@ -325,13 +343,21 @@ class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
     column_list = [
         WorkOrderFile.id,
         WorkOrderFile.file_path,
+        WorkOrderFile.file_name,
+        WorkOrderFile.file_size,
+        WorkOrderFile.mime_type,
         WorkOrderFile.upload_type,
+        WorkOrderFile.uploaded_at,
         WorkOrderFile.work_order_id,
     ]
     form_columns = [
         WorkOrderFile.work_order_id,
         WorkOrderFile.file_path,
+        WorkOrderFile.file_name,
+        WorkOrderFile.file_size,
+        WorkOrderFile.mime_type,
         WorkOrderFile.upload_type,
+        WorkOrderFile.uploaded_at,
     ]
     column_searchable_list = [WorkOrderFile.file_path, WorkOrderFile.upload_type]
     column_sortable_list = [
@@ -353,6 +379,22 @@ class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
             'label': 'File Type',
             'description': 'Specify the type of file (e.g., Image, Document, etc.)',
             'default': 'Other'
+        },
+        'file_name': {
+            'label': 'File Name',
+            'description': 'Original file name (optional)'
+        },
+        'file_size': {
+            'label': 'File Size',
+            'description': 'File size in bytes (optional)'
+        },
+        'mime_type': {
+            'label': 'MIME Type',
+            'description': 'MIME type of the file (optional)'
+        },
+        'uploaded_at': {
+            'label': 'Uploaded At',
+            'description': 'Upload timestamp (optional)'
         },
     }
 

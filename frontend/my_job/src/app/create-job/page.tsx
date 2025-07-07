@@ -18,6 +18,10 @@ interface FormData {
   machine_id: number | null
   assigned_to_id: number | null
   due_date: string
+  datamising?: string | null
+  before_image_path?: string 
+  after_image_path?: string 
+  pdf_file_path?: string 
 }
 
 export default function CreateJobPage() {
@@ -29,6 +33,7 @@ export default function CreateJobPage() {
   
   const [beforeImagePreview, setBeforeImagePreview] = useState<string | null>(null)
   const [afterImagePreview, setAfterImagePreview] = useState<string | null>(null)
+  const [pdfFileName, setPdfFileName] = useState<string | null>(null)
   const [formData, setFormData] = useState<FormData>({
     task: '',
     description: '',
@@ -37,11 +42,13 @@ export default function CreateJobPage() {
     room_id: null,
     machine_id: null,
     assigned_to_id: null,
-    due_date: ''
+    due_date: '',
+    datamising: ''
   })
   const [selectedPropertyId, setSelectedPropertyId] = useState<number>(1) // Default to property ID 1
   const [errors, setErrors] = useState<Partial<FormData>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showImages, setShowImages] = useState(false)
 
   // Fetch initial data
   useEffect(() => {
@@ -54,8 +61,10 @@ export default function CreateJobPage() {
     const file = e.target.files?.[0]
     if (file) {
       setBeforeImagePreview(URL.createObjectURL(file))
+      setFormData(prev => ({ ...prev, before_image_path: file.name }))
     } else {
       setBeforeImagePreview(null)
+      setFormData(prev => ({ ...prev, before_image_path: '' }))
     }
   }
 
@@ -63,8 +72,21 @@ export default function CreateJobPage() {
     const file = e.target.files?.[0]
     if (file) {
       setAfterImagePreview(URL.createObjectURL(file))
+      setFormData(prev => ({ ...prev, after_image_path: file.name }))
     } else {
       setAfterImagePreview(null)
+      setFormData(prev => ({ ...prev, after_image_path: '' }))
+    }
+  }
+
+  function handlePdfChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) {
+      setPdfFileName(file.name)
+      setFormData(prev => ({ ...prev, pdf_file_path: file.name }))
+    } else {
+      setPdfFileName(null)
+      setFormData(prev => ({ ...prev, pdf_file_path: '' }))
     }
   }
 
@@ -115,7 +137,10 @@ export default function CreateJobPage() {
         machine_id: formData.machine_id || undefined,
         assigned_to_id: formData.assigned_to_id || undefined,
         due_date: formData.due_date,
-        // Note: Image upload would need additional backend support
+        datamising: formData.datamising || undefined,
+        before_image_path: formData.before_image_path || undefined,
+        after_image_path: formData.after_image_path || undefined,
+        pdf_file_path: formData.pdf_file_path || undefined,
       }
 
       await createWorkOrder(workOrderData, selectedPropertyId)
@@ -263,41 +288,79 @@ export default function CreateJobPage() {
               ))}
             </select>
             
-            {/* Before Image */}
-            {beforeImagePreview && (
-              <img
-                src={beforeImagePreview}
-                alt="Before Preview"
-                className="w-full max-h-40 object-contain mb-2 rounded-lg border"
-              />
-            )}
-            <label className="block">
-              <span className="text-gray-700">Before Image (Optional)</span>
+            {/* Datamising Field */}
+            <div>
               <input
-                type="file"
-                accept="image/*"
-                onChange={handleBeforeImageChange}
-                className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
+                type="text"
+                placeholder="Datamising (Optional)"
+                value={formData.datamising || ''}
+                onChange={(e) => handleInputChange('datamising', e.target.value)}
+                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400"
               />
+            </div>
+            
+            {/* Attach Images Checkbox */}
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showImages}
+                onChange={() => setShowImages((prev) => !prev)}
+                className="accent-green-500"
+              />
+              <span className="text-green-900 font-medium">Attach Images</span>
             </label>
             
-            {/* After Image */}
-            {afterImagePreview && (
-              <img
-                src={afterImagePreview}
-                alt="After Preview"
-                className="w-full max-h-40 object-contain mb-2 rounded-lg border"
-              />
+            {/* Before Image */}
+            {showImages && (
+              <>
+                {beforeImagePreview && (
+                  <img
+                    src={beforeImagePreview}
+                    alt="Before Preview"
+                    className="w-full max-h-40 object-contain mb-2 rounded-lg border"
+                  />
+                )}
+                <label className="block">
+                  <span className="text-gray-700">Before Image (Optional)</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleBeforeImageChange}
+                    className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
+                  />
+                </label>
+                {/* After Image */}
+                {afterImagePreview && (
+                  <img
+                    src={afterImagePreview}
+                    alt="After Preview"
+                    className="w-full max-h-40 object-contain mb-2 rounded-lg border"
+                  />
+                )}
+                <label className="block">
+                  <span className="text-gray-700">After Image (Optional)</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAfterImageChange}
+                    className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
+                  />
+                </label>
+                {/* PDF File */}
+                <label className="block mt-2">
+                  <span className="text-gray-700">Attach PDF/Document (Optional)</span>
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    onChange={handlePdfChange}
+                    className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
+                  />
+                  {pdfFileName && (
+                    <span className="text-green-700 text-xs mt-1 block">Selected: {pdfFileName}</span>
+                  )}
+                </label>
+              </>
             )}
-            <label className="block">
-              <span className="text-gray-700">After Image (Optional)</span>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleAfterImageChange}
-                className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
-              />
-            </label>
             
             <button
               type="submit"

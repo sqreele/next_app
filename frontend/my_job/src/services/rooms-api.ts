@@ -59,11 +59,21 @@ class RoomsAPI {
       })
     }
 
-    const response: AxiosResponse<RoomsResponse> = await apiClient.get(
+    const response: AxiosResponse<Room[] | RoomsResponse> = await apiClient.get(
       `${this.endpoint}${params.toString() ? `?${params.toString()}` : ''}`
     )
     
-    return response.data
+    // Handle both array response and paginated response
+    if (Array.isArray(response.data)) {
+      return {
+        data: response.data,
+        total: response.data.length,
+        page: 1,
+        limit: response.data.length
+      }
+    }
+    
+    return response.data as RoomsResponse
   }
 
   /**

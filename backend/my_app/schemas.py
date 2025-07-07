@@ -70,6 +70,9 @@ class WorkOrderBase(BaseModel):
     machine_id: Optional[int] = None
     room_id: Optional[int] = None
     assigned_to_id: Optional[int] = None
+    before_image_path: Optional[str] = None
+    after_image_path: Optional[str] = None
+    pdf_file_path: Optional[str] = None
 
 class WorkOrderCreate(WorkOrderBase):
     pass
@@ -79,6 +82,25 @@ class WorkOrder(WorkOrderBase):
     property_id: int
     created_at: datetime
     completed_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+# --- WorkOrderFile Schemas ---
+class WorkOrderFileBase(BaseModel):
+    file_path: str
+    file_name: Optional[str] = None
+    file_size: Optional[int] = None
+    mime_type: Optional[str] = None
+    upload_type: Optional[str] = 'Other'
+    uploaded_at: Optional[datetime] = None
+    work_order_id: int
+
+class WorkOrderFileCreate(WorkOrderFileBase):
+    pass
+
+class WorkOrderFile(WorkOrderFileBase):
+    id: int
     
     class Config:
         from_attributes = True

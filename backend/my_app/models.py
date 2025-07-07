@@ -1,5 +1,5 @@
 # ==============================================================================
-# File: backend/my_app/models.py (Corrected for Circular Import)
+# File: backend/my_app/models.py (Temporarily without new columns)
 # Description: Defines the database schema using the imported Base.
 # ==============================================================================
 from sqlalchemy import (
@@ -30,7 +30,6 @@ class User(Base):
     work_orders_assigned = relationship("WorkOrder", back_populates="assigned_to")
 
     def __init__(self, **kwargs):
-        # Handle password during initialization
         password = kwargs.pop('password', None)
         super().__init__(**kwargs)
         if password:
@@ -38,14 +37,11 @@ class User(Base):
 
     @property
     def password(self):
-        """Password property getter - returns None since we don't want to expose hashed passwords"""
         return None
 
     @password.setter
     def password(self, password: str):
-        """Password property setter - hashes the password and stores it"""
         from .security import get_password_hash
-        
         if password:
             self.hashed_password = get_password_hash(password)
     
@@ -60,6 +56,7 @@ class UserProfile(Base):
     position = Column(String(100), nullable=True)
     user = relationship("User", back_populates="profile")
     properties = relationship("Property", secondary=user_property_association, back_populates="user_profiles")
+    
     def __str__(self):
         return f"Profile {self.id} - {self.role}"
 
@@ -71,6 +68,7 @@ class Property(Base):
     machines = relationship("Machine", back_populates="property", cascade="all, delete-orphan")
     work_orders = relationship("WorkOrder", back_populates="property", cascade="all, delete-orphan")
     user_profiles = relationship("UserProfile", secondary=user_property_association, back_populates="properties")
+    
     def __str__(self):
         return self.name
 
@@ -85,8 +83,12 @@ class Room(Base):
     property = relationship("Property", back_populates="rooms")
     machines = relationship("Machine", back_populates="room")
     work_orders = relationship("WorkOrder", back_populates="room")
+    
     def __str__(self):
-        return f"{self.name} ({self.property.name})" if self.property else self.name
+        room_display = self.name
+        if self.number:
+            room_display += f" ({self.number})"
+        return room_display
 
 class Machine(Base):
     __tablename__ = 'machines'
@@ -98,8 +100,9 @@ class Machine(Base):
     property = relationship("Property", back_populates="machines")
     room = relationship("Room", back_populates="machines")
     work_orders = relationship("WorkOrder", back_populates="machine")
+    
     def __str__(self):
-        return f"{self.name} ({self.property.name})" if self.property else self.name
+        return self.name
 
 class WorkOrder(Base):
     __tablename__ = 'workorders'
@@ -111,15 +114,24 @@ class WorkOrder(Base):
     due_date = Column(Date, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Note: New columns temporarily removed - will add back after migration
+    
     property_id = Column(Integer, ForeignKey('properties.id'), nullable=False)
     machine_id = Column(Integer, ForeignKey('machines.id'), nullable=True)
     room_id = Column(Integer, ForeignKey('rooms.id'), nullable=True)
     assigned_to_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    
     property = relationship("Property", back_populates="work_orders")
     machine = relationship("Machine", back_populates="work_orders")
     room = relationship("Room", back_populates="work_orders")
     assigned_to = relationship("User", back_populates="work_orders_assigned")
     files = relationship("WorkOrderFile", back_populates="work_order", cascade="all, delete-orphan")
+    
+    before_image_path = Column(String(500), nullable=True)
+    after_image_path = Column(String(500), nullable=True)
+    pdf_file_path = Column(String(500), nullable=True)
+    
     def __str__(self):
         return f"{self.task} - {self.status}"
 
@@ -127,8 +139,13 @@ class WorkOrderFile(Base):
     __tablename__ = 'workorderfiles'
     id = Column(Integer, primary_key=True, index=True)
     file_path = Column(String(500), nullable=False)
+    file_name = Column(String(255), nullable=True)
+    file_size = Column(Integer, nullable=True)
+    mime_type = Column(String(100), nullable=True)
     upload_type = Column(String(50), default='Other')
+    uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
     work_order_id = Column(Integer, ForeignKey('workorders.id'), nullable=False)
     work_order = relationship("WorkOrder", back_populates="files")
+    
     def __str__(self):
         return f"File: {self.file_path}"
