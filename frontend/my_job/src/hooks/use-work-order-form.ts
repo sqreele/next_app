@@ -1,71 +1,77 @@
 // src/hooks/use-work-order-form.ts
-import { useState, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import { FormField } from '@/config/work-order-form-config'
 
-export interface FormData {
-  [key: string]: any
+interface ImageFile {
+  file: File
+  preview: string
+  id: string
 }
 
-export interface FormErrors {
-  [key: string]: string
-}
-
-export function useWorkOrderForm(initialData: FormData = {}) {
-  const [formData, setFormData] = useState<FormData>(initialData)
-  const [errors, setErrors] = useState<FormErrors>({})
+export function useWorkOrderForm(initialData: any) {
+  const [formData, setFormData] = useState(initialData)
+  const [errors, setErrors] = useState<Record<string, string>>({})
   const [imagePreviews, setImagePreviews] = useState<Record<string, string | null>>({})
 
-  const setValue = (name: string, value: any) => {
-    setFormData(prev => ({ ...prev, [name]: value }))
+  const setValue = useCallback((name: string, value: any) => {
+    setFormData((prev: any) => ({ ...prev, [name]: value }))
     
-    // Clear error when value changes
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }))
     }
-  }
+  }, [errors])
 
-  const setImagePreview = (name: string, preview: string | null) => {
+  const setImagePreview = useCallback((name: string, preview: string | null) => {
     setImagePreviews(prev => ({ ...prev, [name]: preview }))
-  }
+  }, [])
 
-  const validateField = (field: FormField, value: any): string | null => {
-    if (field.required && (!value || (typeof value === 'string' && !value.trim()))) {
-      return `${field.label} is required`
-    }
-
-    if (field.validation) {
-      const { pattern, message } = field.validation
-
-      if (value && pattern) {
-        const regex = new RegExp(pattern)
-        if (!regex.test(value)) {
-          return message || `${field.label} format is invalid`
+  const validateForm = useCallback((fields: FormField[]) => {
+    const newErrors: Record<string, string> = {}
+    
+    fields.forEach(field => {
+      if (field.required) {
+        const value = formData[field.name]
+        
+        if (field.type === 'image-upload') {
+          if (!value || !Array.isArray(value) || value.length === 0) {
+            newErrors[field.name] = `${field.label} is required`
+          }
+        } else {
+          if (!value || value === '' || value === 0) {
+            newErrors[field.name] = `${field.label} is required`
+          }
         }
       }
+    })
+    
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }, [formData])
+
+  const getImageFiles = useCallback((fieldName: string): File[] => {
+    const value = formData[fieldName]
+    if (Array.isArray(value)) {
+      return value.map((item: ImageFile) => item.file)
     }
+    return []
+  }, [formData])
 
-    return null
-  }
-
-  const validateForm = (fields: FormField[]): boolean => {
-    const newErrors: FormErrors = {}
-
-    fields.forEach(field => {
-      const error = validateField(field, formData[field.name])
-      if (error) {
-        newErrors[field.name] = error
+  const reset = useCallback(() => {
+    // Clean up object URLs to prevent memory leaks
+    Object.values(formData).forEach((value: any) => {
+      if (Array.isArray(value)) {
+        value.forEach((item: any) => {
+          if (item && typeof item === 'object' && item.preview) {
+            URL.revokeObjectURL(item.preview)
+          }
+        })
       }
     })
 
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const reset = () => {
     setFormData(initialData)
     setErrors({})
     setImagePreviews({})
-  }
+  }, [initialData, formData])
 
   return {
     formData,
@@ -74,6 +80,7 @@ export function useWorkOrderForm(initialData: FormData = {}) {
     setValue,
     setImagePreview,
     validateForm,
-    reset
+    getImageFiles,
+    reset,
   }
 }

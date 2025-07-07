@@ -1,4 +1,4 @@
-// src/components/forms/CreateWorkOrderForm.tsx (Updated with Progress Bar)
+// src/components/forms/CreateWorkOrderForm.tsx
 'use client'
 
 import React, { useEffect } from 'react'
@@ -24,34 +24,32 @@ const initialFormData = {
   title: '',
   description: '',
   scheduledDate: '',
-  date: '',
   location: '',
-  assignedTo: '', // Will be set to current user's username
+  assignedTo: '',
   priority: '',
   status: '',
   recurring: false,
   recurringFrequency: '',
-  beforePhotos: null,
-  afterPhotos: null,
-  attachments: null,
+  beforePhotos: [],
+  afterPhotos: [],
+  attachments: [],
 }
 
 export function CreateWorkOrderForm() {
   const router = useRouter()
   const { createWorkOrder, loading } = useWorkOrderStore()
-  const { machines, fetchMachines, getOperationalMachines } = useMachineStore()
-  const { rooms, fetchRooms, getActiveRooms } = useRoomStore()
-  const { technicians, fetchTechnicians, getAvailableTechnicians } = useTechnicianStore()
+  const { getOperationalMachines } = useMachineStore()
+  const { getActiveRooms } = useRoomStore()
+  const { getAvailableTechnicians } = useTechnicianStore()
   const { user } = useAuthStore()
   
   const {
     formData,
     errors,
-    imagePreviews,
     setValue,
-    setImagePreview,
     validateForm,
-    reset
+    getImageFiles,
+    reset,
   } = useWorkOrderForm(initialFormData)
 
   const {
@@ -64,76 +62,60 @@ export function CreateWorkOrderForm() {
     canGoNext,
     canGoPrev,
     getCompletionPercentage,
-    isFormComplete
   } = useFormProgress(workOrderFormSections, formData, errors)
-
-  // State for room autocomplete
-  const [roomSearchTerm, setRoomSearchTerm] = React.useState('')
 
   // Fetch data on component mount
   useEffect(() => {
-    console.log('Fetching data...')
-    fetchMachines()
-    fetchRooms()
-    fetchTechnicians()
-  }, [fetchMachines, fetchRooms, fetchTechnicians])
+    const fetchData = async () => {
+      try {
+        const { fetchMachines } = useMachineStore.getState()
+        const { fetchRooms } = useRoomStore.getState()
+        const { fetchTechnicians } = useTechnicianStore.getState()
 
-  // Set assignedTo to current user when user is available
+        await Promise.all([
+          fetchMachines(),
+          fetchRooms(),
+          fetchTechnicians()
+        ])
+      } catch (error) {
+        console.error('Error fetching data:', error)
+      }
+    }
+
+    fetchData()
+  }, [])
+
+  // Set assignedTo to current user when available
   useEffect(() => {
-    if (user?.username) {
+    if (user?.username && !formData.assignedTo) {
       setValue('assignedTo', user.username)
     }
-  }, [user, setValue])
+  }, [user, setValue, formData.assignedTo])
 
-  // Get data with null checks - memoized to prevent unnecessary re-renders
-  const operationalMachines = React.useMemo(() => 
-    machines ? getOperationalMachines() : [], [machines]
-  )
-  const activeRooms = React.useMemo(() => 
-    rooms ? getActiveRooms() : [], [rooms]
-  )
-  const availableTechnicians = React.useMemo(() => 
-    technicians ? getAvailableTechnicians() : [], [technicians]
-  )
-  
-  // Debug rooms data (only log once when data changes)
-  useEffect(() => {
-    if (rooms && rooms.length > 0) {
-      console.log('Rooms loaded:', rooms.length, 'active rooms')
-    }
-  }, [rooms])
+  const operationalMachines = getOperationalMachines()
+  const activeRooms = getActiveRooms()
+  const availableTechnicians = getAvailableTechnicians()
 
-  // Flatten all fields for validation
-  // @ts-ignore - TypeScript has issues with readonly types from const assertions
-  const allFields = workOrderFormSections.flatMap(section => section.fields) as any
+  const allFields = workOrderFormSections.flatMap(section => section.fields)
   const currentSection = workOrderFormSections[currentStep]
-
-  const handleImageChange = (fieldName: string) => (file: File | null) => {
-    setValue(fieldName, file)
-    
-    if (file) {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        setImagePreview(fieldName, e.target?.result as string)
-      }
-      reader.readAsDataURL(file)
-    } else {
-      setImagePreview(fieldName, null)
-    }
-  }
 
   const handleRoomSelect = (room: any) => {
     setValue('location', room.number)
-    setRoomSearchTerm(`${room.name} (${room.number})`)
   }
 
   const handleNext = () => {
-    // Validate current section before moving to next
     const sectionFields = currentSection.fields
     
     const sectionValid = sectionFields.every(field => {
-      if (!('required' in field) || !field.required) return true
+      if (!field.required) return true
+      if (field.conditional && !formData[field.conditional]) return true
+      
       const value = formData[field.name]
+      
+      if (field.type === 'image-upload') {
+        return !field.required || (Array.isArray(value) && value.length > 0)
+      }
+      
       return value !== null && value !== undefined && value !== '' && value !== 0
     })
 
@@ -145,6 +127,40 @@ export function CreateWorkOrderForm() {
     nextStep()
   }
 
+  // Upload images to server
+  const uploadImages = async (workOrderId: number, fieldName: string, files: File[]) => {
+    if (files.length === 0) return []
+
+    const uploadPromises = files.map(async (file, index) => {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('upload_type', fieldName === 'beforePhotos' ? 'before' : 'after')
+      formData.append('order', index.toString())
+
+      try {
+        const response = await fetch(`/api/v1/work_orders/${workOrderId}/upload_file`, {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('auth-token')}`,
+          },
+        })
+
+        if (!response.ok) {
+          throw new Error(`Failed to upload ${file.name}`)
+        }
+
+        return await response.json()
+      } catch (error) {
+        console.error(`Error uploading ${file.name}:`, error)
+        toast.error(`Failed to upload ${file.name}`)
+        throw error
+      }
+    })
+
+    return Promise.all(uploadPromises)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -154,20 +170,14 @@ export function CreateWorkOrderForm() {
     }
 
     try {
-      // Get room ID from location (room number)
       const selectedRoom = activeRooms.find(room => room.number === formData.location)
-      const roomId = selectedRoom?.id || 0
-
-      // Get technician ID from assignedTo (username)
       const selectedTechnician = availableTechnicians.find(tech => tech.username === formData.assignedTo)
-      const technicianId = selectedTechnician?.id || 0
 
-      // Convert status and priority to proper case for API
       const statusMap: Record<string, 'Pending' | 'In Progress' | 'Completed' | 'Cancelled'> = {
         'pending': 'Pending',
-        'scheduled': 'In Progress', // Map scheduled to In Progress
+        'scheduled': 'In Progress',
         'in-progress': 'In Progress',
-        'on-hold': 'Pending', // Map on-hold to Pending
+        'on-hold': 'Pending',
       }
 
       const priorityMap: Record<string, 'Low' | 'Medium' | 'High' | 'Urgent'> = {
@@ -177,95 +187,74 @@ export function CreateWorkOrderForm() {
         'urgent': 'Urgent',
       }
 
-      // Convert datetime to date format for API
       const dueDate = formData.scheduledDate ? 
-        formData.scheduledDate.split('T')[0] : // Extract just the date part
+        formData.scheduledDate.split('T')[0] : 
         undefined
 
       const submitData = {
         task: formData.title,
         description: formData.description,
         status: statusMap[formData.status] || 'Pending',
-        priority: priorityMap[formData.priority] || 'Low',
+        priority: priorityMap[formData.priority] || 'Medium',
         due_date: dueDate,
-        machine_id: undefined, // Don't send 0, send undefined for optional fields
-        room_id: roomId || undefined,
-        assigned_to_id: technicianId || undefined,
+        room_id: selectedRoom?.id,
+        assigned_to_id: selectedTechnician?.id,
       }
 
-      console.log('Submitting work order data:', submitData)
-
+      // Create work order first
       const newWorkOrder = await createWorkOrder(submitData, 1)
+      
+      // Upload images if any
+      const beforeFiles = getImageFiles('beforePhotos')
+      const afterFiles = getImageFiles('afterPhotos')
+
+      if (beforeFiles.length > 0 || afterFiles.length > 0) {
+        toast.info('Uploading images...')
+        
+        try {
+          if (beforeFiles.length > 0) {
+            await uploadImages(newWorkOrder.id, 'beforePhotos', beforeFiles)
+          }
+          
+          if (afterFiles.length > 0) {
+            await uploadImages(newWorkOrder.id, 'afterPhotos', afterFiles)
+          }
+          
+          toast.success('Images uploaded successfully!')
+        } catch (error) {
+          toast.warning('Work order created, but some images failed to upload')
+        }
+      }
       
       toast.success('Work order created successfully!', {
         description: `Work order "${newWorkOrder.task}" has been created.`
       })
 
+      // Clean up and redirect
+      reset()
       router.push('/work-orders')
       
     } catch (error: any) {
       console.error('Error creating work order:', error)
-      
-      // Log more details about the error
-      if (error.response) {
-        console.error('Error response:', error.response.data)
-        console.error('Error status:', error.response.status)
-      }
-      
       toast.error('Failed to create work order')
     }
   }
 
   const getSelectOptions = (fieldName: string) => {
     switch (fieldName) {
-      case 'machine_id':
-        return operationalMachines.map(machine => ({
-          value: machine.id,
-          label: `${machine.name} - Room: ${activeRooms.find(r => r.id === machine.room_id)?.name}`
-        }))
-      case 'assigned_to_id':
+      case 'assignedTo':
         return availableTechnicians.map(tech => ({
-          value: tech.id,
+          value: tech.username,
           label: `${tech.username} - ${tech.profile.position}`
         }))
-      case 'priority':
-        return [
-          { value: 'low', label: 'Low Priority' },
-          { value: 'medium', label: 'Medium Priority' },
-          { value: 'high', label: 'High Priority' },
-          { value: 'urgent', label: 'Urgent' }
-        ]
-      case 'status':
-        return [
-          { value: 'pending', label: 'Pending' },
-          { value: 'scheduled', label: 'Scheduled' },
-          { value: 'in-progress', label: 'In Progress' },
-          { value: 'on-hold', label: 'On Hold' }
-        ]
-      case 'recurringFrequency':
-        return [
-          { value: 'daily', label: 'Daily' },
-          { value: 'weekly', label: 'Weekly' },
-          { value: 'monthly', label: 'Monthly' },
-          { value: 'quarterly', label: 'Quarterly' },
-          { value: 'annually', label: 'Annually' }
-        ]
       default:
         return []
     }
   }
 
-  async function uploadImage(file: File, workOrderId: number, type: "before" | "after") {
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("upload_type", type);
-
-    const res = await fetch(`/api/v1/work_orders/${workOrderId}/upload_file`, {
-      method: "POST",
-      body: formData,
-    });
-    if (!res.ok) throw new Error("Image upload failed");
-    return await res.json();
+  const getImageCount = (fieldName: string) => {
+    const value = formData[fieldName]
+    return Array.isArray(value) ? value.length : 0
   }
 
   return (
@@ -283,7 +272,7 @@ export function CreateWorkOrderForm() {
 
       {/* Progress Bar */}
       <ProgressBar
-        steps={progressSteps as any}
+        steps={progressSteps}
         currentStep={currentStep}
         completedSteps={completedSteps}
         stepsWithErrors={stepsWithErrors}
@@ -318,12 +307,12 @@ export function CreateWorkOrderForm() {
                 {currentSection.id === 'images' && (
                   <div className="mt-2 p-3 bg-blue-50 rounded-md">
                     <p className="text-sm text-blue-700">
-                      💡 Tip: You can skip image uploads for now and add them later. Click "Next" to continue.
+                      💡 Add before and after photos to document the work. Images help track progress and maintain quality records.
                     </p>
                   </div>
                 )}
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-6">
                 {currentSection.fields.map((field) => (
                   <DynamicFormRenderer
                     key={field.name}
@@ -334,8 +323,6 @@ export function CreateWorkOrderForm() {
                     selectOptions={getSelectOptions(field.name)}
                     autocompleteItems={field.name === 'location' ? activeRooms : []}
                     onAutocompleteSelect={field.name === 'location' ? handleRoomSelect : undefined}
-                    imagePreview={imagePreviews[field.name]}
-                    onImageChange={handleImageChange(field.name)}
                   />
                 ))}
               </CardContent>
@@ -374,7 +361,7 @@ export function CreateWorkOrderForm() {
           ) : (
             <Button
               type="submit"
-              disabled={loading || !isFormComplete()}
+              disabled={loading}
               className="flex items-center gap-2"
             >
               {loading ? (
@@ -390,8 +377,8 @@ export function CreateWorkOrderForm() {
         </div>
       </form>
 
-      {/* Quick Summary Sidebar */}
-      <Card className="lg:fixed lg:top-4 lg:right-4 lg:w-80">
+      {/* Summary Sidebar */}
+      <Card className="lg:fixed lg:top-4 lg:right-4 lg:w-80 lg:max-h-[80vh] lg:overflow-y-auto">
         <CardHeader>
           <CardTitle className="text-lg">Summary</CardTitle>
         </CardHeader>
@@ -401,44 +388,42 @@ export function CreateWorkOrderForm() {
               <span className="text-gray-600">Progress:</span>
               <span className="font-medium">{getCompletionPercentage()}%</span>
             </div>
-                         <div className="flex justify-between">
-               <span className="text-gray-600">Title:</span>
-               <span className="font-medium truncate">{formData.title || 'Not set'}</span>
-             </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Title:</span>
+              <span className="font-medium truncate">{formData.title || 'Not set'}</span>
+            </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Status:</span>
               <Badge className="bg-yellow-100 text-yellow-800">
-                {formData.status}
+                {formData.status || 'Not set'}
               </Badge>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Priority:</span>
               <Badge className="bg-blue-100 text-blue-800">
-                {formData.priority}
+                {formData.priority || 'Not set'}
               </Badge>
             </div>
-            {formData.due_date && (
+            {formData.scheduledDate && (
               <div className="flex justify-between">
                 <span className="text-gray-600">Due:</span>
-                <span className="font-medium">{formData.due_date}</span>
+                <span className="font-medium">{new Date(formData.scheduledDate).toLocaleDateString()}</span>
               </div>
             )}
-            {formData.beforePhotos && (
+            {getImageCount('beforePhotos') > 0 && (
               <div className="flex justify-between">
                 <span className="text-gray-600">Before Photos:</span>
-                <Badge className="bg-green-100 text-green-800">Uploaded</Badge>
+                <Badge className="bg-green-100 text-green-800">
+                  {getImageCount('beforePhotos')} files
+                </Badge>
               </div>
             )}
-            {formData.afterPhotos && (
+            {getImageCount('afterPhotos') > 0 && (
               <div className="flex justify-between">
                 <span className="text-gray-600">After Photos:</span>
-                <Badge className="bg-green-100 text-green-800">Uploaded</Badge>
-              </div>
-            )}
-            {formData.attachments && (
-              <div className="flex justify-between">
-                <span className="text-gray-600">Attachments:</span>
-                <Badge className="bg-green-100 text-green-800">Uploaded</Badge>
+                <Badge className="bg-green-100 text-green-800">
+                  {getImageCount('afterPhotos')} files
+                </Badge>
               </div>
             )}
           </div>

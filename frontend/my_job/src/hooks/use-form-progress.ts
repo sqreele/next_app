@@ -1,114 +1,63 @@
 // src/hooks/use-form-progress.ts
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { FormField } from '@/config/work-order-form-config'
+import { useState, useMemo } from 'react'
 
-export interface FormSection {
-  title: string
-  fields: FormField[]
-}
-
-export function useFormProgress(sections: FormSection[], formData: any, errors: any) {
+export function useFormProgress(sections: any[], formData: any, errors: any) {
   const [currentStep, setCurrentStep] = useState(0)
-  const [completedSteps, setCompletedSteps] = useState<number[]>([])
-  const [stepsWithErrors, setStepsWithErrors] = useState<number[]>([])
-  const [visitedSteps, setVisitedSteps] = useState<Set<number>>(new Set([0]))
 
-  // Check if a section is completed - memoized to prevent infinite loops
-  const isSectionCompleted = useCallback((sectionIndex: number): boolean => {
-    const section = sections[sectionIndex]
-    if (!section) return false
-
-    return section.fields.every(field => {
-      if (!field.required) return true
+  const completedSteps = useMemo(() => {
+    return sections.map((section, index) => {
+      if (index > currentStep) return false
       
-      const value = formData[field.name]
-      
-      // Check if field has value
-      if (value === null || value === undefined || value === '') return false
-      if (typeof value === 'string' && !value.trim()) return false
-      if (typeof value === 'number' && value === 0 && field.name.endsWith('_id')) return false
-      
-      return true
+      return section.fields.every((field: any) => {
+        if (!field.required) return true
+        if (field.conditional && !formData[field.conditional]) return true
+        
+        const value = formData[field.name]
+        return value !== null && value !== undefined && value !== '' && value !== 0
+      })
     })
-  }, [sections, formData])
+  }, [sections, formData, currentStep])
 
-  // Check if a section has errors - memoized to prevent infinite loops
-  const sectionHasErrors = useCallback((sectionIndex: number): boolean => {
-    const section = sections[sectionIndex]
-    if (!section) return false
-
-    return section.fields.some(field => errors[field.name])
+  const stepsWithErrors = useMemo(() => {
+    return sections.map((section) => {
+      return section.fields.some((field: any) => errors[field.name])
+    })
   }, [sections, errors])
 
-  // Update progress based on form data and errors
-  useEffect(() => {
-    const newCompletedSteps: number[] = []
-    const newStepsWithErrors: number[] = []
-
-    sections.forEach((_, index) => {
-      if (isSectionCompleted(index)) {
-        newCompletedSteps.push(index)
-      }
-      
-      if (sectionHasErrors(index)) {
-        newStepsWithErrors.push(index)
-      }
-    })
-
-    setCompletedSteps(newCompletedSteps)
-    setStepsWithErrors(newStepsWithErrors)
-  }, [sections, isSectionCompleted, sectionHasErrors])
-
-  // Navigate to step
-  const goToStep = (stepIndex: number) => {
-    if (stepIndex >= 0 && stepIndex < sections.length) {
-      setCurrentStep(stepIndex)
-      setVisitedSteps(prev => new Set([...prev, stepIndex]))
+  const goToStep = (step: number) => {
+    if (step >= 0 && step < sections.length) {
+      setCurrentStep(step)
     }
   }
 
-  // Navigate to next step
   const nextStep = () => {
     if (currentStep < sections.length - 1) {
-      const nextStepIndex = currentStep + 1
-      setCurrentStep(nextStepIndex)
-      setVisitedSteps(prev => new Set([...prev, nextStepIndex]))
+      setCurrentStep(currentStep + 1)
     }
   }
 
-  // Navigate to previous step
   const prevStep = () => {
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1)
     }
   }
 
-  // Check if we can navigate to next step
-  const canGoNext = () => {
-    return currentStep < sections.length - 1
-  }
+  const canGoNext = () => currentStep < sections.length - 1
+  const canGoPrev = () => currentStep > 0
 
-  // Check if we can navigate to previous step
-  const canGoPrev = () => {
-    return currentStep > 0
-  }
-
-  // Get overall form completion percentage
   const getCompletionPercentage = () => {
-    if (completedSteps.length === 0) return 0
-    return Math.round((completedSteps.length / sections.length) * 100)
+    const completedCount = completedSteps.filter(Boolean).length
+    return Math.round((completedCount / sections.length) * 100)
   }
 
-  // Check if form is complete
   const isFormComplete = () => {
-    return completedSteps.length === sections.length && stepsWithErrors.length === 0
+    return completedSteps.every(Boolean)
   }
 
   return {
     currentStep,
     completedSteps,
     stepsWithErrors,
-    visitedSteps: Array.from(visitedSteps),
     goToStep,
     nextStep,
     prevStep,
@@ -116,7 +65,5 @@ export function useFormProgress(sections: FormSection[], formData: any, errors: 
     canGoPrev,
     getCompletionPercentage,
     isFormComplete,
-    isSectionCompleted,
-    sectionHasErrors
   }
 }
