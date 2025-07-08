@@ -172,7 +172,7 @@ export const workOrderFormSections: FormSection[] = [
         label: 'Before Photos',
         type: 'image-upload',
         accept: 'image/*',
-        required: false,
+        required: ture,
         multiple: true,
         maxFiles: 5,
         maxSize: 10, // 10MB
@@ -182,7 +182,7 @@ export const workOrderFormSections: FormSection[] = [
         label: 'After Photos',
         type: 'image-upload',
         accept: 'image/*',
-        required: false,
+        required: ture,
         multiple: true,
         maxFiles: 5,
         maxSize: 10, // 10MB
