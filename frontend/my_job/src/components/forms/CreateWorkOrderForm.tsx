@@ -17,6 +17,7 @@ import { workOrderFormSections, progressSteps } from '@/config/work-order-form-c
 import { useWorkOrderForm } from '@/hooks/use-work-order-form'
 import { useFormProgress } from '@/hooks/use-form-progress'
 import { DynamicFormRenderer } from './dynamic-form-renderer'
+import { ReviewSection } from './ReviewSection' // Add this import
 import { ProgressBar } from '@/components/ui/progress-bar'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -313,18 +314,29 @@ export function CreateWorkOrderForm() {
                 )}
               </CardHeader>
               <CardContent className="space-y-6">
-                {currentSection.fields.map((field) => (
-                  <DynamicFormRenderer
-                    key={field.name}
-                    field={field}
-                    value={formData[field.name]}
-                    error={errors[field.name]}
-                    onChange={(value) => setValue(field.name, value)}
-                    selectOptions={getSelectOptions(field.name)}
-                    autocompleteItems={field.name === 'location' ? activeRooms : []}
-                    onAutocompleteSelect={field.name === 'location' ? handleRoomSelect : undefined}
+                {/* Special handling for review step */}
+                {currentSection.id === 'review' ? (
+                  <ReviewSection
+                    formData={formData}
+                    activeRooms={activeRooms}
+                    availableTechnicians={availableTechnicians}
+                    getImageFiles={getImageFiles}
                   />
-                ))}
+                ) : (
+                  // Regular form fields for other steps
+                  currentSection.fields.map((field) => (
+                    <DynamicFormRenderer
+                      key={field.name}
+                      field={field}
+                      value={formData[field.name]}
+                      error={errors[field.name]}
+                      onChange={(value) => setValue(field.name, value)}
+                      selectOptions={getSelectOptions(field.name)}
+                      autocompleteItems={field.name === 'location' ? activeRooms : []}
+                      onAutocompleteSelect={field.name === 'location' ? handleRoomSelect : undefined}
+                    />
+                  ))
+                )}
               </CardContent>
             </Card>
           </motion.div>
