@@ -17,7 +17,7 @@ import { workOrderFormSections, progressSteps } from '@/config/work-order-form-c
 import { useWorkOrderForm } from '@/hooks/use-work-order-form'
 import { useFormProgress } from '@/hooks/use-form-progress'
 import { DynamicFormRenderer } from './dynamic-form-renderer'
-import { ReviewSection } from './ReviewSection' // Add this import
+import { ReviewSection } from './ReviewSection'
 import { ProgressBar } from '@/components/ui/progress-bar'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -128,18 +128,19 @@ export function CreateWorkOrderForm() {
     nextStep()
   }
 
-  // Upload images to server
-  const uploadImages = async (workOrderId: number, fieldName: string, files: File[]) => {
+  // NEW: Function to upload images to a general endpoint first
+  const uploadImagesToServer = async (files: File[], type: 'before' | 'after') => {
     if (files.length === 0) return []
 
     const uploadPromises = files.map(async (file, index) => {
       const formData = new FormData()
       formData.append('file', file)
-      formData.append('upload_type', fieldName === 'beforePhotos' ? 'before' : 'after')
+      formData.append('upload_type', type)
       formData.append('order', index.toString())
 
       try {
-        const response = await fetch(`/api/v1/work_orders/${workOrderId}/upload_file`, {
+        // Upload to a general upload endpoint first
+        const response = await fetch('/api/v1/upload_image', {
           method: 'POST',
           body: formData,
           headers: {
@@ -151,10 +152,11 @@ export function CreateWorkOrderForm() {
           throw new Error(`Failed to upload ${file.name}`)
         }
 
-        return await response.json()
+        const result = await response.json()
+        console.log(`✅ Successfully uploaded ${file.name}:`, result)
+        return result
       } catch (error) {
-        console.error(`Error uploading ${file.name}:`, error)
-        toast.error(`Failed to upload ${file.name}`)
+        console.error(`❌ Error uploading ${file.name}:`, error)
         throw error
       }
     })
@@ -162,6 +164,7 @@ export function CreateWorkOrderForm() {
     return Promise.all(uploadPromises)
   }
 
+  // UPDATED: Modified handleSubmit to upload images first
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -192,6 +195,43 @@ export function CreateWorkOrderForm() {
         formData.scheduledDate.split('T')[0] : 
         undefined
 
+      // Get image files
+      const beforeFiles = getImageFiles('beforePhotos')
+      const afterFiles = getImageFiles('afterPhotos')
+
+      // Upload images first if any exist
+      let beforeImagePath = null
+      let afterImagePath = null
+
+      if (beforeFiles.length > 0 || afterFiles.length > 0) {
+        toast.info('Uploading images...')
+        
+        try {
+          // Upload before images
+          if (beforeFiles.length > 0) {
+            console.log('📤 Uploading before images:', beforeFiles.length)
+            const beforeUploadResults = await uploadImagesToServer(beforeFiles, 'before')
+            beforeImagePath = beforeUploadResults[0]?.file_path || beforeUploadResults[0]?.path || null
+            console.log('📁 Before image path:', beforeImagePath)
+          }
+          
+          // Upload after images  
+          if (afterFiles.length > 0) {
+            console.log('📤 Uploading after images:', afterFiles.length)
+            const afterUploadResults = await uploadImagesToServer(afterFiles, 'after')
+            afterImagePath = afterUploadResults[0]?.file_path || afterUploadResults[0]?.path || null
+            console.log('📁 After image path:', afterImagePath)
+          }
+          
+          toast.success('Images uploaded successfully!')
+        } catch (error) {
+          console.error('❌ Image upload failed:', error)
+          toast.error('Failed to upload images')
+          return // Don't create work order if image upload fails
+        }
+      }
+
+      // Create work order data with image paths included
       const submitData = {
         task: formData.title,
         description: formData.description,
@@ -200,35 +240,18 @@ export function CreateWorkOrderForm() {
         due_date: dueDate,
         room_id: selectedRoom?.id,
         assigned_to_id: selectedTechnician?.id,
+        // Include image paths in the initial request
+        before_image_path: beforeImagePath,
+        after_image_path: afterImagePath,
       }
 
-      // Create work order first
+      console.log('📋 Creating work order with data:', submitData)
+
+      // Create work order with image paths included
       const newWorkOrder = await createWorkOrder(submitData, 1)
       
-      // Upload images if any
-      const beforeFiles = getImageFiles('beforePhotos')
-      const afterFiles = getImageFiles('afterPhotos')
-
-      if (beforeFiles.length > 0 || afterFiles.length > 0) {
-        toast.info('Uploading images...')
-        
-        try {
-          if (beforeFiles.length > 0) {
-            await uploadImages(newWorkOrder.id, 'beforePhotos', beforeFiles)
-          }
-          
-          if (afterFiles.length > 0) {
-            await uploadImages(newWorkOrder.id, 'afterPhotos', afterFiles)
-          }
-          
-          toast.success('Images uploaded successfully!')
-        } catch (error) {
-          toast.warning('Work order created, but some images failed to upload')
-        }
-      }
-      
       toast.success('Work order created successfully!', {
-        description: `Work order "${newWorkOrder.task}" has been created.`
+        description: `Work order "${newWorkOrder.task}" has been created with images.`
       })
 
       // Clean up and redirect
@@ -236,7 +259,7 @@ export function CreateWorkOrderForm() {
       router.push('/work-orders')
       
     } catch (error: any) {
-      console.error('Error creating work order:', error)
+      console.error('❌ Error creating work order:', error)
       toast.error('Failed to create work order')
     }
   }
