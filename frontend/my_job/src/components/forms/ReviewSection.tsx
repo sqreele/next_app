@@ -1,4 +1,4 @@
-// src/components/forms/ReviewSection.tsx - New component for review step
+// src/components/forms/ReviewSection.tsx - Updated to show upload status
 import React from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,25 +8,35 @@ import {
   MapPinIcon,
   UsersIcon,
   PhotoIcon,
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline'
 
 interface ReviewSectionProps {
   formData: any
   activeRooms: any[]
   availableTechnicians: any[]
-  getImageFiles: (fieldName: string) => File[]
+  getUploadedImageUrls: (fieldName: string) => string[]
+  uploadStatus: {
+    total: number
+    uploaded: number
+    uploading: number
+    failed: number
+    pending: number
+  }
 }
 
 export function ReviewSection({ 
   formData, 
   activeRooms, 
   availableTechnicians,
-  getImageFiles 
+  getUploadedImageUrls,
+  uploadStatus
 }: ReviewSectionProps) {
   const selectedRoom = activeRooms.find(room => room.number === formData.location)
   const selectedTechnician = availableTechnicians.find(tech => tech.username === formData.assignedTo)
-  const beforeFiles = getImageFiles('beforePhotos')
-  const afterFiles = getImageFiles('afterPhotos')
+  const beforeImageUrls = getUploadedImageUrls('beforePhotos')
+  const afterImageUrls = getUploadedImageUrls('afterPhotos')
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -54,6 +64,25 @@ export function ReviewSection({
         <h2 className="text-xl font-semibold text-gray-900">Review Your Work Order</h2>
         <p className="text-gray-600 mt-2">Please review all information before submitting</p>
       </div>
+
+      {/* Upload Status Warning */}
+      {uploadStatus.total > 0 && (uploadStatus.uploading > 0 || uploadStatus.failed > 0) && (
+        <Card className="border-yellow-200 bg-yellow-50">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <ExclamationTriangleIcon className="h-5 w-5 text-yellow-600 mt-0.5" />
+              <div>
+                <h4 className="text-sm font-medium text-yellow-800">Image Upload Status</h4>
+                <p className="text-sm text-yellow-700 mt-1">
+                  {uploadStatus.uploading > 0 && `${uploadStatus.uploading} images are still uploading. `}
+                  {uploadStatus.failed > 0 && `${uploadStatus.failed} images failed to upload. `}
+                  Please wait for uploads to complete or fix failed uploads before submitting.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Basic Information */}
       <Card>
@@ -135,7 +164,7 @@ export function ReviewSection({
         </CardContent>
       </Card>
 
-      {/* Images & Files */}
+      {/* Images & Documentation */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -146,15 +175,25 @@ export function ReviewSection({
         <CardContent className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-gray-600">Before Photos:</span>
-            <Badge className="bg-blue-100 text-blue-800">
-              {beforeFiles.length} file(s)
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge className="bg-blue-100 text-blue-800">
+                {beforeImageUrls.length} uploaded
+              </Badge>
+              {beforeImageUrls.length > 0 && (
+                <CheckCircleIcon className="h-4 w-4 text-green-500" />
+              )}
+            </div>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-gray-600">After Photos:</span>
-            <Badge className="bg-green-100 text-green-800">
-              {afterFiles.length} file(s)
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge className="bg-green-100 text-green-800">
+                {afterImageUrls.length} uploaded
+              </Badge>
+              {afterImageUrls.length > 0 && (
+                <CheckCircleIcon className="h-4 w-4 text-green-500" />
+              )}
+            </div>
           </div>
           {formData.attachments && formData.attachments.length > 0 && (
             <div className="flex items-center justify-between">
@@ -167,16 +206,40 @@ export function ReviewSection({
         </CardContent>
       </Card>
 
-      {/* Summary Warning */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+      {/* Summary Status */}
+      <div className={`border rounded-lg p-4 ${
+        uploadStatus.uploading > 0 || uploadStatus.failed > 0 
+          ? 'bg-yellow-50 border-yellow-200' 
+          : 'bg-blue-50 border-blue-200'
+      }`}>
         <div className="flex items-start">
           <div className="flex-shrink-0">
-            <ClipboardDocumentListIcon className="h-5 w-5 text-blue-600 mt-0.5" />
+            {uploadStatus.uploading > 0 || uploadStatus.failed > 0 ? (
+              <ExclamationTriangleIcon className="h-5 w-5 text-yellow-600 mt-0.5" />
+            ) : (
+              <ClipboardDocumentListIcon className="h-5 w-5 text-blue-600 mt-0.5" />
+            )}
           </div>
           <div className="ml-3">
-            <h3 className="text-sm font-medium text-blue-800">Ready to Submit</h3>
-            <p className="text-sm text-blue-700 mt-1">
-              Please review all information above. Once submitted, you can make changes by editing the work order.
+            <h3 className={`text-sm font-medium ${
+              uploadStatus.uploading > 0 || uploadStatus.failed > 0 
+                ? 'text-yellow-800' 
+                : 'text-blue-800'
+            }`}>
+              {uploadStatus.uploading > 0 || uploadStatus.failed > 0 
+                ? 'Please Complete Uploads' 
+                : 'Ready to Submit'
+              }
+            </h3>
+            <p className={`text-sm mt-1 ${
+              uploadStatus.uploading > 0 || uploadStatus.failed > 0 
+                ? 'text-yellow-700' 
+                : 'text-blue-700'
+            }`}>
+              {uploadStatus.uploading > 0 || uploadStatus.failed > 0 
+                ? 'Some images are still uploading or failed. Please wait for completion or fix errors before submitting.'
+                : 'All information has been reviewed and images are uploaded. You can now submit the work order.'
+              }
             </p>
           </div>
         </div>
