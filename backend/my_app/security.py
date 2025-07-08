@@ -60,3 +60,18 @@ async def authenticate_user(db: AsyncSession, username: str, password: str) -> O
     if not verify_password(password, user.hashed_password):
         return None
     return user
+async def try_get_current_active_user(
+    token: Optional[str] = Depends(oauth2_scheme_optional),
+    db: AsyncSession = Depends(get_db)
+) -> Optional[schemas.User]:
+    """
+    Try to get current active user. Returns None if not authenticated.
+    This is useful for optional authentication endpoints.
+    """
+    if not token:
+        return None
+    
+    try:
+        return await get_current_active_user(token, db)
+    except HTTPException:
+        return None
