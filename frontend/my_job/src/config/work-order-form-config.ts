@@ -1,4 +1,4 @@
-// src/config/work-order-form-config.ts - Add 5th step
+// src/config/work-order-form-config.ts - Updated with validation rules
 import {
   ClipboardDocumentListIcon,
   CalendarIcon,
@@ -6,8 +6,53 @@ import {
   UsersIcon,
   PhotoIcon,
   DocumentIcon,
-  CheckCircleIcon, // Add this import
+  CheckCircleIcon,
 } from '@heroicons/react/24/outline'
+
+export interface ProgressStep {
+  id: string
+  label: string
+  description?: string
+  icon?: React.ComponentType<{ className?: string }>
+}
+
+export interface FormFieldOption {
+  value: string | number
+  label: string
+}
+
+export interface FormField {
+  name: string
+  label: string
+  type: 'text' | 'textarea' | 'select' | 'checkbox' | 'date' | 'datetime-local' | 'image-upload' | 'file' | 'autocomplete'
+  required?: boolean
+  placeholder?: string
+  options?: FormFieldOption[]
+  accept?: string
+  multiple?: boolean
+  maxFiles?: number
+  maxSize?: number
+  minSize?: number
+  maxTotalSize?: number
+  allowedFormats?: string[]
+  maxWidth?: number
+  maxHeight?: number
+  minWidth?: number
+  minHeight?: number
+  conditional?: string
+  validation?: {
+    minLength?: number
+    maxLength?: number
+    pattern?: RegExp
+    custom?: (value: any) => boolean | string
+  }
+}
+
+export interface FormSection {
+  id: string
+  title: string
+  fields: FormField[]
+}
 
 export const progressSteps: ProgressStep[] = [
   {
@@ -35,13 +80,13 @@ export const progressSteps: ProgressStep[] = [
     icon: PhotoIcon,
   },
   {
-    id: 'review', // NEW 5th step
+    id: 'review',
     label: 'Review',
     description: 'Review and submit work order',
     icon: CheckCircleIcon,
   },
 ]
-// src/config/work-order-form-config.ts - Add 5th section
+
 export const workOrderFormSections: FormSection[] = [
   {
     id: 'basic',
@@ -53,6 +98,10 @@ export const workOrderFormSections: FormSection[] = [
         type: 'text',
         required: true,
         placeholder: 'Enter work order title...',
+        validation: {
+          minLength: 5,
+          maxLength: 100,
+        },
       },
       {
         name: 'description',
@@ -60,6 +109,10 @@ export const workOrderFormSections: FormSection[] = [
         type: 'textarea',
         required: true,
         placeholder: 'Describe the work to be done...',
+        validation: {
+          minLength: 10,
+          maxLength: 1000,
+        },
       },
     ],
   },
@@ -72,6 +125,13 @@ export const workOrderFormSections: FormSection[] = [
         label: 'Scheduled Date',
         type: 'datetime-local',
         required: true,
+        validation: {
+          custom: (value: string) => {
+            const selectedDate = new Date(value)
+            const now = new Date()
+            return selectedDate > now || 'Scheduled date must be in the future'
+          },
+        },
       },
       {
         name: 'priority',
@@ -147,10 +207,17 @@ export const workOrderFormSections: FormSection[] = [
         label: 'Before Photos',
         type: 'image-upload',
         accept: 'image/*',
-        required: false,
+        required: false, // Set to true if you want to require before photos
         multiple: true,
         maxFiles: 5,
-        maxSize: 10, // 10MB
+        maxSize: 10, // 10MB per file
+        minSize: 0.01, // 10KB minimum
+        maxTotalSize: 25, // 25MB total for before photos
+        allowedFormats: ['jpeg', 'jpg', 'png', 'webp'],
+        maxWidth: 4096,
+        maxHeight: 4096,
+        minWidth: 200,
+        minHeight: 200,
       },
       {
         name: 'afterPhotos',
@@ -160,7 +227,14 @@ export const workOrderFormSections: FormSection[] = [
         required: false,
         multiple: true,
         maxFiles: 5,
-        maxSize: 10, // 10MB
+        maxSize: 10, // 10MB per file
+        minSize: 0.01, // 10KB minimum
+        maxTotalSize: 25, // 25MB total for after photos
+        allowedFormats: ['jpeg', 'jpg', 'png', 'webp'],
+        maxWidth: 4096,
+        maxHeight: 4096,
+        minWidth: 200,
+        minHeight: 200,
       },
       {
         name: 'attachments',
@@ -175,7 +249,7 @@ export const workOrderFormSections: FormSection[] = [
     ],
   },
   {
-    id: 'review', // NEW 5th section
+    id: 'review',
     title: 'Review & Submit',
     fields: [
       // This section will be handled specially in the component
