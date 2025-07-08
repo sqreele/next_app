@@ -32,6 +32,10 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+from fastapi.staticfiles import StaticFiles
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+app.mount("/static", StaticFiles(directory="Server/static"), name="static")
+
 # Add Session middleware for OAuth
 app.add_middleware(
     SessionMiddleware,

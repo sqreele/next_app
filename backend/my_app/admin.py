@@ -6,6 +6,8 @@ from sqladmin import ModelView
 from wtforms import PasswordField
 from wtforms.validators import Optional, DataRequired
 from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile
+import os
+
 
 class UserAdminFinal(ModelView, model=User):
     column_list = [User.id, User.username, User.email, User.is_active]
@@ -349,6 +351,7 @@ class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
         WorkOrderFile.upload_type,
         WorkOrderFile.uploaded_at,
         WorkOrderFile.work_order_id,
+        "image_preview",  # Add this line for the preview column
     ]
     form_columns = [
         WorkOrderFile.work_order_id,
@@ -365,6 +368,33 @@ class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
         WorkOrderFile.file_path,
         WorkOrderFile.upload_type,
     ]
+
+    # Add image preview method
+    def image_preview(self, obj):
+    if obj.file_path and obj.file_path.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+        try:
+            # Handle different file path formats
+            if obj.file_path.startswith("uploads/"):
+                # If file_path already includes uploads/ prefix
+                url = f"/{obj.file_path}"
+            elif "/" in obj.file_path:
+                # If file_path has subdirectories
+                url = f"/uploads/{obj.file_path}"
+            else:
+                # If file_path is just the filename
+                url = f"/uploads/{obj.file_path}"
+            
+            return f'''
+            <img src="{url}" 
+                 style="max-height:60px; max-width:100px; object-fit:contain; border: 1px solid #ddd; border-radius: 4px;" 
+                 onerror="this.style.display='none'; this.nextSibling.style.display='inline';" />
+            <span style="display:none; color: #999; font-size: 12px;">Image not found</span>
+            '''
+        except Exception as e:
+            return f'<span style="color: #999; font-size: 12px;">Error loading image</span>'
+    return ""
+    image_preview.__name__ = "Image Preview"
+    image_preview.allow_html = True
 
     form_args = {
         'work_order_id': {

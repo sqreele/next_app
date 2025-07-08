@@ -2,10 +2,17 @@
 # File: backend/my_app/routers/work_orders.py (Corrected)
 # Description: Async work order routes.
 # ==============================================================================
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from typing import List, Optional
 from .. import crud, schemas, dependencies
+import os
+from datetime import datetime
+from sqlalchemy import Column, Integer, String, DateTime, func, ForeignKey
+from sqlalchemy.orm import relationship
+from sqlalchemy.ext.declarative import declarative_base
+
+Base = declarative_base()
 
 router = APIRouter(prefix="/work_orders", tags=["work_orders"])
 
@@ -56,3 +63,40 @@ async def delete_work_order(
     if work_order is None:
         raise HTTPException(status_code=404, detail="Work order not found")
     return {"message": "Work order deleted successfully"}
+
+@router.post("/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    work_order_id: int = Form(...),
+    db: AsyncSession = Depends(dependencies.get_db)
+):
+    upload_dir = "uploads"
+    os.makedirs(upload_dir, exist_ok=True)
+    file_location = os.path.join(upload_dir, file.filename)
+    with open(file_location, "wb") as f:
+        content = await file.read()
+        f.write(content)
+    # Create DB record
+    file_record = schemas.WorkOrderFileCreate(
+        file_path=file_location,
+        file_name=file.filename,
+        file_size=len(content),
+        mime_type=file.content_type,
+        upload_type="Image",  # or "Document", etc.
+        uploaded_at=datetime.utcnow(),
+        work_order_id=work_order_id
+    )
+    db_file = await crud.create_work_order_file(db, file_record)
+    return {"filename": file.filename, "path": file_location, "db_id": db_file.id}
+
+@router.post("/upload_image")
+async def upload_image(file: UploadFile = File(...)):
+    upload_dir = "uploads"
+    os.makedirs(upload_dir, exist_ok=True)
+    file_location = os.path.join(upload_dir, file.filename)
+    with open(file_location, "wb") as f:
+        content = await file.read()
+        f.write(content)
+    return {"filename": file.filename}
+
+

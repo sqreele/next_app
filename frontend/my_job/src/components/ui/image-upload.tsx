@@ -51,7 +51,7 @@ export function ImageUpload({
   label,
   error,
   required = false,
-  uploadEndpoint = '/api/v1/upload_image',
+  uploadEndpoint = '/api/v1/work_orders/upload_image',
   uploadType = 'before',
 }: ImageUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false)
