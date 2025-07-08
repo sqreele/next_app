@@ -1,4 +1,4 @@
-// src/components/layout/header.tsx (Updated with null safety)
+// src/components/layout/header.tsx (Updated - Corrected with null safety)
 'use client'
 
 import React, { useState, useEffect } from 'react'
@@ -178,8 +178,10 @@ export function Header() {
                     {user.email}
                   </p>
                   <p className="text-xs leading-none text-muted-foreground">
-                    {/* FIX: Add null checks here */}
                     {user.profile?.role || 'User'} - {user.profile?.position || 'No position'}
+                    {user.profile?.properties?.length > 0 && (
+                      <span className="block mt-1">📍 {user.profile.properties[0].name}</span>
+                    )}
                   </p>
                 </div>
               </DropdownMenuLabel>
@@ -196,7 +198,6 @@ export function Header() {
                   Settings
                 </Link>
               </DropdownMenuItem>
-              {/* FIX: Add null check for Admin role */}
               {user.profile?.role === 'Admin' && (
                 <DropdownMenuItem asChild>
                   <Link href="/users">
