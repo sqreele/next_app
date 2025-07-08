@@ -182,7 +182,7 @@ async def get_current_user_info(current_user: schemas.User = Depends(get_current
 
 
 @router.get("/status")
-async def auth_status(current_user: Optional[schemas.User] = Depends(security.try_get_current_active_user)):
+async def auth_status(current_user: Optional[schemas.User] = Depends(try_get_current_active_user)):
     """
     Checks if the current user is authenticated.
     This endpoint is useful for the frontend to determine login state.
