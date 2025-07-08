@@ -1,6 +1,6 @@
-// src/components/ui/image-upload.tsx - Complete working version
+// src/components/ui/image-upload.tsx - Enhanced with better validation
 import React, { useCallback } from 'react'
-import { PhotoIcon, XMarkIcon, EyeIcon } from '@heroicons/react/24/outline'
+import { PhotoIcon, XMarkIcon, EyeIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import { toast } from 'sonner'
 
 interface ImageFile {
@@ -16,8 +16,16 @@ interface ImageUploadProps {
   multiple?: boolean
   maxFiles?: number
   maxSize?: number // in MB
+  minSize?: number // in MB
+  maxTotalSize?: number // in MB - total size of all files
+  allowedFormats?: string[] // e.g., ['jpeg', 'jpg', 'png', 'webp']
+  maxWidth?: number // max image width in pixels
+  maxHeight?: number // max image height in pixels
+  minWidth?: number // min image width in pixels
+  minHeight?: number // min image height in pixels
   label?: string
   error?: string
+  required?: boolean
 }
 
 export function ImageUpload({
@@ -27,97 +35,162 @@ export function ImageUpload({
   multiple = true,
   maxFiles = 5,
   maxSize = 10,
+  minSize = 0.01, // 10KB minimum
+  maxTotalSize = 50, // 50MB total
+  allowedFormats = ['jpeg', 'jpg', 'png', 'webp'],
+  maxWidth = 4096,
+  maxHeight = 4096,
+  minWidth = 100,
+  minHeight = 100,
   label,
   error,
+  required = false,
 }: ImageUploadProps) {
   const [isDragOver, setIsDragOver] = React.useState(false)
   const [previewImage, setPreviewImage] = React.useState<string | null>(null)
+  const [validationErrors, setValidationErrors] = React.useState<string[]>([])
 
-  // Debug: Log component state
-  React.useEffect(() => {
-    console.log(`🖼️ [ImageUpload-${label}] Component rendered with value:`, value)
-    console.log(`📊 [ImageUpload-${label}] Value type:`, typeof value, 'isArray:', Array.isArray(value))
-  }, [value, label])
+  // Comprehensive file validation
+  const validateFile = async (file: File): Promise<{ isValid: boolean; errors: string[] }> => {
+    const errors: string[] = []
 
-  const validateFile = (file: File): boolean => {
-    console.log(`🔍 [ImageUpload-${label}] Validating file:`, file.name, file.size, file.type)
+    // File size validation
+    const fileSizeMB = file.size / (1024 * 1024)
+    if (fileSizeMB > maxSize) {
+      errors.push(`File ${file.name} is too large. Maximum size is ${maxSize}MB.`)
+    }
+    if (fileSizeMB < minSize) {
+      errors.push(`File ${file.name} is too small. Minimum size is ${minSize}MB.`)
+    }
+
+    // File type validation
+    if (!file.type.startsWith('image/')) {
+      errors.push(`File ${file.name} is not a valid image.`)
+      return { isValid: false, errors }
+    }
+
+    // Format validation
+    const fileExtension = file.name.split('.').pop()?.toLowerCase()
+    if (fileExtension && !allowedFormats.map(f => f.toLowerCase()).includes(fileExtension)) {
+      errors.push(`File ${file.name} format not allowed. Allowed formats: ${allowedFormats.join(', ')}`)
+    }
+
+    // Image dimension validation
+    try {
+      const dimensions = await getImageDimensions(file)
+      if (dimensions.width > maxWidth) {
+        errors.push(`Image ${file.name} width (${dimensions.width}px) exceeds maximum (${maxWidth}px)`)
+      }
+      if (dimensions.height > maxHeight) {
+        errors.push(`Image ${file.name} height (${dimensions.height}px) exceeds maximum (${maxHeight}px)`)
+      }
+      if (dimensions.width < minWidth) {
+        errors.push(`Image ${file.name} width (${dimensions.width}px) is below minimum (${minWidth}px)`)
+      }
+      if (dimensions.height < minHeight) {
+        errors.push(`Image ${file.name} height (${dimensions.height}px) is below minimum (${minHeight}px)`)
+      }
+    } catch (error) {
+      errors.push(`Could not validate dimensions for ${file.name}`)
+    }
+
+    return { isValid: errors.length === 0, errors }
+  }
+
+  // Get image dimensions
+  const getImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => {
+        resolve({ width: img.naturalWidth, height: img.naturalHeight })
+      }
+      img.onerror = reject
+      img.src = URL.createObjectURL(file)
+    })
+  }
+
+  // Validate total file size
+  const validateTotalSize = (newFiles: File[], existingFiles: ImageFile[]): boolean => {
+    const existingSize = existingFiles.reduce((total, img) => total + img.file.size, 0)
+    const newSize = newFiles.reduce((total, file) => total + file.size, 0)
+    const totalSizeMB = (existingSize + newSize) / (1024 * 1024)
     
-    // Check file size
-    if (file.size > maxSize * 1024 * 1024) {
-      console.log(`❌ [ImageUpload-${label}] File too large:`, file.size)
-      toast.error(`File ${file.name} is too large. Maximum size is ${maxSize}MB.`)
+    if (totalSizeMB > maxTotalSize) {
+      toast.error(`Total file size (${totalSizeMB.toFixed(2)}MB) exceeds maximum (${maxTotalSize}MB)`)
       return false
     }
-
-    // Check file type
-    if (accept === 'image/*' && !file.type.startsWith('image/')) {
-      console.log(`❌ [ImageUpload-${label}] Invalid file type:`, file.type)
-      toast.error(`File ${file.name} is not a valid image.`)
-      return false
-    }
-
-    console.log(`✅ [ImageUpload-${label}] File validation passed`)
     return true
   }
 
   const handleFiles = useCallback(
-    (files: FileList) => {
+    async (files: FileList) => {
       console.log(`📁 [ImageUpload-${label}] Handling ${files.length} files`)
-      console.log(`📊 [ImageUpload-${label}] Current value before adding:`, value)
       
       const validFiles: File[] = []
+      const allErrors: string[] = []
       
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i]
-        console.log(`🔍 [ImageUpload-${label}] Processing file ${i + 1}:`, file.name)
-        if (validateFile(file)) {
-          validFiles.push(file)
-        }
-      }
-
-      console.log(`✅ [ImageUpload-${label}] Valid files:`, validFiles.length)
-
-      if (value.length + validFiles.length > maxFiles) {
-        console.log(`❌ [ImageUpload-${label}] Too many files: ${value.length + validFiles.length} > ${maxFiles}`)
-        toast.error(`Maximum ${maxFiles} files allowed.`)
+      // Check file count
+      if (value.length + files.length > maxFiles) {
+        toast.error(`Maximum ${maxFiles} files allowed. You're trying to add ${files.length} more to ${value.length} existing files.`)
         return
       }
 
-      const newImageFiles: ImageFile[] = validFiles.map(file => {
-        const imageFile = {
+      // Check total size first
+      if (!validateTotalSize(Array.from(files), value)) {
+        return
+      }
+
+      // Validate each file
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i]
+        console.log(`🔍 [ImageUpload-${label}] Validating file ${i + 1}:`, file.name)
+        
+        const validation = await validateFile(file)
+        if (validation.isValid) {
+          validFiles.push(file)
+        } else {
+          allErrors.push(...validation.errors)
+        }
+      }
+
+      // Show validation errors
+      if (allErrors.length > 0) {
+        setValidationErrors(allErrors)
+        allErrors.forEach(error => toast.error(error))
+      } else {
+        setValidationErrors([])
+      }
+
+      // Add valid files
+      if (validFiles.length > 0) {
+        const newImageFiles: ImageFile[] = validFiles.map(file => ({
           file,
           preview: URL.createObjectURL(file),
           id: Math.random().toString(36).substr(2, 9),
-        }
-        console.log(`🆕 [ImageUpload-${label}] Created ImageFile:`, imageFile)
-        return imageFile
-      })
+        }))
 
-      const updatedValue = [...value, ...newImageFiles]
-      console.log(`📤 [ImageUpload-${label}] Calling onChange with:`, updatedValue)
-      console.log(`📊 [ImageUpload-${label}] New total files:`, updatedValue.length)
-      
-      onChange(updatedValue)
+        const updatedValue = [...value, ...newImageFiles]
+        console.log(`📤 [ImageUpload-${label}] Adding ${newImageFiles.length} valid files`)
+        onChange(updatedValue)
+        
+        if (validFiles.length < files.length) {
+          toast.warning(`${validFiles.length} of ${files.length} files were added. Check validation errors above.`)
+        }
+      }
     },
-    [value, onChange, maxFiles, maxSize, label]
+    [value, onChange, maxFiles, maxSize, minSize, maxTotalSize, allowedFormats, maxWidth, maxHeight, minWidth, minHeight, label]
   )
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    console.log(`📎 [ImageUpload-${label}] File input changed`)
     if (e.target.files && e.target.files.length > 0) {
-      console.log(`📁 [ImageUpload-${label}] Files selected:`, e.target.files.length)
       handleFiles(e.target.files)
       e.target.value = '' // Reset input
-    } else {
-      console.log(`❌ [ImageUpload-${label}] No files selected`)
     }
   }
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragOver(false)
-    console.log(`🎯 [ImageUpload-${label}] Files dropped`)
-    
     if (e.dataTransfer.files) {
       handleFiles(e.dataTransfer.files)
     }
@@ -134,16 +207,13 @@ export function ImageUpload({
   }
 
   const removeImage = (id: string) => {
-    console.log(`🗑️ [ImageUpload-${label}] Removing image with id:`, id)
     const newValue = value.filter(img => img.id !== id)
-    console.log(`📤 [ImageUpload-${label}] New value after removal:`, newValue)
     onChange(newValue)
     
     // Revoke object URL to prevent memory leaks
     const imageToRemove = value.find(img => img.id === id)
     if (imageToRemove) {
       URL.revokeObjectURL(imageToRemove.preview)
-      console.log(`🧹 [ImageUpload-${label}] Cleaned up object URL`)
     }
   }
 
@@ -155,17 +225,27 @@ export function ImageUpload({
     setPreviewImage(null)
   }
 
+  // Calculate current total size
+  const currentTotalSizeMB = value.reduce((total, img) => total + img.file.size, 0) / (1024 * 1024)
+
   return (
     <div className="space-y-4">
-      {/* Debug Info */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="bg-blue-50 border border-blue-200 rounded p-2">
-          <div className="text-xs text-blue-800">
-            Debug: {label} - {value.length} files selected
-          </div>
-          <div className="text-xs text-blue-600">
-            Value: {JSON.stringify(value.map(v => ({ name: v.file.name, id: v.id })))}
-          </div>
+      {/* Validation Status */}
+      {required && value.length === 0 && (
+        <div className="flex items-center gap-2 text-red-600 text-sm">
+          <ExclamationTriangleIcon className="h-4 w-4" />
+          <span>At least one image is required</span>
+        </div>
+      )}
+
+      {validationErrors.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+          <h4 className="text-sm font-medium text-red-800 mb-2">Validation Errors:</h4>
+          <ul className="text-sm text-red-700 space-y-1">
+            {validationErrors.map((error, index) => (
+              <li key={index}>• {error}</li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -174,7 +254,7 @@ export function ImageUpload({
         className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
           isDragOver
             ? 'border-blue-400 bg-blue-50'
-            : error
+            : error || validationErrors.length > 0
             ? 'border-red-300 bg-red-50'
             : 'border-gray-300 hover:border-gray-400'
         }`}
@@ -191,9 +271,11 @@ export function ImageUpload({
             <span className="mt-1 block text-xs text-gray-500">
               Drag and drop or click to select {multiple ? 'files' : 'file'}
             </span>
-            <span className="mt-1 block text-xs text-gray-400">
-              Max {maxFiles} files, {maxSize}MB each
-            </span>
+            <div className="mt-2 text-xs text-gray-400 space-y-1">
+              <div>Max {maxFiles} files, {maxSize}MB each, {maxTotalSize}MB total</div>
+              <div>Formats: {allowedFormats.join(', ').toUpperCase()}</div>
+              <div>Dimensions: {minWidth}×{minHeight} to {maxWidth}×{maxHeight} pixels</div>
+            </div>
           </label>
           <input
             id={`file-upload-${label}`}
@@ -205,6 +287,16 @@ export function ImageUpload({
           />
         </div>
       </div>
+
+      {/* Usage Statistics */}
+      {value.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <div className="text-sm text-blue-800">
+            <div>Files: {value.length} / {maxFiles}</div>
+            <div>Total size: {currentTotalSizeMB.toFixed(2)}MB / {maxTotalSize}MB</div>
+          </div>
+        </div>
+      )}
 
       {/* Image Previews */}
       {value.length > 0 && (
