@@ -1,12 +1,16 @@
-// src/components/ui/image-upload.tsx - Enhanced with better validation
-import React, { useCallback } from 'react'
-import { PhotoIcon, XMarkIcon, EyeIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+// src/components/ui/image-upload.tsx - With immediate upload functionality
+import React, { useCallback, useState } from 'react'
+import { PhotoIcon, XMarkIcon, EyeIcon, ExclamationTriangleIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
 import { toast } from 'sonner'
 
 interface ImageFile {
   file: File
   preview: string
   id: string
+  uploadStatus: 'pending' | 'uploading' | 'success' | 'error'
+  uploadProgress?: number
+  uploadedUrl?: string
+  error?: string
 }
 
 interface ImageUploadProps {
@@ -15,17 +19,19 @@ interface ImageUploadProps {
   accept?: string
   multiple?: boolean
   maxFiles?: number
-  maxSize?: number // in MB
-  minSize?: number // in MB
-  maxTotalSize?: number // in MB - total size of all files
-  allowedFormats?: string[] // e.g., ['jpeg', 'jpg', 'png', 'webp']
-  maxWidth?: number // max image width in pixels
-  maxHeight?: number // max image height in pixels
-  minWidth?: number // min image width in pixels
-  minHeight?: number // min image height in pixels
+  maxSize?: number
+  minSize?: number
+  maxTotalSize?: number
+  allowedFormats?: string[]
+  maxWidth?: number
+  maxHeight?: number
+  minWidth?: number
+  minHeight?: number
   label?: string
   error?: string
   required?: boolean
+  uploadEndpoint?: string
+  uploadType?: 'before' | 'after'
 }
 
 export function ImageUpload({
@@ -35,8 +41,8 @@ export function ImageUpload({
   multiple = true,
   maxFiles = 5,
   maxSize = 10,
-  minSize = 0.01, // 10KB minimum
-  maxTotalSize = 50, // 50MB total
+  minSize = 0.01,
+  maxTotalSize = 50,
   allowedFormats = ['jpeg', 'jpg', 'png', 'webp'],
   maxWidth = 4096,
   maxHeight = 4096,
@@ -45,12 +51,108 @@ export function ImageUpload({
   label,
   error,
   required = false,
+  uploadEndpoint = '/api/v1/upload_image',
+  uploadType = 'before',
 }: ImageUploadProps) {
-  const [isDragOver, setIsDragOver] = React.useState(false)
-  const [previewImage, setPreviewImage] = React.useState<string | null>(null)
-  const [validationErrors, setValidationErrors] = React.useState<string[]>([])
+  const [isDragOver, setIsDragOver] = useState(false)
+  const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const [validationErrors, setValidationErrors] = useState<string[]>([])
 
-  // Comprehensive file validation
+  // Upload image to server
+  const uploadImageToServer = async (file: File, imageId: string): Promise<string> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('upload_type', uploadType)
+    formData.append('category', 'work_order')
+
+    try {
+      console.log(`📤 Uploading ${file.name} to ${uploadEndpoint}`)
+      
+      const response = await fetch(uploadEndpoint, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('auth-token')}`,
+        },
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.message || `Upload failed: ${response.statusText}`)
+      }
+
+      const result = await response.json()
+      console.log(`✅ Upload successful for ${file.name}:`, result)
+      
+      return result.file_path || result.url || result.path
+    } catch (error) {
+      console.error(`❌ Upload failed for ${file.name}:`, error)
+      throw error
+    }
+  }
+
+  // Update image status
+  const updateImageStatus = (id: string, updates: Partial<ImageFile>) => {
+    onChange(value.map(img => 
+      img.id === id ? { ...img, ...updates } : img
+    ))
+  }
+
+  // Start upload process for an image
+  const startImageUpload = async (imageFile: ImageFile) => {
+    try {
+      // Update status to uploading
+      updateImageStatus(imageFile.id, { 
+        uploadStatus: 'uploading', 
+        uploadProgress: 0 
+      })
+
+      // Simulate progress (since fetch doesn't provide real progress)
+      const progressInterval = setInterval(() => {
+        updateImageStatus(imageFile.id, { 
+          uploadProgress: Math.min((imageFile.uploadProgress || 0) + 10, 90)
+        })
+      }, 200)
+
+      // Upload the file
+      const uploadedUrl = await uploadImageToServer(imageFile.file, imageFile.id)
+      
+      // Clear progress interval
+      clearInterval(progressInterval)
+
+      // Update with success
+      updateImageStatus(imageFile.id, {
+        uploadStatus: 'success',
+        uploadProgress: 100,
+        uploadedUrl,
+        error: undefined
+      })
+
+      toast.success(`${imageFile.file.name} uploaded successfully`)
+      
+    } catch (error: any) {
+      // Update with error
+      updateImageStatus(imageFile.id, {
+        uploadStatus: 'error',
+        uploadProgress: 0,
+        error: error.message || 'Upload failed'
+      })
+
+      toast.error(`Failed to upload ${imageFile.file.name}: ${error.message}`)
+    }
+  }
+
+  // Retry upload for failed images
+  const retryUpload = (imageFile: ImageFile) => {
+    updateImageStatus(imageFile.id, { 
+      uploadStatus: 'pending',
+      uploadProgress: 0,
+      error: undefined 
+    })
+    startImageUpload(imageFile)
+  }
+
+  // Validate file
   const validateFile = async (file: File): Promise<{ isValid: boolean; errors: string[] }> => {
     const errors: string[] = []
 
@@ -161,17 +263,23 @@ export function ImageUpload({
         setValidationErrors([])
       }
 
-      // Add valid files
+      // Add valid files and start uploads
       if (validFiles.length > 0) {
         const newImageFiles: ImageFile[] = validFiles.map(file => ({
           file,
           preview: URL.createObjectURL(file),
           id: Math.random().toString(36).substr(2, 9),
+          uploadStatus: 'pending',
+          uploadProgress: 0,
         }))
 
         const updatedValue = [...value, ...newImageFiles]
-        console.log(`📤 [ImageUpload-${label}] Adding ${newImageFiles.length} valid files`)
         onChange(updatedValue)
+        
+        // Start uploading each file immediately
+        newImageFiles.forEach(imageFile => {
+          startImageUpload(imageFile)
+        })
         
         if (validFiles.length < files.length) {
           toast.warning(`${validFiles.length} of ${files.length} files were added. Check validation errors above.`)
@@ -225,6 +333,14 @@ export function ImageUpload({
     setPreviewImage(null)
   }
 
+  // Get upload status summary
+  const uploadStatus = {
+    total: value.length,
+    uploading: value.filter(img => img.uploadStatus === 'uploading').length,
+    success: value.filter(img => img.uploadStatus === 'success').length,
+    failed: value.filter(img => img.uploadStatus === 'error').length,
+  }
+
   // Calculate current total size
   const currentTotalSizeMB = value.reduce((total, img) => total + img.file.size, 0) / (1024 * 1024)
 
@@ -249,6 +365,28 @@ export function ImageUpload({
         </div>
       )}
 
+      {/* Upload Progress Summary */}
+      {value.length > 0 && (uploadStatus.uploading > 0 || uploadStatus.failed > 0) && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <div className="text-sm text-blue-800">
+            <div className="flex items-center justify-between">
+              <span>Upload Progress:</span>
+              <span>{uploadStatus.success} / {uploadStatus.total} completed</span>
+            </div>
+            {uploadStatus.uploading > 0 && (
+              <div className="text-blue-600 mt-1">
+                {uploadStatus.uploading} file(s) uploading...
+              </div>
+            )}
+            {uploadStatus.failed > 0 && (
+              <div className="text-red-600 mt-1">
+                {uploadStatus.failed} file(s) failed to upload
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Upload Area */}
       <div
         className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
@@ -270,6 +408,9 @@ export function ImageUpload({
             </span>
             <span className="mt-1 block text-xs text-gray-500">
               Drag and drop or click to select {multiple ? 'files' : 'file'}
+            </span>
+            <span className="mt-1 block text-xs text-red-500">
+              Images will be uploaded immediately after selection
             </span>
             <div className="mt-2 text-xs text-gray-400 space-y-1">
               <div>Max {maxFiles} files, {maxSize}MB each, {maxTotalSize}MB total</div>
@@ -309,6 +450,40 @@ export function ImageUpload({
                   alt="Preview"
                   className="w-full h-full object-cover"
                 />
+                
+                {/* Upload Status Overlay */}
+                {imageFile.uploadStatus !== 'success' && (
+                  <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                    {imageFile.uploadStatus === 'uploading' && (
+                      <div className="text-center">
+                        <ArrowPathIcon className="h-6 w-6 text-white animate-spin mx-auto mb-1" />
+                        <div className="text-white text-xs">
+                          {imageFile.uploadProgress}%
+                        </div>
+                      </div>
+                    )}
+                    {imageFile.uploadStatus === 'error' && (
+                      <div className="text-center">
+                        <ExclamationTriangleIcon className="h-6 w-6 text-red-400 mx-auto mb-1" />
+                        <button
+                          onClick={() => retryUpload(imageFile)}
+                          className="text-white text-xs bg-red-600 px-2 py-1 rounded hover:bg-red-700"
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Success Indicator */}
+                {imageFile.uploadStatus === 'success' && (
+                  <div className="absolute top-2 right-2 bg-green-500 rounded-full p-1">
+                    <svg className="h-3 w-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                )}
               </div>
               
               {/* Image Actions */}
@@ -335,9 +510,18 @@ export function ImageUpload({
               <div className="mt-1 text-xs text-gray-500 truncate">
                 {imageFile.file.name}
               </div>
-              <div className="text-xs text-gray-400">
-                {(imageFile.file.size / 1024 / 1024).toFixed(1)}MB
+              <div className="text-xs text-gray-400 flex justify-between">
+                <span>{(imageFile.file.size / 1024 / 1024).toFixed(1)}MB</span>
+                {imageFile.uploadStatus === 'success' && (
+                  <span className="text-green-600">✓ Uploaded</span>
+                )}
+                {imageFile.uploadStatus === 'error' && (
+                  <span className="text-red-600">✗ Failed</span>
+                )}
               </div>
+              {imageFile.error && (
+                <div className="text-xs text-red-600 mt-1">{imageFile.error}</div>
+              )}
             </div>
           ))}
         </div>
