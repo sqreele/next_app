@@ -1,4 +1,4 @@
-// src/components/ui/image-upload.tsx
+// src/components/ui/image-upload.tsx - Complete working version
 import React, { useCallback } from 'react'
 import { PhotoIcon, XMarkIcon, EyeIcon } from '@heroicons/react/24/outline'
 import { toast } from 'sonner'
@@ -33,59 +33,90 @@ export function ImageUpload({
   const [isDragOver, setIsDragOver] = React.useState(false)
   const [previewImage, setPreviewImage] = React.useState<string | null>(null)
 
+  // Debug: Log component state
+  React.useEffect(() => {
+    console.log(`🖼️ [ImageUpload-${label}] Component rendered with value:`, value)
+    console.log(`📊 [ImageUpload-${label}] Value type:`, typeof value, 'isArray:', Array.isArray(value))
+  }, [value, label])
+
   const validateFile = (file: File): boolean => {
+    console.log(`🔍 [ImageUpload-${label}] Validating file:`, file.name, file.size, file.type)
+    
     // Check file size
     if (file.size > maxSize * 1024 * 1024) {
+      console.log(`❌ [ImageUpload-${label}] File too large:`, file.size)
       toast.error(`File ${file.name} is too large. Maximum size is ${maxSize}MB.`)
       return false
     }
 
     // Check file type
     if (accept === 'image/*' && !file.type.startsWith('image/')) {
+      console.log(`❌ [ImageUpload-${label}] Invalid file type:`, file.type)
       toast.error(`File ${file.name} is not a valid image.`)
       return false
     }
 
+    console.log(`✅ [ImageUpload-${label}] File validation passed`)
     return true
   }
 
   const handleFiles = useCallback(
     (files: FileList) => {
+      console.log(`📁 [ImageUpload-${label}] Handling ${files.length} files`)
+      console.log(`📊 [ImageUpload-${label}] Current value before adding:`, value)
+      
       const validFiles: File[] = []
       
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
+        console.log(`🔍 [ImageUpload-${label}] Processing file ${i + 1}:`, file.name)
         if (validateFile(file)) {
           validFiles.push(file)
         }
       }
 
+      console.log(`✅ [ImageUpload-${label}] Valid files:`, validFiles.length)
+
       if (value.length + validFiles.length > maxFiles) {
+        console.log(`❌ [ImageUpload-${label}] Too many files: ${value.length + validFiles.length} > ${maxFiles}`)
         toast.error(`Maximum ${maxFiles} files allowed.`)
         return
       }
 
-      const newImageFiles: ImageFile[] = validFiles.map(file => ({
-        file,
-        preview: URL.createObjectURL(file),
-        id: Math.random().toString(36).substr(2, 9),
-      }))
+      const newImageFiles: ImageFile[] = validFiles.map(file => {
+        const imageFile = {
+          file,
+          preview: URL.createObjectURL(file),
+          id: Math.random().toString(36).substr(2, 9),
+        }
+        console.log(`🆕 [ImageUpload-${label}] Created ImageFile:`, imageFile)
+        return imageFile
+      })
 
-      onChange([...value, ...newImageFiles])
+      const updatedValue = [...value, ...newImageFiles]
+      console.log(`📤 [ImageUpload-${label}] Calling onChange with:`, updatedValue)
+      console.log(`📊 [ImageUpload-${label}] New total files:`, updatedValue.length)
+      
+      onChange(updatedValue)
     },
-    [value, onChange, maxFiles, maxSize]
+    [value, onChange, maxFiles, maxSize, label]
   )
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
+    console.log(`📎 [ImageUpload-${label}] File input changed`)
+    if (e.target.files && e.target.files.length > 0) {
+      console.log(`📁 [ImageUpload-${label}] Files selected:`, e.target.files.length)
       handleFiles(e.target.files)
       e.target.value = '' // Reset input
+    } else {
+      console.log(`❌ [ImageUpload-${label}] No files selected`)
     }
   }
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragOver(false)
+    console.log(`🎯 [ImageUpload-${label}] Files dropped`)
     
     if (e.dataTransfer.files) {
       handleFiles(e.dataTransfer.files)
@@ -103,13 +134,16 @@ export function ImageUpload({
   }
 
   const removeImage = (id: string) => {
+    console.log(`🗑️ [ImageUpload-${label}] Removing image with id:`, id)
     const newValue = value.filter(img => img.id !== id)
+    console.log(`📤 [ImageUpload-${label}] New value after removal:`, newValue)
     onChange(newValue)
     
     // Revoke object URL to prevent memory leaks
     const imageToRemove = value.find(img => img.id === id)
     if (imageToRemove) {
       URL.revokeObjectURL(imageToRemove.preview)
+      console.log(`🧹 [ImageUpload-${label}] Cleaned up object URL`)
     }
   }
 
@@ -123,6 +157,18 @@ export function ImageUpload({
 
   return (
     <div className="space-y-4">
+      {/* Debug Info */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="bg-blue-50 border border-blue-200 rounded p-2">
+          <div className="text-xs text-blue-800">
+            Debug: {label} - {value.length} files selected
+          </div>
+          <div className="text-xs text-blue-600">
+            Value: {JSON.stringify(value.map(v => ({ name: v.file.name, id: v.id })))}
+          </div>
+        </div>
+      )}
+
       {/* Upload Area */}
       <div
         className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
