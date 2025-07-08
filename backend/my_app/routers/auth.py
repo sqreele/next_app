@@ -183,10 +183,6 @@ async def get_current_user_info(current_user: schemas.User = Depends(get_current
 
 @router.get("/status")
 async def auth_status(current_user: Optional[schemas.User] = Depends(try_get_current_active_user)):
-    """
-    Checks if the current user is authenticated.
-    This endpoint is useful for the frontend to determine login state.
-    """
     if current_user:
         return {
             "authenticated": True,
@@ -194,7 +190,11 @@ async def auth_status(current_user: Optional[schemas.User] = Depends(try_get_cur
                 "id": current_user.id,
                 "username": current_user.username,
                 "email": current_user.email,
-                "role": current_user.profile.role if current_user.profile else None,
+                "profile": {
+                    "role": current_user.profile.role if current_user.profile else "User",
+                    "position": current_user.profile.position if current_user.profile else "No position",
+                    "properties": [{"id": p.id, "name": p.name} for p in current_user.profile.properties] if current_user.profile else []
+                } if current_user.profile else None
             }
         }
     return {"authenticated": False}
