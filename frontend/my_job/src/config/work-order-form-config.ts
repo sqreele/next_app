@@ -1,4 +1,4 @@
-// src/config/work-order-form-config.ts
+// src/config/work-order-form-config.ts - Add 5th step
 import {
   ClipboardDocumentListIcon,
   CalendarIcon,
@@ -6,39 +6,8 @@ import {
   UsersIcon,
   PhotoIcon,
   DocumentIcon,
+  CheckCircleIcon, // Add this import
 } from '@heroicons/react/24/outline'
-
-export interface FormFieldOption {
-  value: string
-  label: string
-}
-
-export interface FormField {
-  name: string
-  label: string
-  type: string
-  required?: boolean
-  placeholder?: string
-  accept?: string
-  conditional?: string
-  options?: FormFieldOption[]
-  multiple?: boolean
-  maxFiles?: number
-  maxSize?: number // in MB
-}
-
-export interface FormSection {
-  id: string
-  title: string
-  fields: FormField[]
-}
-
-export interface ProgressStep {
-  id: string
-  label: string
-  description?: string
-  icon?: React.ComponentType<{ className?: string }>
-}
 
 export const progressSteps: ProgressStep[] = [
   {
@@ -65,8 +34,14 @@ export const progressSteps: ProgressStep[] = [
     description: 'Upload before and after photos',
     icon: PhotoIcon,
   },
+  {
+    id: 'review', // NEW 5th step
+    label: 'Review',
+    description: 'Review and submit work order',
+    icon: CheckCircleIcon,
+  },
 ]
-
+// src/config/work-order-form-config.ts - Add 5th section
 export const workOrderFormSections: FormSection[] = [
   {
     id: 'basic',
@@ -172,7 +147,7 @@ export const workOrderFormSections: FormSection[] = [
         label: 'Before Photos',
         type: 'image-upload',
         accept: 'image/*',
-        required: ture,
+        required: false,
         multiple: true,
         maxFiles: 5,
         maxSize: 10, // 10MB
@@ -182,7 +157,7 @@ export const workOrderFormSections: FormSection[] = [
         label: 'After Photos',
         type: 'image-upload',
         accept: 'image/*',
-        required: ture,
+        required: false,
         multiple: true,
         maxFiles: 5,
         maxSize: 10, // 10MB
@@ -197,6 +172,14 @@ export const workOrderFormSections: FormSection[] = [
         maxFiles: 3,
         maxSize: 20, // 20MB
       },
+    ],
+  },
+  {
+    id: 'review', // NEW 5th section
+    title: 'Review & Submit',
+    fields: [
+      // This section will be handled specially in the component
+      // No actual form fields, just review display
     ],
   },
 ]
