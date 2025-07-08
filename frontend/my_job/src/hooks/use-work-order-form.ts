@@ -1,4 +1,4 @@
-// src/hooks/use-work-order-form.ts - Enhanced with better validation
+// src/hooks/use-work-order-form.ts - Updated to handle uploaded image URLs
 import { useState, useCallback } from 'react'
 import { FormField } from '@/config/work-order-form-config'
 
@@ -6,6 +6,10 @@ interface ImageFile {
   file: File
   preview: string
   id: string
+  uploadStatus: 'pending' | 'uploading' | 'success' | 'error'
+  uploadProgress?: number
+  uploadedUrl?: string
+  error?: string
 }
 
 export function useWorkOrderForm(initialData: any) {
@@ -31,124 +35,42 @@ export function useWorkOrderForm(initialData: any) {
     setImagePreviews(prev => ({ ...prev, [name]: preview }))
   }, [])
 
-  const validateField = useCallback((field: FormField, value: any): string => {
-    // Required field validation
-    if (field.required) {
-      if (field.type === 'image-upload') {
-        if (!value || !Array.isArray(value) || value.length === 0) {
-          return `${field.label} is required`
-        }
-      } else if (field.conditional && !formData[field.conditional]) {
-        // Skip validation if conditional field is not met
-        return ''
-      } else if (!value || value === '' || value === 0) {
-        return `${field.label} is required`
-      }
-    }
-
-    // Type-specific validation
-    if (value && field.validation) {
-      const { validation } = field
-
-      // String length validation
-      if (typeof value === 'string') {
-        if (validation.minLength && value.length < validation.minLength) {
-          return `${field.label} must be at least ${validation.minLength} characters`
-        }
-        if (validation.maxLength && value.length > validation.maxLength) {
-          return `${field.label} must be no more than ${validation.maxLength} characters`
-        }
-      }
-
-      // Pattern validation
-      if (validation.pattern && typeof value === 'string') {
-        if (!validation.pattern.test(value)) {
-          return `${field.label} format is invalid`
-        }
-      }
-
-      // Custom validation
-      if (validation.custom) {
-        const result = validation.custom(value)
-        if (typeof result === 'string') {
-          return result
-        }
-        if (result === false) {
-          return `${field.label} is invalid`
-        }
-      }
-    }
-
-    // Image-specific validation
-    if (field.type === 'image-upload' && Array.isArray(value) && value.length > 0) {
-      // File count validation
-      if (field.maxFiles && value.length > field.maxFiles) {
-        return `Maximum ${field.maxFiles} files allowed for ${field.label}`
-      }
-
-      // Individual file size validation
-      if (field.maxSize) {
-        const oversizedFiles = value.filter(
-          (img: ImageFile) => img.file.size > (field.maxSize! * 1024 * 1024)
-        )
-        if (oversizedFiles.length > 0) {
-          return `Some files in ${field.label} exceed ${field.maxSize}MB limit`
-        }
-      }
-
-      // Total size validation
-      if (field.maxTotalSize) {
-        const totalSize = value.reduce(
-          (sum: number, img: ImageFile) => sum + img.file.size,
-          0
-        ) / (1024 * 1024)
-        if (totalSize > field.maxTotalSize) {
-          return `Total size of ${field.label} exceeds ${field.maxTotalSize}MB limit`
-        }
-      }
-
-      // File format validation
-      if (field.allowedFormats) {
-        const invalidFiles = value.filter((img: ImageFile) => {
-          const extension = img.file.name.split('.').pop()?.toLowerCase()
-          return !field.allowedFormats!.map(f => f.toLowerCase()).includes(extension || '')
-        })
-        if (invalidFiles.length > 0) {
-          return `Some files in ${field.label} have invalid formats. Allowed: ${field.allowedFormats.join(', ')}`
-        }
-      }
-    }
-
-    return ''
-  }, [formData])
-
   const validateForm = useCallback((fields: FormField[]) => {
     const newErrors: Record<string, string> = {}
     
     fields.forEach(field => {
-      const value = formData[field.name]
-      const error = validateField(field, value)
-      if (error) {
-        newErrors[field.name] = error
+      if (field.required) {
+        const value = formData[field.name]
+        
+        if (field.type === 'image-upload') {
+          console.log(`🔍 Validating image field ${field.name}:`, value)
+          if (!value || !Array.isArray(value) || value.length === 0) {
+            newErrors[field.name] = `${field.label} is required`
+          } else {
+            // Check if all images are successfully uploaded
+            const failedUploads = value.filter((img: ImageFile) => img.uploadStatus === 'error')
+            const pendingUploads = value.filter((img: ImageFile) => 
+              img.uploadStatus === 'pending' || img.uploadStatus === 'uploading'
+            )
+            
+            if (failedUploads.length > 0) {
+              newErrors[field.name] = `${failedUploads.length} image(s) failed to upload. Please retry or remove them.`
+            } else if (pendingUploads.length > 0) {
+              newErrors[field.name] = `${pendingUploads.length} image(s) are still uploading. Please wait for uploads to complete.`
+            }
+          }
+        } else {
+          if (!value || value === '' || value === 0) {
+            newErrors[field.name] = `${field.label} is required`
+          }
+        }
       }
     })
     
     console.log(`❌ Validation errors:`, newErrors)
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
-  }, [formData, validateField])
-
-  const validateSingleField = useCallback((field: FormField) => {
-    const value = formData[field.name]
-    const error = validateField(field, value)
-    
-    setErrors(prev => ({
-      ...prev,
-      [field.name]: error
-    }))
-    
-    return !error
-  }, [formData, validateField])
+  }, [formData])
 
   const getImageFiles = useCallback((fieldName: string): File[] => {
     const value = formData[fieldName]
@@ -160,6 +82,49 @@ export function useWorkOrderForm(initialData: any) {
       return files
     }
     return []
+  }, [formData])
+
+  // NEW: Get uploaded image URLs instead of files
+  const getUploadedImageUrls = useCallback((fieldName: string): string[] => {
+    const value = formData[fieldName]
+    console.log(`🔗 Getting uploaded URLs for ${fieldName}:`, value)
+    
+    if (Array.isArray(value)) {
+      const urls = value
+        .filter((item: ImageFile) => item.uploadStatus === 'success' && item.uploadedUrl)
+        .map((item: ImageFile) => item.uploadedUrl!)
+      console.log(`🔗 Extracted URLs:`, urls)
+      return urls
+    }
+    return []
+  }, [formData])
+
+  // NEW: Check if all images are uploaded
+  const areAllImagesUploaded = useCallback((): boolean => {
+    const beforePhotos = formData.beforePhotos || []
+    const afterPhotos = formData.afterPhotos || []
+    
+    const allImages = [...beforePhotos, ...afterPhotos]
+    
+    if (allImages.length === 0) return true
+    
+    return allImages.every((img: ImageFile) => img.uploadStatus === 'success')
+  }, [formData])
+
+  // NEW: Get upload status summary
+  const getUploadStatus = useCallback(() => {
+    const beforePhotos = formData.beforePhotos || []
+    const afterPhotos = formData.afterPhotos || []
+    
+    const allImages = [...beforePhotos, ...afterPhotos]
+    
+    return {
+      total: allImages.length,
+      uploaded: allImages.filter((img: ImageFile) => img.uploadStatus === 'success').length,
+      uploading: allImages.filter((img: ImageFile) => img.uploadStatus === 'uploading').length,
+      failed: allImages.filter((img: ImageFile) => img.uploadStatus === 'error').length,
+      pending: allImages.filter((img: ImageFile) => img.uploadStatus === 'pending').length,
+    }
   }, [formData])
 
   const reset = useCallback(() => {
@@ -179,22 +144,6 @@ export function useWorkOrderForm(initialData: any) {
     setImagePreviews({})
   }, [initialData, formData])
 
-  const getFormProgress = useCallback(() => {
-    const totalFields = Object.keys(initialData).length
-    const completedFields = Object.values(formData).filter(value => {
-      if (Array.isArray(value)) {
-        return value.length > 0
-      }
-      return value !== null && value !== undefined && value !== ''
-    }).length
-
-    return Math.round((completedFields / totalFields) * 100)
-  }, [formData, initialData])
-
-  const hasErrors = useCallback(() => {
-    return Object.values(errors).some(error => error !== '')
-  }, [errors])
-
   return {
     formData,
     errors,
@@ -202,10 +151,10 @@ export function useWorkOrderForm(initialData: any) {
     setValue,
     setImagePreview,
     validateForm,
-    validateSingleField,
     getImageFiles,
+    getUploadedImageUrls, // NEW
+    areAllImagesUploaded, // NEW
+    getUploadStatus, // NEW
     reset,
-    getFormProgress,
-    hasErrors,
   }
 }
