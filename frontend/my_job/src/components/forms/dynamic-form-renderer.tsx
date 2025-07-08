@@ -1,14 +1,8 @@
-// src/components/forms/dynamic-form-renderer.tsx
+// src/components/forms/dynamic-form-renderer.tsx - Updated to handle new validation props
 import React from 'react'
 import { Input } from '@/components/ui/input'
 import { ImageUpload } from '@/components/ui/image-upload'
 import { FormField, FormFieldOption } from '@/config/work-order-form-config'
-
-interface ImageFile {
-  file: File
-  preview: string
-  id: string
-}
 
 interface DynamicFormRendererProps {
   field: FormField
@@ -18,8 +12,7 @@ interface DynamicFormRendererProps {
   selectOptions?: { value: any; label: string }[]
   autocompleteItems?: any[]
   onAutocompleteSelect?: (item: any) => void
-  imagePreview?: string | null
-  onImageChange?: (file: File | null) => void
+  onBlur?: () => void
 }
 
 export function DynamicFormRenderer({
@@ -30,8 +23,7 @@ export function DynamicFormRenderer({
   selectOptions = [],
   autocompleteItems = [],
   onAutocompleteSelect,
-  imagePreview,
-  onImageChange,
+  onBlur,
 }: DynamicFormRendererProps) {
   const [showAutocomplete, setShowAutocomplete] = React.useState(false)
   const [searchTerm, setSearchTerm] = React.useState('')
@@ -51,6 +43,7 @@ export function DynamicFormRenderer({
             type={field.type}
             value={value || ''}
             onChange={(e) => onChange(e.target.value)}
+            onBlur={onBlur}
             placeholder={field.placeholder}
             className={error ? 'border-red-500' : ''}
           />
@@ -61,6 +54,7 @@ export function DynamicFormRenderer({
           <textarea
             value={value || ''}
             onChange={(e) => onChange(e.target.value)}
+            onBlur={onBlur}
             placeholder={field.placeholder}
             rows={3}
             className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
@@ -75,6 +69,7 @@ export function DynamicFormRenderer({
           <select
             value={value || ''}
             onChange={(e) => onChange(e.target.value)}
+            onBlur={onBlur}
             className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
               error ? 'border-red-500' : 'border-gray-300'
             }`}
@@ -96,6 +91,7 @@ export function DynamicFormRenderer({
               id={field.name}
               checked={value || false}
               onChange={(e) => onChange(e.target.checked)}
+              onBlur={onBlur}
               className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
             />
             <label htmlFor={field.name} className="text-sm text-gray-700">
@@ -111,6 +107,7 @@ export function DynamicFormRenderer({
             type={field.type}
             value={value || ''}
             onChange={(e) => onChange(e.target.value)}
+            onBlur={onBlur}
             className={error ? 'border-red-500' : ''}
           />
         )
@@ -128,6 +125,7 @@ export function DynamicFormRenderer({
               onFocus={() => setShowAutocomplete(true)}
               onBlur={() => {
                 setTimeout(() => setShowAutocomplete(false), 200)
+                onBlur?.()
               }}
               placeholder={field.placeholder}
               className={error ? 'border-red-500' : ''}
@@ -169,8 +167,16 @@ export function DynamicFormRenderer({
             multiple={field.multiple}
             maxFiles={field.maxFiles}
             maxSize={field.maxSize}
+            minSize={field.minSize}
+            maxTotalSize={field.maxTotalSize}
+            allowedFormats={field.allowedFormats}
+            maxWidth={field.maxWidth}
+            maxHeight={field.maxHeight}
+            minWidth={field.minWidth}
+            minHeight={field.minHeight}
             label={field.name}
             error={error}
+            required={field.required}
           />
         )
 
@@ -190,6 +196,7 @@ export function DynamicFormRenderer({
                   onChange(file)
                 }
               }}
+              onBlur={onBlur}
               className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
             />
             {field.multiple && value && Array.isArray(value) && (
@@ -206,6 +213,7 @@ export function DynamicFormRenderer({
             type="text"
             value={value || ''}
             onChange={(e) => onChange(e.target.value)}
+            onBlur={onBlur}
             placeholder={field.placeholder}
             className={error ? 'border-red-500' : ''}
           />
@@ -230,6 +238,22 @@ export function DynamicFormRenderer({
       </label>
       {renderField()}
       {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
+      
+      {/* Show validation hints */}
+      {field.validation && !error && (
+        <div className="mt-1 text-xs text-gray-500">
+          {field.validation.minLength && field.validation.maxLength && (
+            <div>Length: {field.validation.minLength}-{field.validation.maxLength} characters</div>
+          )}
+          {field.type === 'image-upload' && (
+            <div>
+              {field.maxFiles && <span>Max {field.maxFiles} files • </span>}
+              {field.maxSize && <span>{field.maxSize}MB per file • </span>}
+              {field.allowedFormats && <span>Formats: {field.allowedFormats.join(', ')}</span>}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
