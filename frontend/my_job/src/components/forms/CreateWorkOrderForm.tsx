@@ -1,4 +1,4 @@
-// src/components/forms/CreateWorkOrderForm.tsx
+// src/components/forms/CreateWorkOrderForm.tsx - Updated to use uploaded image URLs
 'use client'
 
 import React, { useEffect } from 'react'
@@ -49,7 +49,9 @@ export function CreateWorkOrderForm() {
     errors,
     setValue,
     validateForm,
-    getImageFiles,
+    getUploadedImageUrls, // NEW: Use this instead of getImageFiles
+    areAllImagesUploaded, // NEW: Check upload status
+    getUploadStatus, // NEW: Get upload summary
     reset,
   } = useWorkOrderForm(initialFormData)
 
@@ -114,7 +116,25 @@ export function CreateWorkOrderForm() {
       const value = formData[field.name]
       
       if (field.type === 'image-upload') {
-        return !field.required || (Array.isArray(value) && value.length > 0)
+        if (!field.required) return true
+        
+        // Check if images are uploaded successfully
+        if (!value || !Array.isArray(value) || value.length === 0) {
+          return false
+        }
+        
+        // Check upload status
+        const hasFailedUploads = value.some(img => img.uploadStatus === 'error')
+        const hasUploading = value.some(img => 
+          img.uploadStatus === 'pending' || img.uploadStatus === 'uploading'
+        )
+        
+        if (hasFailedUploads || hasUploading) {
+          toast.warning('Please wait for all images to upload successfully or fix failed uploads')
+          return false
+        }
+        
+        return true
       }
       
       return value !== null && value !== undefined && value !== '' && value !== 0
@@ -128,48 +148,19 @@ export function CreateWorkOrderForm() {
     nextStep()
   }
 
-  // NEW: Function to upload images to a general endpoint first
-  const uploadImagesToServer = async (files: File[], type: 'before' | 'after') => {
-    if (files.length === 0) return []
-
-    const uploadPromises = files.map(async (file, index) => {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('upload_type', type)
-      formData.append('order', index.toString())
-
-      try {
-        // Upload to a general upload endpoint first
-        const response = await fetch('/api/v1/upload_image', {
-          method: 'POST',
-          body: formData,
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('auth-token')}`,
-          },
-        })
-
-        if (!response.ok) {
-          throw new Error(`Failed to upload ${file.name}`)
-        }
-
-        const result = await response.json()
-        console.log(`✅ Successfully uploaded ${file.name}:`, result)
-        return result
-      } catch (error) {
-        console.error(`❌ Error uploading ${file.name}:`, error)
-        throw error
-      }
-    })
-
-    return Promise.all(uploadPromises)
-  }
-
-  // UPDATED: Modified handleSubmit to upload images first
+  // UPDATED: Modified handleSubmit to use uploaded image URLs
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     if (!validateForm(allFields)) {
       toast.error('Please fix the errors in the form')
+      return
+    }
+
+    // Check if all images are uploaded
+    if (!areAllImagesUploaded()) {
+      const uploadStatus = getUploadStatus()
+      toast.error(`Please wait for all images to finish uploading. Status: ${uploadStatus.uploading} uploading, ${uploadStatus.failed} failed`)
       return
     }
 
@@ -195,43 +186,14 @@ export function CreateWorkOrderForm() {
         formData.scheduledDate.split('T')[0] : 
         undefined
 
-      // Get image files
-      const beforeFiles = getImageFiles('beforePhotos')
-      const afterFiles = getImageFiles('afterPhotos')
+      // Get uploaded image URLs instead of files
+      const beforeImageUrls = getUploadedImageUrls('beforePhotos')
+      const afterImageUrls = getUploadedImageUrls('afterPhotos')
 
-      // Upload images first if any exist
-      let beforeImagePath = null
-      let afterImagePath = null
+      console.log('📋 Before image URLs:', beforeImageUrls)
+      console.log('📋 After image URLs:', afterImageUrls)
 
-      if (beforeFiles.length > 0 || afterFiles.length > 0) {
-        toast.info('Uploading images...')
-        
-        try {
-          // Upload before images
-          if (beforeFiles.length > 0) {
-            console.log('📤 Uploading before images:', beforeFiles.length)
-            const beforeUploadResults = await uploadImagesToServer(beforeFiles, 'before')
-            beforeImagePath = beforeUploadResults[0]?.file_path || beforeUploadResults[0]?.path || null
-            console.log('📁 Before image path:', beforeImagePath)
-          }
-          
-          // Upload after images  
-          if (afterFiles.length > 0) {
-            console.log('📤 Uploading after images:', afterFiles.length)
-            const afterUploadResults = await uploadImagesToServer(afterFiles, 'after')
-            afterImagePath = afterUploadResults[0]?.file_path || afterUploadResults[0]?.path || null
-            console.log('📁 After image path:', afterImagePath)
-          }
-          
-          toast.success('Images uploaded successfully!')
-        } catch (error) {
-          console.error('❌ Image upload failed:', error)
-          toast.error('Failed to upload images')
-          return // Don't create work order if image upload fails
-        }
-      }
-
-      // Create work order data with image paths included
+      // Create work order data with image URLs
       const submitData = {
         task: formData.title,
         description: formData.description,
@@ -240,18 +202,21 @@ export function CreateWorkOrderForm() {
         due_date: dueDate,
         room_id: selectedRoom?.id,
         assigned_to_id: selectedTechnician?.id,
-        // Include image paths in the initial request
-        before_image_path: beforeImagePath,
-        after_image_path: afterImagePath,
+        // Use uploaded URLs instead of uploading again
+        before_image_path: beforeImageUrls.length > 0 ? beforeImageUrls[0] : null,
+        after_image_path: afterImageUrls.length > 0 ? afterImageUrls[0] : null,
+        // If you want to store multiple images, you might need to modify your API
+        before_images: beforeImageUrls,
+        after_images: afterImageUrls,
       }
 
       console.log('📋 Creating work order with data:', submitData)
 
-      // Create work order with image paths included
+      // Create work order with image URLs
       const newWorkOrder = await createWorkOrder(submitData, 1)
       
       toast.success('Work order created successfully!', {
-        description: `Work order "${newWorkOrder.task}" has been created with images.`
+        description: `Work order "${newWorkOrder.task}" has been created with ${beforeImageUrls.length + afterImageUrls.length} images.`
       })
 
       // Clean up and redirect
@@ -281,6 +246,9 @@ export function CreateWorkOrderForm() {
     return Array.isArray(value) ? value.length : 0
   }
 
+  // Get upload status for display
+  const uploadStatus = getUploadStatus()
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
@@ -293,6 +261,22 @@ export function CreateWorkOrderForm() {
           <p className="text-gray-600">Create a new maintenance or repair request</p>
         </div>
       </div>
+
+      {/* Upload Status Alert */}
+      {uploadStatus.total > 0 && (uploadStatus.uploading > 0 || uploadStatus.failed > 0) && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex items-center gap-2">
+            <div className="text-yellow-800">
+              <strong>Image Upload Status:</strong> {uploadStatus.uploaded} uploaded, {uploadStatus.uploading} uploading, {uploadStatus.failed} failed
+            </div>
+          </div>
+          {uploadStatus.failed > 0 && (
+            <p className="text-yellow-700 text-sm mt-1">
+              Please retry failed uploads before submitting the form.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Progress Bar */}
       <ProgressBar
@@ -331,7 +315,7 @@ export function CreateWorkOrderForm() {
                 {currentSection.id === 'images' && (
                   <div className="mt-2 p-3 bg-blue-50 rounded-md">
                     <p className="text-sm text-blue-700">
-                      💡 Add before and after photos to document the work. Images help track progress and maintain quality records.
+                      💡 Images will be uploaded immediately when selected. Please wait for uploads to complete before proceeding.
                     </p>
                   </div>
                 )}
@@ -343,7 +327,8 @@ export function CreateWorkOrderForm() {
                     formData={formData}
                     activeRooms={activeRooms}
                     availableTechnicians={availableTechnicians}
-                    getImageFiles={getImageFiles}
+                    getUploadedImageUrls={getUploadedImageUrls}
+                    uploadStatus={uploadStatus}
                   />
                 ) : (
                   // Regular form fields for other steps
@@ -389,6 +374,10 @@ export function CreateWorkOrderForm() {
               type="button"
               onClick={handleNext}
               className="flex items-center gap-2"
+              disabled={
+                currentSection.id === 'images' && 
+                (uploadStatus.uploading > 0 || uploadStatus.failed > 0)
+              }
             >
               Next
               <ChevronRightIcon className="h-4 w-4" />
@@ -396,13 +385,17 @@ export function CreateWorkOrderForm() {
           ) : (
             <Button
               type="submit"
-              disabled={loading}
+              disabled={loading || !areAllImagesUploaded()}
               className="flex items-center gap-2"
             >
               {loading ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   Creating...
+                </>
+              ) : !areAllImagesUploaded() ? (
+                <>
+                  Waiting for uploads...
                 </>
               ) : (
                 'Create Work Order'
@@ -445,20 +438,22 @@ export function CreateWorkOrderForm() {
                 <span className="font-medium">{new Date(formData.scheduledDate).toLocaleDateString()}</span>
               </div>
             )}
-            {getImageCount('beforePhotos') > 0 && (
-              <div className="flex justify-between">
-                <span className="text-gray-600">Before Photos:</span>
-                <Badge className="bg-green-100 text-green-800">
-                  {getImageCount('beforePhotos')} files
-                </Badge>
-              </div>
-            )}
-            {getImageCount('afterPhotos') > 0 && (
-              <div className="flex justify-between">
-                <span className="text-gray-600">After Photos:</span>
-                <Badge className="bg-green-100 text-green-800">
-                  {getImageCount('afterPhotos')} files
-                </Badge>
+            {uploadStatus.total > 0 && (
+              <div className="border-t pt-2">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Images:</span>
+                  <span className="font-medium">{uploadStatus.uploaded} / {uploadStatus.total} uploaded</span>
+                </div>
+                {uploadStatus.uploading > 0 && (
+                  <Badge className="bg-yellow-100 text-yellow-800 mt-1">
+                    {uploadStatus.uploading} uploading
+                  </Badge>
+                )}
+                {uploadStatus.failed > 0 && (
+                  <Badge className="bg-red-100 text-red-800 mt-1">
+                    {uploadStatus.failed} failed
+                  </Badge>
+                )}
               </div>
             )}
           </div>
