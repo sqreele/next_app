@@ -200,8 +200,7 @@ def format_image_preview(image_path, label="Image"):
     '''
     return Markup(html)
         
-    except Exception as e:
-        return Markup(f'<span style="color: #f00; font-size: 10px;">Error</span>')
+    
 
 class WorkOrderAdmin(ModelView, model=WorkOrder):
     column_list = [
