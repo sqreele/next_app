@@ -170,58 +170,14 @@ class MachineAdmin(ModelView, model=Machine):
     name_plural = "Machines"
     icon = "fa-solid fa-robot"
 
-# Helper function for image formatting - FIXED SIGNATURE
-def format_image_preview(obj, prop):
-    """Format image preview for work orders - Updated for SQLAdmin"""
-    # Get the image path from the object
-    image_path = getattr(obj, prop, None)
-    
-    if not image_path or image_path.strip() == "":
-        return Markup(f'<span style="color: #ccc; font-size: 12px;">No Image</span>')
-    
-    # Check if it's an image file
-    if not image_path.lower().endswith(('.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp')):
-        return Markup(f'<div style="font-size: 11px; color: #666; max-width: 100px; word-break: break-all;">{image_path}</div>')
-    
-    try:
-        # Construct URL - handle different path formats
-        if image_path.startswith("uploads/"):
-            url = f"/{image_path}"
-        elif "/" in image_path:
-            url = f"/uploads/{image_path}"
-        else:
-            url = f"/uploads/{image_path}"
-        
-        # Get filename for display
-        filename = image_path.split('/')[-1] if '/' in image_path else image_path
-        display_name = filename[:15] + '...' if len(filename) > 15 else filename
-        
-        html = f'''
-        <div style="text-align: center; max-width: 100px;">
-            <img src="{url}" 
-                 style="max-height: 50px; max-width: 80px; object-fit: contain; 
-                        border: 1px solid #ddd; border-radius: 3px; margin-bottom: 2px;
-                        cursor: pointer; display: block; margin: 0 auto;" 
-                 onclick="window.open('{url}', '_blank')"
-                 onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" 
-                 title="Click to view full size: {filename}" />
-            <div style="display: none; color: #f00; font-size: 10px; text-align: center;">Not Found</div>
-            <div style="font-size: 9px; color: #666; text-align: center;">
-                {display_name}
-            </div>
-        </div>
-        '''
-        return Markup(html)
-        
-    except Exception as e:
-        return Markup(f'<span style="color: #f00; font-size: 10px;">Error</span>')
-
-# Create specific formatters for before and after images
-def format_before_image(obj, prop):
-    return format_image_preview(obj, 'before_image_path')
-
-def format_after_image(obj, prop):
-    return format_image_preview(obj, 'after_image_path')
+# Helper function for image formatting
+def format_image_preview(model, attribute):
+    image_path = getattr(model, attribute, None)
+    if image_path and image_path.strip():
+        # Construct URL for the image
+        url = f"/uploads/{image_path.lstrip('/')}"
+        return Markup(f'<a href="{url}" target="_blank"><img src="{url}" width="100"></a>')
+    return Markup('<span style="color: #ccc; font-size: 12px;">No Image</span>')
 
 class WorkOrderAdmin(ModelView, model=WorkOrder):
     column_list = [
@@ -234,10 +190,8 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         WorkOrder.machine_id,
         WorkOrder.room_id,
         WorkOrder.assigned_to_id,
-        WorkOrder.before_image_path,
-        "before_preview",
-        WorkOrder.after_image_path,
-        "after_preview",
+        'before_image_path',
+        'after_image_path',
         WorkOrder.pdf_file_path,
     ]
     
@@ -273,16 +227,13 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
     ]
 
     column_labels = {
-        "before_preview": "Before",
-        "after_preview": "After",
-        "before_image_path": "Before Path",
-        "after_image_path": "After Path",
+        "before_image_path": "Before Image",
+        "after_image_path": "After Image",
     }
 
-    # FIXED: Use the correct function signature for SQLAdmin
     column_formatters = {
-        "before_preview": format_before_image,
-        "after_preview": format_after_image,
+        'before_image_path': lambda m, a: format_image_preview(m, 'before_image_path'),
+        'after_image_path': lambda m, a: format_image_preview(m, 'after_image_path'),
     }
 
     form_args = {
