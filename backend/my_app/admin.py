@@ -1,5 +1,5 @@
 # ==============================================================================
-# File: my_app/admin.py (Corrected)
+# File: my_app/admin.py (Updated with Image Previews)
 # Description: SQLAdmin configuration for the admin panel.
 # ==============================================================================
 from sqladmin import ModelView
@@ -106,7 +106,7 @@ class UserAdminFinal(ModelView, model=User):
     name_plural = "Users"
     icon = "fa-solid fa-user"
 
-# Rest of your admin classes remain the same...
+
 class UserProfileAdmin(ModelView, model=UserProfile):
     column_list = [
         UserProfile.id,
@@ -137,6 +137,7 @@ class UserProfileAdmin(ModelView, model=UserProfile):
     name_plural = "User Profiles"
     icon = "fa-solid fa-id-card"
 
+
 class PropertyAdmin(ModelView, model=Property):
     column_list = [Property.id, Property.name]
     form_columns = [Property.name]
@@ -153,6 +154,7 @@ class PropertyAdmin(ModelView, model=Property):
     name = "Property"
     name_plural = "Properties"
     icon = "fa-solid fa-building"
+
 
 class RoomAdmin(ModelView, model=Room):
     column_list = [
@@ -206,6 +208,7 @@ class RoomAdmin(ModelView, model=Room):
     name_plural = "Rooms"
     icon = "fa-solid fa-door-open"
 
+
 class MachineAdmin(ModelView, model=Machine):
     column_list = [Machine.id, Machine.name, Machine.status, "property.name", "room.name"]
     form_columns = [
@@ -240,6 +243,7 @@ class MachineAdmin(ModelView, model=Machine):
     name_plural = "Machines"
     icon = "fa-solid fa-robot"
 
+
 class WorkOrderAdmin(ModelView, model=WorkOrder):
     column_list = [
         WorkOrder.id,
@@ -251,10 +255,11 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         WorkOrder.machine_id,
         WorkOrder.room_id,
         WorkOrder.assigned_to_id,
-        WorkOrder.before_image_path,
-        WorkOrder.after_image_path,
+        "before_image_preview",  # Changed from WorkOrder.before_image_path
+        "after_image_preview",   # Changed from WorkOrder.after_image_path
         WorkOrder.pdf_file_path,
     ]
+    
     form_columns = [
         WorkOrder.property_id,
         WorkOrder.task,
@@ -269,6 +274,7 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         WorkOrder.after_image_path,
         WorkOrder.pdf_file_path,
     ]
+    
     column_searchable_list = [
         WorkOrder.task,
         WorkOrder.description,
@@ -283,6 +289,71 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         WorkOrder.due_date,
         WorkOrder.created_at,
     ]
+
+    # Add image preview methods
+    def before_image_preview(self, obj):
+        """Display before image preview"""
+        if obj.before_image_path and obj.before_image_path.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+            try:
+                # Handle different file path formats
+                if obj.before_image_path.startswith("uploads/"):
+                    url = f"/{obj.before_image_path}"
+                elif "/" in obj.before_image_path:
+                    url = f"/uploads/{obj.before_image_path}"
+                else:
+                    url = f"/uploads/{obj.before_image_path}"
+                
+                return f'''
+                <div style="text-align: center;">
+                    <img src="{url}" 
+                         style="max-height:80px; max-width:120px; object-fit:contain; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 5px;" 
+                         onerror="this.style.display='none'; this.nextSibling.style.display='inline';" />
+                    <span style="display:none; color: #999; font-size: 12px;">Image not found</span>
+                    <div style="font-size: 10px; color: #666; max-width: 120px; word-wrap: break-word;">
+                        {obj.before_image_path.split('/')[-1] if '/' in obj.before_image_path else obj.before_image_path}
+                    </div>
+                </div>
+                '''
+            except Exception as e:
+                return f'<span style="color: #999; font-size: 12px;">Error loading image</span>'
+        elif obj.before_image_path:
+            return f'<span style="color: #666; font-size: 12px;">{obj.before_image_path}</span>'
+        return '<span style="color: #ccc;">No image</span>'
+    
+    before_image_preview.__name__ = "Before Image"
+    before_image_preview.allow_html = True
+
+    def after_image_preview(self, obj):
+        """Display after image preview"""
+        if obj.after_image_path and obj.after_image_path.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+            try:
+                # Handle different file path formats
+                if obj.after_image_path.startswith("uploads/"):
+                    url = f"/{obj.after_image_path}"
+                elif "/" in obj.after_image_path:
+                    url = f"/uploads/{obj.after_image_path}"
+                else:
+                    url = f"/uploads/{obj.after_image_path}"
+                
+                return f'''
+                <div style="text-align: center;">
+                    <img src="{url}" 
+                         style="max-height:80px; max-width:120px; object-fit:contain; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 5px;" 
+                         onerror="this.style.display='none'; this.nextSibling.style.display='inline';" />
+                    <span style="display:none; color: #999; font-size: 12px;">Image not found</span>
+                    <div style="font-size: 10px; color: #666; max-width: 120px; word-wrap: break-word;">
+                        {obj.after_image_path.split('/')[-1] if '/' in obj.after_image_path else obj.after_image_path}
+                    </div>
+                </div>
+                '''
+            except Exception as e:
+                return f'<span style="color: #999; font-size: 12px;">Error loading image</span>'
+        elif obj.after_image_path:
+            return f'<span style="color: #666; font-size: 12px;">{obj.after_image_path}</span>'
+        return '<span style="color: #ccc;">No image</span>'
+    
+    after_image_preview.__name__ = "After Image"
+    after_image_preview.allow_html = True
 
     form_args = {
         'property_id': {
@@ -325,11 +396,11 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         },
         'before_image_path': {
             'label': 'Before Image Path',
-            'description': 'Path to the before image (optional)'
+            'description': 'Path to the before image (e.g., workorder/filename.jpg)'
         },
         'after_image_path': {
             'label': 'After Image Path',
-            'description': 'Path to the after image (optional)'
+            'description': 'Path to the after image (e.g., workorder/filename.jpg)'
         },
         'pdf_file_path': {
             'label': 'PDF File Path',
@@ -340,6 +411,7 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
     name = "Work Order"
     name_plural = "Work Orders"
     icon = "fa-solid fa-list-check"
+
 
 class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
     column_list = [
@@ -371,28 +443,29 @@ class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
 
     # Add image preview method
     def image_preview(self, obj):
-    if obj.file_path and obj.file_path.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
-        try:
-            # Handle different file path formats
-            if obj.file_path.startswith("uploads/"):
-                # If file_path already includes uploads/ prefix
-                url = f"/{obj.file_path}"
-            elif "/" in obj.file_path:
-                # If file_path has subdirectories
-                url = f"/uploads/{obj.file_path}"
-            else:
-                # If file_path is just the filename
-                url = f"/uploads/{obj.file_path}"
-            
-            return f'''
-            <img src="{url}" 
-                 style="max-height:60px; max-width:100px; object-fit:contain; border: 1px solid #ddd; border-radius: 4px;" 
-                 onerror="this.style.display='none'; this.nextSibling.style.display='inline';" />
-            <span style="display:none; color: #999; font-size: 12px;">Image not found</span>
-            '''
-        except Exception as e:
-            return f'<span style="color: #999; font-size: 12px;">Error loading image</span>'
-    return ""
+        if obj.file_path and obj.file_path.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+            try:
+                # Handle different file path formats
+                if obj.file_path.startswith("uploads/"):
+                    # If file_path already includes uploads/ prefix
+                    url = f"/{obj.file_path}"
+                elif "/" in obj.file_path:
+                    # If file_path has subdirectories
+                    url = f"/uploads/{obj.file_path}"
+                else:
+                    # If file_path is just the filename
+                    url = f"/uploads/{obj.file_path}"
+                
+                return f'''
+                <img src="{url}" 
+                     style="max-height:60px; max-width:100px; object-fit:contain; border: 1px solid #ddd; border-radius: 4px;" 
+                     onerror="this.style.display='none'; this.nextSibling.style.display='inline';" />
+                <span style="display:none; color: #999; font-size: 12px;">Image not found</span>
+                '''
+            except Exception as e:
+                return f'<span style="color: #999; font-size: 12px;">Error loading image</span>'
+        return ""
+    
     image_preview.__name__ = "Image Preview"
     image_preview.allow_html = True
 
