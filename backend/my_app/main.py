@@ -60,7 +60,7 @@ sync_engine = create_engine(
 
 # Setup Admin with synchronous engine
 admin = Admin(app, sync_engine)
-admin.add_view(UserAdminFinal)
+admin.add_view(UserAdmin)
 admin.add_view(UserProfileAdmin)
 admin.add_view(PropertyAdmin)
 admin.add_view(RoomAdmin)
