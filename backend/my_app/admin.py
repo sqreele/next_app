@@ -198,7 +198,7 @@ def format_image_preview(image_path, label="Image"):
         </div>
     </div>
     '''
-    return Markup(htm
+    return Markup(html)
 
 class WorkOrderAdmin(ModelView, model=WorkOrder):
     column_list = [
