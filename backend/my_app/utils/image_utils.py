@@ -74,8 +74,3 @@ def _resize_image(image_bytes: bytes, max_size: Tuple[int, int], quality: int) -
 async def get_image_url(file_path: str, base_url: str = "http://localhost:8000") -> str:
     """Convert stored file path to full URL"""
     return f"{base_url}/uploads/{file_path}"
-
-# Keep the base64 function for backwards compatibility
-async def image_converter(hax_value: str, upload_type: str = "workorder") -> str:
-    """Convert base64 image to file and return the file path"""
-    # ... your existing base64 code
