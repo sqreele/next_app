@@ -73,6 +73,7 @@ class WorkOrderBase(BaseModel):
     before_image_path: Optional[str] = None
     after_image_path: Optional[str] = None
     pdf_file_path: Optional[str] = None
+    property_id: int
 
 class WorkOrderCreate(WorkOrderBase):
     pass
