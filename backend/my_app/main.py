@@ -81,6 +81,7 @@ app.include_router(properties.router, prefix="/api/v1", tags=["properties"])
 app.include_router(rooms.router, prefix="/api/v1", tags=["rooms"])
 app.include_router(machines.router, prefix="/api/v1", tags=["machines"])
 app.include_router(work_orders.router, prefix="/api/v1", tags=["work_orders"])
+app.include_router(image_upload.router, prefix="/api/v1", tags=["image_upload"])
 app.include_router(auth.router)  # Changed from auth_router to auth.router
 
 @app.get("/")
