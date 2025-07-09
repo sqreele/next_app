@@ -12,10 +12,10 @@ from starlette.middleware.sessions import SessionMiddleware
 from sqladmin import Admin
 from sqlalchemy import create_engine
 from .database import engine as async_engine, Base, SQLALCHEMY_DATABASE_URL
-from .routers import users, properties, rooms, machines, work_orders, auth  # Add auth here
+from .routers import users, properties, rooms, machines, work_orders, auth, image_upload  # Add image_upload here
 from .connection_manager import manager
 from .admin import (
-    UserAdminFinal,  # Changed from UserAdmin to UserAdminFinal
+    UserAdminFinal,
     UserProfileAdmin, 
     PropertyAdmin, 
     RoomAdmin, 
@@ -28,7 +28,7 @@ from .admin import (
 app = FastAPI(
     title="Property Management API", 
     version="1.0.0",
-    docs_url="/docs",  # This ensures /docs works
+    docs_url="/docs",
     redoc_url="/redoc"
 )
 
@@ -45,7 +45,7 @@ app.add_middleware(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your frontend domain
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -59,7 +59,7 @@ sync_engine = create_engine(
 
 # Setup Admin with synchronous engine
 admin = Admin(app, sync_engine)
-admin.add_view(UserAdminFinal)  # Use UserAdminFinal instead of UserAdmin
+admin.add_view(UserAdminFinal)
 admin.add_view(UserProfileAdmin)
 admin.add_view(PropertyAdmin)
 admin.add_view(RoomAdmin)
@@ -82,7 +82,7 @@ app.include_router(rooms.router, prefix="/api/v1", tags=["rooms"])
 app.include_router(machines.router, prefix="/api/v1", tags=["machines"])
 app.include_router(work_orders.router, prefix="/api/v1", tags=["work_orders"])
 app.include_router(image_upload.router, prefix="/api/v1", tags=["image_upload"])
-app.include_router(auth.router)  # Changed from auth_router to auth.router
+app.include_router(auth.router)
 
 @app.get("/")
 async def root():
