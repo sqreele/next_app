@@ -1,5 +1,5 @@
 # ==============================================================================
-# File: backend/my_app/main.py (Fixed for SQLAdmin)
+# File: backend/my_app/main.py (Fixed imports)
 # Description: Main FastAPI application setup.
 # ==============================================================================
 from dotenv import load_dotenv
@@ -12,7 +12,8 @@ from starlette.middleware.sessions import SessionMiddleware
 from sqladmin import Admin
 from sqlalchemy import create_engine
 from .database import engine as async_engine, Base, SQLALCHEMY_DATABASE_URL
-from .routers import users, properties, rooms, machines, work_orders, auth, image_upload  # Add image_upload here
+# REMOVE image_upload from this import - it doesn't exist!
+from .routers import users, properties, rooms, machines, work_orders, auth
 from .connection_manager import manager
 from .admin import (
     UserAdminFinal,
@@ -75,13 +76,12 @@ async def create_db_and_tables():
 async def on_startup():
     await create_db_and_tables()
 
-# Include API routers
+# Include API routers - REMOVE the image_upload router line
 app.include_router(users.router, prefix="/api/v1", tags=["users"])
 app.include_router(properties.router, prefix="/api/v1", tags=["properties"])
 app.include_router(rooms.router, prefix="/api/v1", tags=["rooms"])
 app.include_router(machines.router, prefix="/api/v1", tags=["machines"])
 app.include_router(work_orders.router, prefix="/api/v1", tags=["work_orders"])
-app.include_router(image_upload.router, prefix="/api/v1", tags=["image_upload"])
 app.include_router(auth.router)
 
 @app.get("/")
