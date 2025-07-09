@@ -1,41 +1,39 @@
 import uuid
-import base64
-import aiofiles
 import asyncio
 from pathlib import Path
 from PIL import Image
 from io import BytesIO
 from typing import Tuple, Optional
+from fastapi import UploadFile
 
-async def image_converter(
-    hax_value: str, 
+async def save_uploaded_file(
+    file: UploadFile, 
     upload_type: str = "workorder",
-    max_size: Optional[Tuple[int, int]] = (1920, 1080),  # Max width, height
+    max_size: Optional[Tuple[int, int]] = (1920, 1080),
     quality: int = 85
 ) -> str:
-    """Convert base64 image to file, resize it, and return the file path"""
+    """Save uploaded file, resize it, and return the file path"""
     
-    # Remove data URL prefix if present
-    if "," in hax_value:
-        hax_value = hax_value.split(",")[1]
+    # Generate random filename
+    file_extension = file.filename.split('.')[-1].lower() if file.filename else 'jpg'
+    random_name = f"{uuid.uuid4()}.{file_extension}"
     
-    random_name = f"{uuid.uuid4()}.jpg"
     upload_dir = Path("uploads") / upload_type
     upload_dir.mkdir(parents=True, exist_ok=True)
     file_path = upload_dir / random_name
     
     try:
-        # Decode base64 to bytes
-        image_bytes = base64.b64decode(hax_value)
+        # Read file content
+        file_content = await file.read()
         
-        # Process image in a separate thread to avoid blocking
+        # Process image in a separate thread
         processed_bytes = await asyncio.to_thread(
-            _resize_image, image_bytes, max_size, quality
+            _resize_image, file_content, max_size, quality
         )
         
         # Save the processed image
-        async with aiofiles.open(file_path, 'wb') as f:
-            await f.write(processed_bytes)
+        with open(file_path, 'wb') as f:
+            f.write(processed_bytes)
         
     except Exception as e:
         # Clean up partial file if write failed
@@ -53,9 +51,8 @@ def _resize_image(image_bytes: bytes, max_size: Tuple[int, int], quality: int) -
     # Open image from bytes
     img = Image.open(BytesIO(image_bytes))
     
-    # Convert to RGB if necessary (handles RGBA, P mode, etc.)
+    # Convert to RGB if necessary
     if img.mode in ('RGBA', 'LA', 'P'):
-        # Create white background for transparency
         background = Image.new('RGB', img.size, (255, 255, 255))
         if img.mode == 'P':
             img = img.convert('RGBA')
@@ -77,3 +74,8 @@ def _resize_image(image_bytes: bytes, max_size: Tuple[int, int], quality: int) -
 async def get_image_url(file_path: str, base_url: str = "http://localhost:8000") -> str:
     """Convert stored file path to full URL"""
     return f"{base_url}/uploads/{file_path}"
+
+# Keep the base64 function for backwards compatibility
+async def image_converter(hax_value: str, upload_type: str = "workorder") -> str:
+    """Convert base64 image to file and return the file path"""
+    # ... your existing base64 code
