@@ -14,3 +14,6 @@ Pillow==10.1.0
 aiofiles==23.2.1
 pydantic[email]==2.5.0
 email-validator==2.1.0
+httpx==0.25.2
+requests==2.31.0
+starlette==0.27.0
