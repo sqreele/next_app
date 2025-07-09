@@ -1,33 +1,32 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import Optional, Tuple
-from ..utils.image_utils import image_converter, get_image_url
+# routes/image_routes.py
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from typing import Optional
+from ..utils.image_utils import save_uploaded_file, get_image_url
 
 router = APIRouter()
 
-class ImageUploadRequest(BaseModel):
-    base64_image: str
-    max_width: Optional[int] = 1920
-    max_height: Optional[int] = 1080
-    quality: Optional[int] = 85
-
-@router.post("/upload_base64_image")
-async def upload_base64_image(payload: ImageUploadRequest):
+@router.post("/api/v1/work_orders/upload_image")
+async def upload_image(
+    file: UploadFile = File(...),
+    upload_type: str = Form("before"),
+    category: str = Form("work_order")
+):
     try:
-        # Set resize parameters
-        max_size = (payload.max_width, payload.max_height) if payload.max_width and payload.max_height else None
+        # Validate file type
+        if not file.content_type or not file.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="File must be an image")
         
-        # Convert and resize image
-        relative_path = await image_converter(
-            payload.base64_image,
-            max_size=max_size,
-            quality=payload.quality
-        )
+        # Save and resize the uploaded file
+        relative_path = await save_uploaded_file(file, upload_type)
         
         # Get full URL
         full_url = await get_image_url(relative_path)
         
-        return {"url": full_url, "path": relative_path}
+        return {
+            "file_path": relative_path,
+            "url": full_url,
+            "message": "Image uploaded successfully"
+        }
         
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Image processing failed: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Upload failed: {str(e)}")
