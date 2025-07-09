@@ -1,248 +1,15 @@
 # ==============================================================================
-# File: my_app/admin.py (Fixed Image Previews)
-# Description: SQLAdmin configuration for the admin panel with working image previews.
+# File: my_app/admin.py (Fixed Image Previews - Final Version)
+# Description: SQLAdmin configuration with working image previews.
 # ==============================================================================
 from sqladmin import ModelView
 from wtforms import PasswordField
 from wtforms.validators import Optional, DataRequired
 from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile
 import os
+from markupsafe import Markup
 
-
-class UserAdminFinal(ModelView, model=User):
-    column_list = [User.id, User.username, User.email, User.is_active]
-    column_details_exclude_list = [User.hashed_password]
-    column_searchable_list = [User.username, User.email]
-    column_sortable_list = [User.id, User.username, User.email, User.is_active]
-
-    form_columns = [
-        User.username,
-        User.email,
-        User.is_active,
-    ]
-
-    async def scaffold_form_class(self):
-        """Override to add custom password field"""
-        form_class = await super().scaffold_form_class()
-        
-        # Add password field
-        setattr(form_class, 'password', PasswordField(
-            'Password',
-            validators=[Optional()],
-            description="Required for new users. Leave blank to keep current password when editing.",
-            render_kw={"placeholder": "Enter password"}
-        ))
-        
-        return form_class
-
-    async def insert_model(self, request, data):
-        """Handle creating new users with password"""
-        from .security import get_password_hash
-        
-        # Extract password from form data
-        password = data.get('password', '')
-        if not password:
-            raise ValueError("Password is required for new users")
-        
-        # Remove password from data dict to avoid conflict
-        data_copy = dict(data)
-        data_copy.pop('password', None)
-        
-        # Create the model instance
-        model = self.model(**data_copy)
-        model.hashed_password = get_password_hash(password)
-        
-        # Add to session and commit
-        request.state.session.add(model)
-        await request.state.session.commit()
-        await request.state.session.refresh(model)
-        return model
-
-    async def update_model(self, request, pk, data):
-        """Handle updating existing users with optional password"""
-        from .security import get_password_hash
-        
-        # Get the existing model
-        model = await request.state.session.get(self.model, pk)
-        if not model:
-            raise ValueError("User not found")
-        
-        # Extract password from form data
-        password = data.get('password', '')
-        
-        # Remove password from data dict to avoid conflict
-        data_copy = dict(data)
-        data_copy.pop('password', None)
-        
-        # Update model attributes
-        for key, value in data_copy.items():
-            if hasattr(model, key):
-                setattr(model, key, value)
-        
-        # Update password only if provided
-        if password:
-            model.hashed_password = get_password_hash(password)
-        
-        await request.state.session.commit()
-        await request.state.session.refresh(model)
-        return model
-
-    form_args = {
-        'username': {
-            'label': 'Username',
-            'description': 'Enter a unique username'
-        },
-        'email': {
-            'label': 'Email Address',
-            'description': 'Enter a valid email address'
-        },
-        'is_active': {
-            'label': 'Active User',
-            'description': 'Check if user is active'
-        },
-    }
-
-    name = "User"
-    name_plural = "Users"
-    icon = "fa-solid fa-user"
-
-
-class UserProfileAdmin(ModelView, model=UserProfile):
-    column_list = [
-        UserProfile.id,
-        UserProfile.user_id,
-        UserProfile.role,
-        UserProfile.position,
-    ]
-    form_columns = [UserProfile.user_id, UserProfile.role, UserProfile.position]
-    column_searchable_list = [UserProfile.role, UserProfile.position]
-    column_sortable_list = [UserProfile.id, UserProfile.role, UserProfile.position]
-
-    form_args = {
-        'user_id': {
-            'label': 'User (Required)',
-            'description': 'Select the user for this profile'
-        },
-        'role': {
-            'label': 'Role',
-            'description': 'Enter the user role (e.g., Technician, Manager)'
-        },
-        'position': {
-            'label': 'Position',
-            'description': 'Enter the user position (optional)'
-        },
-    }
-
-    name = "User Profile"
-    name_plural = "User Profiles"
-    icon = "fa-solid fa-id-card"
-
-
-class PropertyAdmin(ModelView, model=Property):
-    column_list = [Property.id, Property.name]
-    form_columns = [Property.name]
-    column_searchable_list = [Property.name]
-    column_sortable_list = [Property.id, Property.name]
-
-    form_args = {
-        'name': {
-            'label': 'Property Name',
-            'description': 'Enter a unique property name'
-        }
-    }
-
-    name = "Property"
-    name_plural = "Properties"
-    icon = "fa-solid fa-building"
-
-
-class RoomAdmin(ModelView, model=Room):
-    column_list = [
-        Room.id,
-        Room.name,
-        Room.number,
-        Room.room_type,
-        Room.is_active,
-        Room.property_id,
-    ]
-    form_columns = [
-        Room.property_id,
-        Room.name,
-        Room.number,
-        Room.room_type,
-        Room.is_active,
-    ]
-    column_searchable_list = [Room.name, Room.number, Room.room_type]
-    column_sortable_list = [
-        Room.id,
-        Room.name,
-        Room.number,
-        Room.room_type,
-        Room.is_active,
-    ]
-
-    form_args = {
-        'property_id': {
-            'label': 'Property (Required)',
-            'description': 'Select the property this room belongs to'
-        },
-        'name': {
-            'label': 'Room Name',
-            'description': 'Enter the room name'
-        },
-        'number': {
-            'label': 'Room Number',
-            'description': 'Enter the room number (optional)'
-        },
-        'room_type': {
-            'label': 'Room Type',
-            'description': 'Enter the room type (e.g., Standard, Suite, etc.)'
-        },
-        'is_active': {
-            'label': 'Active Room',
-            'description': 'Check if room is active and available'
-        },
-    }
-
-    name = "Room"
-    name_plural = "Rooms"
-    icon = "fa-solid fa-door-open"
-
-
-class MachineAdmin(ModelView, model=Machine):
-    column_list = [Machine.id, Machine.name, Machine.status, "property.name", "room.name"]
-    form_columns = [
-        Machine.property,
-        Machine.name,
-        Machine.status,
-        Machine.room,
-    ]
-    column_searchable_list = [Machine.name, Machine.status]
-    column_sortable_list = [Machine.id, Machine.name, Machine.status]
-
-    form_args = {
-        'property': {
-            'label': 'Property (Required)',
-            'description': 'Select the property this machine belongs to'
-        },
-        'name': {
-            'label': 'Machine Name',
-            'description': 'Enter the machine name (e.g., Lift No1, AC Unit)'
-        },
-        'status': {
-            'label': 'Machine Status',
-            'description': 'Current status of the machine'
-        },
-        'room': {
-            'label': 'Room (Optional)',
-            'description': 'Select a room if the machine is located in a specific room'
-        },
-    }
-
-    name = "Machine"
-    name_plural = "Machines"
-    icon = "fa-solid fa-robot"
-
+# ... [Keep all other classes unchanged until WorkOrderAdmin] ...
 
 class WorkOrderAdmin(ModelView, model=WorkOrder):
     column_list = [
@@ -256,9 +23,9 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         WorkOrder.room_id,
         WorkOrder.assigned_to_id,
         WorkOrder.before_image_path,
-        "before_image_preview",
+        "before_preview",  # Custom column for preview
         WorkOrder.after_image_path,
-        "after_image_preview",
+        "after_preview",   # Custom column for preview
         WorkOrder.pdf_file_path,
     ]
     
@@ -297,10 +64,18 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         WorkOrder.after_image_path,
     ]
 
-    # THIS IS THE KEY FIX - Use column_formatters instead of custom methods
+    # Column labels for better display
+    column_labels = {
+        "before_preview": "Before Image",
+        "after_preview": "After Image",
+        "before_image_path": "Before Path",
+        "after_image_path": "After Path",
+    }
+
+    # FIXED: Proper column formatters
     column_formatters = {
-        "before_image_preview": lambda model, attribute: _format_image_preview(model.before_image_path, "Before"),
-        "after_image_preview": lambda model, attribute: _format_image_preview(model.after_image_path, "After"),
+        "before_preview": lambda view, context, model, name: _format_image_preview(model.before_image_path, "Before"),
+        "after_preview": lambda view, context, model, name: _format_image_preview(model.after_image_path, "After"),
     }
 
     form_args = {
@@ -373,7 +148,7 @@ class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
         WorkOrderFile.upload_type,
         WorkOrderFile.uploaded_at,
         WorkOrderFile.work_order_id,
-        "image_preview",
+        "preview",  # Custom column
     ]
     
     form_columns = [
@@ -393,9 +168,13 @@ class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
         WorkOrderFile.upload_type,
     ]
 
-    # THIS IS THE KEY FIX - Use column_formatters for image preview
+    column_labels = {
+        "preview": "Preview",
+    }
+
+    # FIXED: Proper column formatters
     column_formatters = {
-        "image_preview": lambda model, attribute: _format_file_image_preview(model.file_path, model.mime_type),
+        "preview": lambda view, context, model, name: _format_file_image_preview(model.file_path, model.mime_type),
     }
 
     form_args = {
@@ -435,15 +214,15 @@ class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
     icon = "fa-solid fa-file"
 
 
-# Helper functions for image formatting
+# FIXED: Helper functions with proper Markup
 def _format_image_preview(image_path, label):
     """Format image preview for work orders"""
-    if not image_path:
-        return f'<span style="color: #ccc; font-size: 12px;">No {label} Image</span>'
+    if not image_path or image_path.strip() == "":
+        return Markup(f'<span style="color: #ccc; font-size: 12px;">No {label}</span>')
     
     # Check if it's an image file
     if not image_path.lower().endswith(('.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp')):
-        return f'<span style="color: #666; font-size: 12px;">{image_path}</span>'
+        return Markup(f'<span style="color: #666; font-size: 12px; word-break: break-all;">{image_path}</span>')
     
     try:
         # Construct URL - handle different path formats
@@ -457,29 +236,31 @@ def _format_image_preview(image_path, label):
         # Get filename for display
         filename = image_path.split('/')[-1] if '/' in image_path else image_path
         
-        return f'''
-        <div style="text-align: center; display: flex; flex-direction: column; align-items: center;">
+        html = f'''
+        <div style="text-align: center; max-width: 120px;">
             <img src="{url}" 
-                 style="max-height: 80px; max-width: 120px; object-fit: contain; 
-                        border: 1px solid #ddd; border-radius: 4px; margin-bottom: 5px;
-                        cursor: pointer;" 
+                 style="max-height: 60px; max-width: 100px; object-fit: contain; 
+                        border: 1px solid #ddd; border-radius: 4px; margin-bottom: 4px;
+                        cursor: pointer; display: block;" 
                  onclick="window.open('{url}', '_blank')"
                  onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';" 
                  title="Click to view full size" />
-            <span style="display: none; color: #999; font-size: 12px;">Image not found</span>
-            <div style="font-size: 10px; color: #666; max-width: 120px; word-wrap: break-word;">
-                {filename}
+            <span style="display: none; color: #999; font-size: 12px;">Not Found</span>
+            <div style="font-size: 10px; color: #666; word-break: break-all;">
+                {filename[:20]}{'...' if len(filename) > 20 else ''}
             </div>
         </div>
         '''
+        return Markup(html)
+        
     except Exception as e:
-        return f'<span style="color: #999; font-size: 12px;">Error: {str(e)}</span>'
+        return Markup(f'<span style="color: #f00; font-size: 11px;">Error</span>')
 
 
 def _format_file_image_preview(file_path, mime_type):
     """Format image preview for work order files"""
-    if not file_path:
-        return '<span style="color: #ccc; font-size: 12px;">No File</span>'
+    if not file_path or file_path.strip() == "":
+        return Markup('<span style="color: #ccc; font-size: 12px;">No File</span>')
     
     # Check if it's an image file based on path or mime type
     is_image = (
@@ -488,7 +269,7 @@ def _format_file_image_preview(file_path, mime_type):
     )
     
     if not is_image:
-        return f'<span style="color: #666; font-size: 12px;">{file_path}</span>'
+        return Markup(f'<span style="color: #666; font-size: 12px; word-break: break-all;">{file_path}</span>')
     
     try:
         # Construct URL
@@ -499,14 +280,16 @@ def _format_file_image_preview(file_path, mime_type):
         else:
             url = f"/uploads/{file_path}"
         
-        return f'''
+        html = f'''
         <img src="{url}" 
-             style="max-height: 60px; max-width: 100px; object-fit: contain; 
+             style="max-height: 50px; max-width: 80px; object-fit: contain; 
                     border: 1px solid #ddd; border-radius: 4px; cursor: pointer;" 
              onclick="window.open('{url}', '_blank')"
              onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';" 
              title="Click to view full size" />
-        <span style="display: none; color: #999; font-size: 12px;">Image not found</span>
+        <span style="display: none; color: #999; font-size: 12px;">Not Found</span>
         '''
+        return Markup(html)
+        
     except Exception as e:
-        return f'<span style="color: #999; font-size: 12px;">Error loading image</span>'
+        return Markup('<span style="color: #f00; font-size: 11px;">Error</span>')
