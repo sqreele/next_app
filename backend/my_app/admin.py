@@ -172,46 +172,33 @@ class MachineAdmin(ModelView, model=Machine):
 
 # Helper function for image formatting
 def format_image_preview(image_path, label="Image"):
-    """Format image preview for work orders"""
-    if not image_path or image_path.strip() == "":
+    """
+    Generates an HTML preview for an image path in the admin list view.
+    """
+    if not image_path or not isinstance(image_path, str) or image_path.strip() == "":
         return Markup(f'<span style="color: #ccc; font-size: 12px;">No {label}</span>')
-    
-    # Check if it's an image file
-    if not image_path.lower().endswith(('.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp')):
-        return Markup(f'<div style="font-size: 11px; color: #666; max-width: 100px; word-break: break-all;">{image_path}</div>')
-    
-    try:
-        # Construct URL - handle different path formats
-        if image_path.startswith("uploads/"):
-            url = f"/{image_path}"
-        elif "/" in image_path:
-            url = f"/uploads/{image_path}"
-        else:
-            url = f"/uploads/{image_path}"
-        
-        # Get filename for display
-        filename = image_path.split('/')[-1] if '/' in image_path else image_path
-        display_name = filename[:15] + '...' if len(filename) > 15 else filename
-        
-        html = f'''
-        <div style="text-align: center; max-width: 100px;">
-            <img src="{url}" 
-                 style="max-height: 50px; max-width: 80px; object-fit: contain; 
+
+    # Construct a simple, relative URL for the browser
+    url = f"/uploads/{image_path.lstrip('/')}"
+    filename = os.path.basename(image_path)
+    display_name = (filename[:15] + '...') if len(filename) > 15 else filename
+
+    html = f'''
+    <div style="text-align: center; max-width: 100px;">
+        <a href="{url}" target="_blank" title="Click to view full size: {filename}">
+            <img src="{url}"
+                 style="max-height: 50px; max-width: 80px; object-fit: contain;
                         border: 1px solid #ddd; border-radius: 3px; margin-bottom: 2px;
-                        cursor: pointer; display: block; margin: 0 auto;" 
-                 onclick="window.open('{url}', '_blank')"
-                 onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" 
-                 title="Click to view full size: {filename}" />
-            <div style="display: none; color: #f00; font-size: 10px; text-align: center;">Not Found</div>
-            <div style="font-size: 9px; color: #666; text-align: center;">
-                {display_name}
-            </div>
+                        display: block; margin: 0 auto;"
+                 onerror="this.style.display='none'; this.parentElement.nextElementSibling.style.display='block';" />
+        </a>
+        <div style="display: none; color: #f00; font-size: 10px; text-align: center;">Not Found</div>
+        <div style="font-size: 9px; color: #666; text-align: center;">
+            {display_name}
         </div>
-        '''
-        return Markup(html)
-        
-    except Exception as e:
-        return Markup(f'<span style="color: #f00; font-size: 10px;">Error</span>')
+    </div>
+    '''
+    return Markup(htm
 
 class WorkOrderAdmin(ModelView, model=WorkOrder):
     column_list = [
