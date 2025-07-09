@@ -111,8 +111,8 @@ async def get_work_order(db: AsyncSession, work_order_id: int):
     result = await db.execute(select(models.WorkOrder).filter(models.WorkOrder.id == work_order_id))
     return result.scalars().first()
 
-async def create_work_order(db: AsyncSession, work_order: schemas.WorkOrderCreate, property_id: int):
-    db_work_order = models.WorkOrder(**work_order.dict(), property_id=property_id)
+async def create_work_order(db: AsyncSession, work_order: schemas.WorkOrderCreate):
+    db_work_order = models.WorkOrder(**work_order.dict())
     db.add(db_work_order)
     await db.commit()
     await db.refresh(db_work_order)
