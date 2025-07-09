@@ -1,5 +1,5 @@
 # ==============================================================================
-# File: my_app/admin.py (Updated with Image Previews)
+# File: my_app/admin.py (Updated with Image Previews and File Paths)
 # Description: SQLAdmin configuration for the admin panel.
 # ==============================================================================
 from sqladmin import ModelView
@@ -255,8 +255,10 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         WorkOrder.machine_id,
         WorkOrder.room_id,
         WorkOrder.assigned_to_id,
-        "before_image_preview",  # Changed from WorkOrder.before_image_path
-        "after_image_preview",   # Changed from WorkOrder.after_image_path
+        WorkOrder.before_image_path,    # Show the actual file path
+        "before_image_preview",         # Show the image preview
+        WorkOrder.after_image_path,     # Show the actual file path  
+        "after_image_preview",          # Show the image preview
         WorkOrder.pdf_file_path,
     ]
     
@@ -280,7 +282,10 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         WorkOrder.description,
         WorkOrder.status,
         WorkOrder.priority,
+        WorkOrder.before_image_path,    # Make file paths searchable
+        WorkOrder.after_image_path,
     ]
+    
     column_sortable_list = [
         WorkOrder.id,
         WorkOrder.task,
@@ -288,6 +293,8 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         WorkOrder.priority,
         WorkOrder.due_date,
         WorkOrder.created_at,
+        WorkOrder.before_image_path,    # Make file paths sortable
+        WorkOrder.after_image_path,
     ]
 
     # Add image preview methods
@@ -320,7 +327,7 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
             return f'<span style="color: #666; font-size: 12px;">{obj.before_image_path}</span>'
         return '<span style="color: #ccc;">No image</span>'
     
-    before_image_preview.__name__ = "Before Image"
+    before_image_preview.__name__ = "Before Preview"
     before_image_preview.allow_html = True
 
     def after_image_preview(self, obj):
@@ -352,7 +359,7 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
             return f'<span style="color: #666; font-size: 12px;">{obj.after_image_path}</span>'
         return '<span style="color: #ccc;">No image</span>'
     
-    after_image_preview.__name__ = "After Image"
+    after_image_preview.__name__ = "After Preview"
     after_image_preview.allow_html = True
 
     form_args = {
@@ -396,11 +403,13 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         },
         'before_image_path': {
             'label': 'Before Image Path',
-            'description': 'Path to the before image (e.g., workorder/filename.jpg)'
+            'description': 'File path from upload (e.g., before/filename.jpg)',
+            'render_kw': {'placeholder': 'before/82d41b87-fb32-4bfb-90f9-7876c277326e.jpg'}
         },
         'after_image_path': {
-            'label': 'After Image Path',
-            'description': 'Path to the after image (e.g., workorder/filename.jpg)'
+            'label': 'After Image Path', 
+            'description': 'File path from upload (e.g., after/filename.jpg)',
+            'render_kw': {'placeholder': 'after/82d41b87-fb32-4bfb-90f9-7876c277326e.jpg'}
         },
         'pdf_file_path': {
             'label': 'PDF File Path',
