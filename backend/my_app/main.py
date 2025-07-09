@@ -1,6 +1,6 @@
 # ==============================================================================
-# File: backend/my_app/main.py (Fixed imports)
-# Description: Main FastAPI application setup.
+# File: backend/my_app/main.py (Corrected Static Path)
+# Description: Main FastAPI application with corrected static file paths.
 # ==============================================================================
 from dotenv import load_dotenv
 load_dotenv()
@@ -12,30 +12,38 @@ from starlette.middleware.sessions import SessionMiddleware
 from sqladmin import Admin
 from sqlalchemy import create_engine
 from .database import engine as async_engine, Base, SQLALCHEMY_DATABASE_URL
-# REMOVE image_upload from this import - it doesn't exist!
 from .routers import users, properties, rooms, machines, work_orders, auth
 from .connection_manager import manager
 from .admin import (
     UserAdmin,
-    UserProfileAdmin, 
-    PropertyAdmin, 
-    RoomAdmin, 
-    MachineAdmin, 
-    WorkOrderAdmin, 
+    UserProfileAdmin,
+    PropertyAdmin,
+    RoomAdmin,
+    MachineAdmin,
+    WorkOrderAdmin,
     WorkOrderFileAdmin
 )
+from fastapi.staticfiles import StaticFiles
 
 # Create FastAPI app
 app = FastAPI(
-    title="Property Management API", 
+    title="Property Management API",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
 )
 
-from fastapi.staticfiles import StaticFiles
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+# --- CORRECTED UPLOADS PATH ---
+# Define the absolute path to the uploads directory
+UPLOADS_DIR = "/next_app/backend/uploads"
+
+# Create the directory if it doesn't exist to prevent errors on startup
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+
+# Mount the static file directories with the correct paths
+app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 app.mount("/static", StaticFiles(directory="Server/static"), name="static")
+# ------------------------------
 
 # Add Session middleware for OAuth
 app.add_middleware(
@@ -54,7 +62,7 @@ app.add_middleware(
 
 # Create a synchronous engine for SQLAdmin
 sync_engine = create_engine(
-    SQLALCHEMY_DATABASE_URL.replace("+asyncpg", ""), 
+    SQLALCHEMY_DATABASE_URL.replace("+asyncpg", ""),
     echo=True
 )
 
@@ -76,7 +84,7 @@ async def create_db_and_tables():
 async def on_startup():
     await create_db_and_tables()
 
-# Include API routers - REMOVE the image_upload router line
+# Include API routers
 app.include_router(users.router, prefix="/api/v1", tags=["users"])
 app.include_router(properties.router, prefix="/api/v1", tags=["properties"])
 app.include_router(rooms.router, prefix="/api/v1", tags=["rooms"])
