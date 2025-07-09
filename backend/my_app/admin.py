@@ -1,16 +1,12 @@
 # ==============================================================================
-# File: my_app/admin.py (Complete Working Version)
-# Description: SQLAdmin configuration for the admin panel.
+# File: my_app/admin.py (Basic Working Version)
+# Description: SQLAdmin configuration without complex async operations.
 # ==============================================================================
 from sqladmin import ModelView
-from wtforms import PasswordField
-from wtforms.validators import Optional, DataRequired
 from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile
-import os
 from markupsafe import Markup
 
-
-class UserAdminFinal(ModelView, model=User):
+class UserAdmin(ModelView, model=User):
     column_list = [User.id, User.username, User.email, User.is_active]
     column_details_exclude_list = [User.hashed_password]
     column_searchable_list = [User.username, User.email]
@@ -21,72 +17,6 @@ class UserAdminFinal(ModelView, model=User):
         User.email,
         User.is_active,
     ]
-
-    async def scaffold_form_class(self):
-        """Override to add custom password field"""
-        form_class = await super().scaffold_form_class()
-        
-        # Add password field
-        setattr(form_class, 'password', PasswordField(
-            'Password',
-            validators=[Optional()],
-            description="Required for new users. Leave blank to keep current password when editing.",
-            render_kw={"placeholder": "Enter password"}
-        ))
-        
-        return form_class
-
-    async def insert_model(self, request, data):
-        """Handle creating new users with password"""
-        from .security import get_password_hash
-        
-        # Extract password from form data
-        password = data.get('password', '')
-        if not password:
-            raise ValueError("Password is required for new users")
-        
-        # Remove password from data dict to avoid conflict
-        data_copy = dict(data)
-        data_copy.pop('password', None)
-        
-        # Create the model instance
-        model = self.model(**data_copy)
-        model.hashed_password = get_password_hash(password)
-        
-        # Add to session and commit
-        request.state.session.add(model)
-        await request.state.session.commit()
-        await request.state.session.refresh(model)
-        return model
-
-    async def update_model(self, request, pk, data):
-        """Handle updating existing users with optional password"""
-        from .security import get_password_hash
-        
-        # Get the existing model
-        model = await request.state.session.get(self.model, pk)
-        if not model:
-            raise ValueError("User not found")
-        
-        # Extract password from form data
-        password = data.get('password', '')
-        
-        # Remove password from data dict to avoid conflict
-        data_copy = dict(data)
-        data_copy.pop('password', None)
-        
-        # Update model attributes
-        for key, value in data_copy.items():
-            if hasattr(model, key):
-                setattr(model, key, value)
-        
-        # Update password only if provided
-        if password:
-            model.hashed_password = get_password_hash(password)
-        
-        await request.state.session.commit()
-        await request.state.session.refresh(model)
-        return model
 
     form_args = {
         'username': {
@@ -106,7 +36,6 @@ class UserAdminFinal(ModelView, model=User):
     name = "User"
     name_plural = "Users"
     icon = "fa-solid fa-user"
-
 
 class UserProfileAdmin(ModelView, model=UserProfile):
     column_list = [
@@ -138,7 +67,6 @@ class UserProfileAdmin(ModelView, model=UserProfile):
     name_plural = "User Profiles"
     icon = "fa-solid fa-id-card"
 
-
 class PropertyAdmin(ModelView, model=Property):
     column_list = [Property.id, Property.name]
     form_columns = [Property.name]
@@ -155,7 +83,6 @@ class PropertyAdmin(ModelView, model=Property):
     name = "Property"
     name_plural = "Properties"
     icon = "fa-solid fa-building"
-
 
 class RoomAdmin(ModelView, model=Room):
     column_list = [
@@ -209,7 +136,6 @@ class RoomAdmin(ModelView, model=Room):
     name_plural = "Rooms"
     icon = "fa-solid fa-door-open"
 
-
 class MachineAdmin(ModelView, model=Machine):
     column_list = [Machine.id, Machine.name, Machine.status, "property.name", "room.name"]
     form_columns = [
@@ -244,8 +170,7 @@ class MachineAdmin(ModelView, model=Machine):
     name_plural = "Machines"
     icon = "fa-solid fa-robot"
 
-
-# Helper functions for image formatting
+# Helper function for image formatting
 def format_image_preview(image_path, label="Image"):
     """Format image preview for work orders"""
     if not image_path or image_path.strip() == "":
@@ -287,46 +212,6 @@ def format_image_preview(image_path, label="Image"):
         
     except Exception as e:
         return Markup(f'<span style="color: #f00; font-size: 10px;">Error</span>')
-
-
-def format_file_preview(file_path, mime_type=None):
-    """Format file preview for work order files"""
-    if not file_path or file_path.strip() == "":
-        return Markup('<span style="color: #ccc; font-size: 12px;">No File</span>')
-    
-    # Check if it's an image file
-    is_image = (
-        file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp')) or
-        (mime_type and mime_type.startswith('image/'))
-    )
-    
-    if not is_image:
-        filename = file_path.split('/')[-1] if '/' in file_path else file_path
-        return Markup(f'<div style="font-size: 11px; color: #666; max-width: 100px; word-break: break-all;">{filename}</div>')
-    
-    try:
-        # Construct URL
-        if file_path.startswith("uploads/"):
-            url = f"/{file_path}"
-        elif "/" in file_path:
-            url = f"/uploads/{file_path}"
-        else:
-            url = f"/uploads/{file_path}"
-        
-        html = f'''
-        <img src="{url}" 
-             style="max-height: 40px; max-width: 60px; object-fit: contain; 
-                    border: 1px solid #ddd; border-radius: 3px; cursor: pointer;" 
-             onclick="window.open('{url}', '_blank')"
-             onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';" 
-             title="Click to view full size" />
-        <span style="display: none; color: #f00; font-size: 10px;">Not Found</span>
-        '''
-        return Markup(html)
-        
-    except Exception as e:
-        return Markup('<span style="color: #f00; font-size: 10px;">Error</span>')
-
 
 class WorkOrderAdmin(ModelView, model=WorkOrder):
     column_list = [
@@ -452,7 +337,6 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
     name_plural = "Work Orders"
     icon = "fa-solid fa-list-check"
 
-
 class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
     column_list = [
         WorkOrderFile.id,
@@ -463,7 +347,6 @@ class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
         WorkOrderFile.upload_type,
         WorkOrderFile.uploaded_at,
         WorkOrderFile.work_order_id,
-        "preview",
     ]
     
     form_columns = [
@@ -482,14 +365,6 @@ class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
         WorkOrderFile.file_path,
         WorkOrderFile.upload_type,
     ]
-
-    column_labels = {
-        "preview": "Preview",
-    }
-
-    column_formatters = {
-        "preview": lambda view, context, model, name: format_file_preview(model.file_path, model.mime_type),
-    }
 
     form_args = {
         'work_order_id': {
