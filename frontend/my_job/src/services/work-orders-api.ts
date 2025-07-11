@@ -1,4 +1,3 @@
-// src/services/work-orders-api.ts
 import apiClient from '@/lib/api-client'
 import { AxiosResponse, AxiosError } from 'axios'
 
@@ -22,10 +21,15 @@ export interface CreateWorkOrderData {
   description: string
   status: 'Pending' | 'In Progress' | 'Completed' | 'Cancelled'
   priority: 'Low' | 'Medium' | 'High' | 'Urgent'
-  due_date: string
+  due_date?: string
   machine_id?: number
   room_id?: number
   assigned_to_id?: number
+  property_id: number // Required field
+  before_image_path?: string | null
+  after_image_path?: string | null
+  before_images: string[]
+  after_images: string[]
 }
 
 export interface UpdateWorkOrderData extends Partial<CreateWorkOrderData> {}
@@ -108,12 +112,9 @@ class WorkOrdersAPI {
   /**
    * Create a new work order
    */
-  async createWorkOrder(data: CreateWorkOrderData, property_id: number): Promise<WorkOrder> {
+  async createWorkOrder(data: CreateWorkOrderData): Promise<WorkOrder> {
     try {
-      const response: AxiosResponse<WorkOrder> = await apiClient.post(
-        `${this.endpoint}/?property_id=${property_id}`,
-        data
-      )
+      const response: AxiosResponse<WorkOrder> = await apiClient.post(this.endpoint, data)
       return response.data
     } catch (error) {
       console.error('Error in createWorkOrder:', error)

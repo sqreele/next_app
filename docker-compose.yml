@@ -28,7 +28,6 @@ services:
     build:
       context: ./frontend/my_job
     volumes:
-      - ./frontend/my_job:/app
       - /app/node_modules
     restart: unless-stopped
     depends_on:

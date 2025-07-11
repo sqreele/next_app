@@ -1,14 +1,6 @@
 # ==============================================================================
-# File: backend/my_app/routers/auth.py
+# File: backend/my_app/routers/auth.py (Fixed Router Definition)
 # Description: Authentication router with Google OAuth2 support.
-#
-# Changes from original:
-# - Removed dummy credentials for better security.
-# - Switched to RedirectResponse after Google login for a smoother user experience.
-# - Added security flags (HttpOnly, SameSite) to cookies.
-# - Implemented password reset functionality (forgot/reset password).
-# - Refactored credential login to use OAuth2PasswordRequestForm for better security.
-# - Added more robust error handling and status checks.
 # ==============================================================================
 import os
 from typing import Optional
@@ -25,6 +17,7 @@ from .. import crud, schemas, security
 from ..dependencies import get_db, get_current_active_user
 from fastapi.security import OAuth2PasswordRequestForm
 
+# Create the router - THIS MUST BE AT THE TOP
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # --- OAuth Configuration ---
@@ -120,8 +113,9 @@ async def auth_google_callback(request: Request, db: AsyncSession = Depends(get_
                 email=email,
                 password=secrets.token_urlsafe(32),  # Secure random password for OAuth users
                 profile=schemas.UserProfileCreate(
-                    role="User",
-                    position=user_info.get('name', "OAuth User")
+                    role=schemas.UserRole.TECHNICIAN,
+                    position=user_info.get('name', "OAuth User"),
+                    property_ids=[]  # Empty list initially
                 )
             )
             user = await crud.create_user(db=db, user=user_create)
@@ -193,7 +187,10 @@ async def auth_status(current_user: Optional[schemas.User] = Depends(try_get_cur
                 "profile": {
                     "role": current_user.profile.role if current_user.profile else "User",
                     "position": current_user.profile.position if current_user.profile else "No position",
-                    "properties": [{"id": p.id, "name": p.name} for p in current_user.profile.properties] if current_user.profile else []
+                    "properties": [
+                        {"id": p.id, "name": p.name} 
+                        for p in (current_user.profile.properties if current_user.profile else [])
+                    ]
                 } if current_user.profile else None
             }
         }

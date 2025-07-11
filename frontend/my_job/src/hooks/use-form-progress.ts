@@ -1,4 +1,3 @@
-// src/hooks/use-form-progress.ts
 import { useState, useMemo } from 'react'
 
 export function useFormProgress(sections: any[], formData: any, errors: any) {

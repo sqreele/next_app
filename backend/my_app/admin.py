@@ -1,10 +1,30 @@
-# ==============================================================================
-# File: my_app/admin.py (Fixed Column Formatters)
-# Description: SQLAdmin configuration with corrected formatters.
-# ==============================================================================
 from sqladmin import ModelView
 from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile
 from markupsafe import Markup
+
+# Helper function for single image formatting
+def format_image_preview(model, attribute):
+    image_path = getattr(model, attribute, None)
+    if image_path and isinstance(image_path, str) and image_path.strip():
+        clean_path = image_path.strip('/')
+        url = f"/Uploads/{clean_path}"
+        return Markup(f'<a href="{url}" target="_blank"><img src="{url}" width="100" alt="Image" loading="lazy"></a>')
+    return Markup('<span style="color: #ccc; font-size: 12px;">No Image</span>')
+
+# Helper function for image array formatting
+def format_image_array(model, attribute):
+    images = getattr(model, attribute, [])
+    if images and isinstance(images, list) and len(images) > 0:
+        previews = []
+        for img_path in images[:3]:
+            if img_path and isinstance(img_path, str) and img_path.strip():
+                clean_path = img_path.strip('/')
+                url = f"/Uploads/{clean_path}"
+                previews.append(f'<a href="{url}" target="_blank"><img src="{url}" width="50" style="margin-right: 5px;" alt="Image" loading="lazy"></a>')
+        if len(images) > 3:
+            previews.append('<span style="color: #666; font-size: 12px;">...and more</span>')
+        return Markup(''.join(previews))
+    return Markup('<span style="color: #ccc; font-size: 12px;">No Images</span>')
 
 class UserAdmin(ModelView, model=User):
     column_list = [User.id, User.username, User.email, User.is_active]
@@ -43,8 +63,14 @@ class UserProfileAdmin(ModelView, model=UserProfile):
         UserProfile.user_id,
         UserProfile.role,
         UserProfile.position,
+        UserProfile.properties,
     ]
-    form_columns = [UserProfile.user_id, UserProfile.role, UserProfile.position]
+    form_columns = [
+        UserProfile.user_id,
+        UserProfile.role,
+        UserProfile.position,
+        UserProfile.properties,
+    ]
     column_searchable_list = [UserProfile.role, UserProfile.position]
     column_sortable_list = [UserProfile.id, UserProfile.role, UserProfile.position]
 
@@ -61,6 +87,14 @@ class UserProfileAdmin(ModelView, model=UserProfile):
             'label': 'Position',
             'description': 'Enter the user position (optional)'
         },
+        'properties': {
+            'label': 'Properties',
+            'description': 'Select properties associated with this user profile'
+        },
+    }
+
+    column_labels = {
+        'properties': 'Associated Properties',
     }
 
     name = "User Profile"
@@ -170,15 +204,6 @@ class MachineAdmin(ModelView, model=Machine):
     name_plural = "Machines"
     icon = "fa-solid fa-robot"
 
-# Helper function for image formatting
-def format_image_preview(model, attribute):
-    image_path = getattr(model, attribute, None)
-    if image_path and image_path.strip():
-        # Construct URL for the image
-        url = f"/uploads/{image_path.lstrip('/')}"
-        return Markup(f'<a href="{url}" target="_blank"><img src="{url}" width="100"></a>')
-    return Markup('<span style="color: #ccc; font-size: 12px;">No Image</span>')
-
 class WorkOrderAdmin(ModelView, model=WorkOrder):
     column_list = [
         WorkOrder.id,
@@ -189,9 +214,9 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         WorkOrder.property_id,
         WorkOrder.machine_id,
         WorkOrder.room_id,
-        WorkOrder.assigned_to_id,
-        'before_image_path',
-        'after_image_path',
+        WorkOrder.assigned_to,
+        'before_images',
+        'after_images',
         WorkOrder.pdf_file_path,
     ]
     
@@ -205,8 +230,6 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         WorkOrder.machine_id,
         WorkOrder.room_id,
         WorkOrder.assigned_to_id,
-        WorkOrder.before_image_path,
-        WorkOrder.after_image_path,
         WorkOrder.pdf_file_path,
     ]
     
@@ -227,13 +250,16 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
     ]
 
     column_labels = {
-        "before_image_path": "Before Image",
-        "after_image_path": "After Image",
+        "before_images": "Before Images",
+        "after_images": "After Images",
+        "assigned_to": "Assigned User",
+        "pdf_file_path": "PDF Document",
     }
 
     column_formatters = {
-        'before_image_path': lambda m, a: format_image_preview(m, 'before_image_path'),
-        'after_image_path': lambda m, a: format_image_preview(m, 'after_image_path'),
+        'before_images': lambda m, a: format_image_array(m, 'before_images'),
+        'after_images': lambda m, a: format_image_array(m, 'after_images'),
+        'assigned_to': lambda m, a: m.assigned_to.username if m.assigned_to else "Unassigned",
     }
 
     form_args = {
@@ -275,16 +301,6 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
             'label': 'Assigned To (Optional)',
             'description': 'Assign this work order to a specific user'
         },
-        'before_image_path': {
-            'label': 'Before Image Path',
-            'description': 'File path from upload (e.g., before/filename.jpg)',
-            'render_kw': {'placeholder': 'before/82d41b87-fb32-4bfb-90f9-7876c277326e.jpg'}
-        },
-        'after_image_path': {
-            'label': 'After Image Path', 
-            'description': 'File path from upload (e.g., after/filename.jpg)',
-            'render_kw': {'placeholder': 'after/82d41b87-fb32-4bfb-90f9-7876c277326e.jpg'}
-        },
         'pdf_file_path': {
             'label': 'PDF File Path',
             'description': 'Path to the PDF or document (optional)'
@@ -322,7 +338,18 @@ class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
         WorkOrderFile.id,
         WorkOrderFile.file_path,
         WorkOrderFile.upload_type,
+        WorkOrderFile.uploaded_at,
     ]
+
+    column_labels = {
+        "file_path": "File Path",
+        "file_name": "File Name",
+        "file_size": "File Size (Bytes)",
+        "mime_type": "MIME Type",
+        "upload_type": "File Type",
+        "uploaded_at": "Uploaded At",
+        "work_order_id": "Work Order",
+    }
 
     form_args = {
         'work_order_id': {

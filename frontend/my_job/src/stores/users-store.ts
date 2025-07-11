@@ -53,6 +53,12 @@ interface UsersState {
   getActiveUsers: () => User[]
   getTechnicians: () => User[]
   getAdmins: () => User[]
+  
+  // Property-based filtering methods
+  getUsersByProperty: (property_id: number) => User[]
+  getActiveUsersByProperty: (property_id: number) => User[]
+  getTechniciansByProperty: (property_id: number) => User[]
+  
   updateStats: () => void
   refreshUsers: () => Promise<void>
 }
@@ -135,6 +141,7 @@ export const useUsersStore = create<UsersState>()(
           
           // Active status filter
           if (filters.is_active !== undefined && user.is_active !== filters.is_active) return false
+          if (filters.property_id !== undefined && user.property_id !== filters.property_id) return false
           
           // Search filter
           if (filters.search) {
@@ -249,6 +256,25 @@ export const useUsersStore = create<UsersState>()(
 
       getAdmins: () => {
         return get().getUsersByRole('Admin')
+      },
+
+      // Property-based filtering methods
+      getUsersByProperty: (property_id) => {
+        return get().users.filter(user => user.property_id === property_id)
+      },
+
+      getActiveUsersByProperty: (property_id) => {
+        return get().users.filter(user => 
+          user.is_active && user.property_id === property_id
+        )
+      },
+
+      getTechniciansByProperty: (property_id) => {
+        return get().users.filter(user => 
+          user.profile.role === 'Technician' && 
+          user.is_active && 
+          user.property_id === property_id
+        )
       },
 
       updateStats: () => {

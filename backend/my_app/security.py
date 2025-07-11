@@ -91,6 +91,16 @@ async def get_current_user(token: str, db: AsyncSession) -> 'models.User':
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    
+    # Check if token is blacklisted
+    from .routers.auth import TOKEN_BLACKLIST
+    if token in TOKEN_BLACKLIST:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been invalidated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")

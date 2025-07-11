@@ -9,6 +9,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .database import Base
+from sqlalchemy.dialects.postgresql import JSONB
 
 # Association table
 user_property_association = Table(
@@ -115,7 +116,9 @@ class WorkOrder(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
     
-    # Note: New columns temporarily removed - will add back after migration
+    # New columns
+    before_images = Column(JSONB, nullable=True, server_default='[]')
+    after_images = Column(JSONB, nullable=True, server_default='[]')
     
     property_id = Column(Integer, ForeignKey('properties.id'), nullable=False)
     machine_id = Column(Integer, ForeignKey('machines.id'), nullable=True)

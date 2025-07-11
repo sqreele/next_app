@@ -1,9 +1,16 @@
-// src/types/user.ts (Updated to include registration types)
+// src/types/user.ts
+export interface Property {
+  id: number
+  name: string
+}
+
 export interface UserProfile {
   id: number
   user_id: number
   role: 'Admin' | 'Technician' | 'Manager' | 'Supervisor'
   position: string
+  property_id: number
+  properties: Property[]
 }
 
 export interface User {
@@ -12,6 +19,7 @@ export interface User {
   email: string
   is_active: boolean
   profile: UserProfile
+  property_id: number
 }
 
 export interface CreateUserData {

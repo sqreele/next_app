@@ -25,6 +25,7 @@ export interface UsersFilters {
   search?: string
   page?: number
   limit?: number
+  property_id?: number 
 }
 
 class UsersAPI {
@@ -38,6 +39,7 @@ class UsersAPI {
   async register(data: RegisterData): Promise<RegisterResponse> {
     // Transform the data to match your API structure
     const apiData = {
+      
       username: data.username,
       email: data.email,
       password: data.password,
@@ -89,7 +91,9 @@ class UsersAPI {
    * Get current user profile
    */
   async getCurrentUser(): Promise<User> {
-    const response: AxiosResponse<User> = await apiClient.get(`${this.authEndpoint}/me`)
+    console.log('🔍 Fetching current user from /api/v1/auth/me')
+    const response: AxiosResponse<User> = await apiClient.get('/api/v1/users/me')
+    console.log('🔍 User response:', response.data)
     return response.data
   }
 

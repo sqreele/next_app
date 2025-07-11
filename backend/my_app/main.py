@@ -34,11 +34,16 @@ app = FastAPI(
 )
 
 # --- CORRECTED UPLOADS PATH ---
-# Define the absolute path to the uploads directory
-UPLOADS_DIR = "/next_app/backend/uploads"
+# Define the relative path to the uploads directory
+UPLOADS_DIR = "uploads"
 
 # Create the directory if it doesn't exist to prevent errors on startup
-os.makedirs(UPLOADS_DIR, exist_ok=True)
+try:
+    os.makedirs(UPLOADS_DIR, exist_ok=True)
+except PermissionError:
+    # If we can't create the directory, just continue without it
+    print(f"Warning: Could not create uploads directory: {UPLOADS_DIR}")
+    UPLOADS_DIR = "."
 
 # Mount the static file directories with the correct paths
 app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")

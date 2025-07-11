@@ -1,4 +1,4 @@
-// src/app/register/page.tsx (Complete rewrite with API integration)
+// src/app/register/page.tsx (Enhanced with Property Selection)
 'use client'
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import { 
@@ -14,8 +15,14 @@ import {
   EyeSlashIcon, 
   CheckCircleIcon, 
   XMarkIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  BuildingOfficeIcon
 } from '@heroicons/react/24/outline'
+
+interface Property {
+  id: number
+  name: string
+}
 
 interface FormData {
   username: string
@@ -25,6 +32,7 @@ interface FormData {
   profile: {
     role: 'Admin' | 'Technician' | 'Manager' | 'Supervisor'
     position: string
+    property_ids: number[]
   }
 }
 
@@ -71,9 +79,12 @@ export default function RegisterPage() {
     profile: {
       role: 'Technician',
       position: '',
+      property_ids: []
     }
   })
   
+  const [properties, setProperties] = useState<Property[]>([])
+  const [loadingProperties, setLoadingProperties] = useState(true)
   const [errors, setErrors] = useState<FormErrors>({})
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -83,6 +94,36 @@ export default function RegisterPage() {
     password: { valid: false, strength: 'weak' },
     confirmPassword: { valid: false }
   })
+
+  // Fetch available properties
+  useEffect(() => {
+    const fetchProperties = async () => {
+      try {
+        setLoadingProperties(true)
+        const response = await fetch('/api/v1/users/properties', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          setProperties(data)
+        } else {
+          console.error('Failed to fetch properties')
+          toast.error('Failed to load properties')
+        }
+      } catch (error) {
+        console.error('Error fetching properties:', error)
+        toast.error('Failed to load properties')
+      } finally {
+        setLoadingProperties(false)
+      }
+    }
+    
+    fetchProperties()
+  }, [])
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -229,6 +270,11 @@ export default function RegisterPage() {
       newErrors.position = 'Position is required'
     }
 
+    // Property selection is optional, but we can add validation if needed
+    // if (formData.profile.property_ids.length === 0) {
+    //   newErrors.properties = 'Please select at least one property'
+    // }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -255,6 +301,26 @@ export default function RegisterPage() {
       setErrors(prev => ({
         ...prev,
         [field]: ''
+      }))
+    }
+  }
+
+  const handlePropertyChange = (propertyId: number, checked: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      profile: {
+        ...prev.profile,
+        property_ids: checked 
+          ? [...prev.profile.property_ids, propertyId]
+          : prev.profile.property_ids.filter(id => id !== propertyId)
+      }
+    }))
+
+    // Clear property error if it exists
+    if (errors.properties) {
+      setErrors(prev => ({
+        ...prev,
+        properties: ''
       }))
     }
   }
@@ -338,8 +404,8 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col justify-center items-center bg-gradient-to-br from-green-100 to-white px-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex flex-col justify-center items-center bg-gradient-to-br from-green-100 to-white px-4 py-8">
+      <Card className="w-full max-w-lg">
         <CardHeader className="text-center">
           <div className="mb-4 flex justify-center">
             <div className="bg-green-500 rounded-full h-16 w-16 flex items-center justify-center">
@@ -350,7 +416,7 @@ export default function RegisterPage() {
             Create your account
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Username Field */}
             <div>
@@ -502,77 +568,129 @@ export default function RegisterPage() {
                       <div className="font-medium">{role.label}</div>
                       <div className="text-sm text-gray-500">{role.description}</div>
                     </div>
-                    {formData.profile.role === role.value && (<CheckCircleIcon className="h-5 w-5 text-green-500" />
-                   )}
-                 </button>
-               ))}
-             </div>
-           </div>
+                    {formData.profile.role === role.value && (
+                      <CheckCircleIcon className="h-5 w-5 text-green-500" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-           {/* Position Field */}
-           <div>
-             <label className="block text-sm font-medium text-gray-700 mb-1">
-               Position *
-             </label>
-             <Input
-               type="text"
-               value={formData.profile.position}
-               onChange={(e) => handleInputChange('profile.position', e.target.value)}
-               placeholder="Enter your position/job title"
-               className={errors.position ? 'border-red-500' : ''}
-               disabled={loading}
-             />
-             {errors.position && (
-               <p className="mt-1 text-sm text-red-600">{errors.position}</p>
-             )}
-           </div>
+            {/* Position Field */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Position *
+              </label>
+              <Input
+                type="text"
+                value={formData.profile.position}
+                onChange={(e) => handleInputChange('profile.position', e.target.value)}
+                placeholder="Enter your position/job title"
+                className={errors.position ? 'border-red-500' : ''}
+                disabled={loading}
+              />
+              {errors.position && (
+                <p className="mt-1 text-sm text-red-600">{errors.position}</p>
+              )}
+            </div>
 
-           {/* Global Error Display */}
-           {error && (
-             <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-               <p className="text-sm text-red-800">{error}</p>
-             </div>
-           )}
+            {/* Property Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <div className="flex items-center gap-2">
+                  <BuildingOfficeIcon className="h-4 w-4" />
+                  Select Properties (Optional)
+                </div>
+              </label>
+              
+              {loadingProperties ? (
+                <div className="flex items-center justify-center p-4 border border-gray-200 rounded-lg">
+                  <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin mr-2" />
+                  <span className="text-sm text-gray-500">Loading properties...</span>
+                </div>
+              ) : properties.length > 0 ? (
+                <div className="space-y-2 max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-3 bg-gray-50">
+                  {properties.map((property) => (
+                    <div key={property.id} className="flex items-center space-x-3">
+                      <Checkbox
+                        id={`property-${property.id}`}
+                        checked={formData.profile.property_ids.includes(property.id)}
+                        onCheckedChange={(checked) => handlePropertyChange(property.id, checked as boolean)}
+                        disabled={loading}
+                      />
+                      <label 
+                        htmlFor={`property-${property.id}`} 
+                        className="text-sm text-gray-700 cursor-pointer flex-1"
+                      >
+                        {property.name}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-4 border border-gray-200 rounded-lg bg-gray-50">
+                  <p className="text-sm text-gray-500 text-center">No properties available</p>
+                </div>
+              )}
+              
+              {formData.profile.property_ids.length > 0 && (
+                <div className="mt-2">
+                  <p className="text-xs text-gray-600">
+                    Selected: {formData.profile.property_ids.length} propert{formData.profile.property_ids.length === 1 ? 'y' : 'ies'}
+                  </p>
+                </div>
+              )}
+              
+              {errors.properties && (
+                <p className="mt-1 text-sm text-red-600">{errors.properties}</p>
+              )}
+            </div>
 
-           {/* Submit Button */}
-           <Button
-             type="submit"
-             disabled={loading || validation.username.checking || validation.email.checking}
-             className="w-full bg-green-500 text-white font-semibold py-2 rounded-lg mt-4 hover:bg-green-600 transition"
-           >
-             {loading ? (
-               <div className="flex items-center gap-2">
-                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                 Creating Account...
-               </div>
-             ) : (
-               'Create Account'
-             )}
-           </Button>
-         </form>
+            {/* Global Error Display */}
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                <p className="text-sm text-red-800">{error}</p>
+              </div>
+            )}
 
-         {/* Login Link */}
-         <div className="mt-6 text-center text-sm text-gray-600">
-           Already have an account?{' '}
-           <Link href="/login" className="text-green-600 hover:text-green-500 font-medium">
-             Sign in
-           </Link>
-         </div>
+            {/* Submit Button */}
+            <Button
+              type="submit"
+              disabled={loading || validation.username.checking || validation.email.checking}
+              className="w-full bg-green-500 text-white font-semibold py-2 rounded-lg mt-4 hover:bg-green-600 transition"
+            >
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Creating Account...
+                </div>
+              ) : (
+                'Create Account'
+              )}
+            </Button>
+          </form>
 
-         {/* Terms and Privacy */}
-         <div className="mt-4 text-center text-xs text-gray-500">
-           By creating an account, you agree to our{' '}
-           <Link href="/terms" className="text-green-600 hover:text-green-500">
-             Terms of Service
-           </Link>{' '}
-           and{' '}
-           <Link href="/privacy" className="text-green-600 hover:text-green-500">
-             Privacy Policy
-           </Link>
-         </div>
-       </CardContent>
-     </Card>
-   </div>
- )
+          {/* Login Link */}
+          <div className="mt-6 text-center text-sm text-gray-600">
+            Already have an account?{' '}
+            <Link href="/login" className="text-green-600 hover:text-green-500 font-medium">
+              Sign in
+            </Link>
+          </div>
+
+          {/* Terms and Privacy */}
+          <div className="mt-4 text-center text-xs text-gray-500">
+            By creating an account, you agree to our{' '}
+            <Link href="/terms" className="text-green-600 hover:text-green-500">
+              Terms of Service
+            </Link>{' '}
+            and{' '}
+            <Link href="/privacy" className="text-green-600 hover:text-green-500">
+              Privacy Policy
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
 }
- 

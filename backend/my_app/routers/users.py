@@ -1,5 +1,5 @@
 # ==============================================================================
-# File: backend/my_app/routers/users.py (Corrected)
+# File: backend/my_app/routers/users.py (Add Properties Endpoint)
 # Description: Async user and authentication routes.
 # ==============================================================================
 from datetime import timedelta
@@ -44,9 +44,9 @@ async def login_for_access_token(
 
 @router.get("/me/", response_model=schemas.User)
 async def read_users_me(
-    current_user: schemas.User = Depends(dependencies.get_current_active_user),
+    current_user: models.User = Depends(dependencies.get_current_active_user),
 ):
-    return current_user
+    return schemas.User.from_orm(current_user)
 
 @router.get("/check-username/{username}")
 async def check_username_availability(
@@ -63,3 +63,23 @@ async def check_email_availability(
     """Check if an email is available for registration."""
     user = await crud.get_user_by_email(db, email=email)
     return {"available": user is None}
+
+# ADD THIS ENDPOINT FOR PROPERTIES
+@router.get("/properties", response_model=List[schemas.Property])
+async def get_available_properties(
+    db: AsyncSession = Depends(dependencies.get_db)
+):
+    """Get all available properties for user registration"""
+    try:
+        properties = await crud.get_properties(db)
+        return properties
+    except Exception as e:
+        print(f"Error fetching properties: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch properties")
+    
+@router.get("/{user_id}", response_model=schemas.User)
+async def read_user(user_id: int, db: AsyncSession = Depends(dependencies.get_db)):
+    db_user = await crud.get_user(db, user_id=user_id)
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return db_user    

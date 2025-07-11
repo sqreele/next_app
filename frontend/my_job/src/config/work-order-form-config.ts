@@ -1,4 +1,3 @@
-// src/config/work-order-form-config.ts - Updated with validation rules
 import {
   ClipboardDocumentListIcon,
   CalendarIcon,
@@ -24,7 +23,7 @@ export interface FormFieldOption {
 export interface FormField {
   name: string
   label: string
-  type: 'text' | 'textarea' | 'select' | 'checkbox' | 'date' | 'datetime-local' | 'image-upload' | 'file' | 'autocomplete'
+  type: 'text' | 'email' | 'password' | 'textarea' | 'select' | 'checkbox' | 'date' | 'datetime-local' | 'image-upload' | 'file' | 'autocomplete' | 'number' | 'tel' | 'url'
   required?: boolean
   placeholder?: string
   options?: FormFieldOption[]
@@ -43,6 +42,8 @@ export interface FormField {
   validation?: {
     minLength?: number
     maxLength?: number
+    min?: number
+    max?: number
     pattern?: RegExp
     custom?: (value: any) => boolean | string
   }
@@ -207,12 +208,12 @@ export const workOrderFormSections: FormSection[] = [
         label: 'Before Photos',
         type: 'image-upload',
         accept: 'image/*',
-        required: false, // Set to true if you want to require before photos
+        required: false,
         multiple: true,
         maxFiles: 5,
-        maxSize: 10, // 10MB per file
-        minSize: 0.01, // 10KB minimum
-        maxTotalSize: 25, // 25MB total for before photos
+        maxSize: 10,
+        minSize: 0.01,
+        maxTotalSize: 25,
         allowedFormats: ['jpeg', 'jpg', 'png', 'webp'],
         maxWidth: 4096,
         maxHeight: 4096,
@@ -227,9 +228,9 @@ export const workOrderFormSections: FormSection[] = [
         required: false,
         multiple: true,
         maxFiles: 5,
-        maxSize: 10, // 10MB per file
-        minSize: 0.01, // 10KB minimum
-        maxTotalSize: 25, // 25MB total for after photos
+        maxSize: 10,
+        minSize: 0.01,
+        maxTotalSize: 25,
         allowedFormats: ['jpeg', 'jpg', 'png', 'webp'],
         maxWidth: 4096,
         maxHeight: 4096,
@@ -244,16 +245,13 @@ export const workOrderFormSections: FormSection[] = [
         required: false,
         multiple: true,
         maxFiles: 3,
-        maxSize: 20, // 20MB
+        maxSize: 20,
       },
     ],
   },
   {
     id: 'review',
     title: 'Review & Submit',
-    fields: [
-      // This section will be handled specially in the component
-      // No actual form fields, just review display
-    ],
+    fields: [],
   },
 ]

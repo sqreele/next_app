@@ -1,4 +1,3 @@
-// src/hooks/use-work-order-form.ts - Updated to handle uploaded image URLs
 import { useState, useCallback } from 'react'
 import { FormField } from '@/config/work-order-form-config'
 
@@ -47,7 +46,6 @@ export function useWorkOrderForm(initialData: any) {
           if (!value || !Array.isArray(value) || value.length === 0) {
             newErrors[field.name] = `${field.label} is required`
           } else {
-            // Check if all images are successfully uploaded
             const failedUploads = value.filter((img: ImageFile) => img.uploadStatus === 'error')
             const pendingUploads = value.filter((img: ImageFile) => 
               img.uploadStatus === 'pending' || img.uploadStatus === 'uploading'
@@ -84,7 +82,6 @@ export function useWorkOrderForm(initialData: any) {
     return []
   }, [formData])
 
-  // NEW: Get uploaded image URLs instead of files
   const getUploadedImageUrls = useCallback((fieldName: string): string[] => {
     const value = formData[fieldName]
     console.log(`🔗 Getting uploaded URLs for ${fieldName}:`, value)
@@ -99,7 +96,6 @@ export function useWorkOrderForm(initialData: any) {
     return []
   }, [formData])
 
-  // NEW: Check if all images are uploaded
   const areAllImagesUploaded = useCallback((): boolean => {
     const beforePhotos = formData.beforePhotos || []
     const afterPhotos = formData.afterPhotos || []
@@ -111,7 +107,6 @@ export function useWorkOrderForm(initialData: any) {
     return allImages.every((img: ImageFile) => img.uploadStatus === 'success')
   }, [formData])
 
-  // NEW: Get upload status summary
   const getUploadStatus = useCallback(() => {
     const beforePhotos = formData.beforePhotos || []
     const afterPhotos = formData.afterPhotos || []
@@ -128,7 +123,6 @@ export function useWorkOrderForm(initialData: any) {
   }, [formData])
 
   const reset = useCallback(() => {
-    // Clean up object URLs to prevent memory leaks
     Object.values(formData).forEach((value: any) => {
       if (Array.isArray(value)) {
         value.forEach((item: any) => {
@@ -152,9 +146,9 @@ export function useWorkOrderForm(initialData: any) {
     setImagePreview,
     validateForm,
     getImageFiles,
-    getUploadedImageUrls, // NEW
-    areAllImagesUploaded, // NEW
-    getUploadStatus, // NEW
+    getUploadedImageUrls,
+    areAllImagesUploaded,
+    getUploadStatus,
     reset,
   }
 }

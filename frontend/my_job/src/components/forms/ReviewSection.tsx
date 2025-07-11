@@ -1,4 +1,3 @@
-// src/components/forms/ReviewSection.tsx - Updated to show upload status
 import React from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'

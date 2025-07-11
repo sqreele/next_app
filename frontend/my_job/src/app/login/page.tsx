@@ -63,8 +63,13 @@ export default function LoginPage() {
       
       toast.success('Login successful!')
       router.push('/dashboard')
-    } catch (error) {
-      // Error is already handled in the store and displayed via toast
+    } catch (error: any) {
+      const errorMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.detail ||
+        (Array.isArray(error?.response?.data?.detail) ? error.response.data.detail[0]?.msg : null) ||
+        error?.message ||
+        'Login failed'
       console.error('Login error:', error)
     }
   }
@@ -119,7 +124,11 @@ export default function LoginPage() {
           
           {error && (
             <div className="text-sm text-red-600 text-center">
-              {error}
+              {typeof error === 'string'
+                ? error
+                : typeof error === 'object' && error !== null && 'msg' in error
+                  ? (error as any).msg
+                  : JSON.stringify(error)}
             </div>
           )}
           

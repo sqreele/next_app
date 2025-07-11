@@ -1,4 +1,3 @@
-// src/components/forms/CreateWorkOrderForm.tsx - Updated to use uploaded image URLs
 'use client'
 
 import React, { useEffect } from 'react'
@@ -8,7 +7,7 @@ import { useMachineStore } from '@/stores/machines-store'
 import { useRoomStore } from '@/stores/rooms-store'
 import { useTechnicianStore } from '@/stores/technicians-store'
 import { useAuthStore } from '@/stores/auth-store'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
@@ -42,16 +41,16 @@ export function CreateWorkOrderForm() {
   const { getOperationalMachines } = useMachineStore()
   const { getActiveRooms } = useRoomStore()
   const { getAvailableTechnicians } = useTechnicianStore()
-  const { user } = useAuthStore()
-  
+  const { user } = useAuthStore.getState()
+
   const {
     formData,
     errors,
     setValue,
     validateForm,
-    getUploadedImageUrls, // NEW: Use this instead of getImageFiles
-    areAllImagesUploaded, // NEW: Check upload status
-    getUploadStatus, // NEW: Get upload summary
+    getUploadedImageUrls,
+    areAllImagesUploaded,
+    getUploadStatus,
     reset,
   } = useWorkOrderForm(initialFormData)
 
@@ -82,6 +81,7 @@ export function CreateWorkOrderForm() {
         ])
       } catch (error) {
         console.error('Error fetching data:', error)
+        toast.error('Failed to load required data')
       }
     }
 
@@ -94,6 +94,30 @@ export function CreateWorkOrderForm() {
       setValue('assignedTo', user.username)
     }
   }, [user, setValue, formData.assignedTo])
+
+  // Fetch user data if not already loaded
+  useEffect(() => {
+    if (!user) {
+      const fetchUser = async () => {
+        try {
+          await useAuthStore.getState().getCurrentUser()
+        } catch (error) {
+          console.error('Failed to fetch user:', error)
+          toast.error('Failed to authenticate user')
+        }
+      }
+      fetchUser()
+    }
+  }, [user])
+
+  // Debug user data
+  useEffect(() => {
+    console.log('🔍 User data changed:', user)
+    if (user) {
+      console.log('🔍 User profile:', user.profile)
+      console.log('🔍 User properties:', user.profile?.properties)
+    }
+  }, [user])
 
   const operationalMachines = getOperationalMachines()
   const activeRooms = getActiveRooms()
@@ -118,12 +142,10 @@ export function CreateWorkOrderForm() {
       if (field.type === 'image-upload') {
         if (!field.required) return true
         
-        // Check if images are uploaded successfully
         if (!value || !Array.isArray(value) || value.length === 0) {
           return false
         }
         
-        // Check upload status
         const hasFailedUploads = value.some(img => img.uploadStatus === 'error')
         const hasUploading = value.some(img => 
           img.uploadStatus === 'pending' || img.uploadStatus === 'uploading'
@@ -148,16 +170,24 @@ export function CreateWorkOrderForm() {
     nextStep()
   }
 
-  // UPDATED: Modified handleSubmit to use uploaded image URLs
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
+    if (!user) {
+      toast.error('User authentication is missing')
+      return
+    }
+
+    if (!user.property_id && (!user.profile?.properties || user.profile.properties.length === 0)) {
+      toast.error('No property ID associated with your account')
+      return
+    }
+
     if (!validateForm(allFields)) {
       toast.error('Please fix the errors in the form')
       return
     }
 
-    // Check if all images are uploaded
     if (!areAllImagesUploaded()) {
       const uploadStatus = getUploadStatus()
       toast.error(`Please wait for all images to finish uploading. Status: ${uploadStatus.uploading} uploading, ${uploadStatus.failed} failed`)
@@ -186,40 +216,36 @@ export function CreateWorkOrderForm() {
         formData.scheduledDate.split('T')[0] : 
         undefined
 
-      // Get uploaded image URLs instead of files
       const beforeImageUrls = getUploadedImageUrls('beforePhotos')
       const afterImageUrls = getUploadedImageUrls('afterPhotos')
 
-      console.log('📋 Before image URLs:', beforeImageUrls)
-      console.log('📋 After image URLs:', afterImageUrls)
-
-      // Create work order data with image URLs
       const submitData = {
         task: formData.title,
         description: formData.description,
         status: statusMap[formData.status] || 'Pending',
         priority: priorityMap[formData.priority] || 'Medium',
         due_date: dueDate,
-        room_id: selectedRoom?.id,
-        assigned_to_id: selectedTechnician?.id,
-        // Use uploaded URLs instead of uploading again
+        room_id: selectedRoom?.id || undefined,
+        assigned_to_id: selectedTechnician?.id || undefined,
         before_image_path: beforeImageUrls.length > 0 ? beforeImageUrls[0] : null,
         after_image_path: afterImageUrls.length > 0 ? afterImageUrls[0] : null,
-        // If you want to store multiple images, you might need to modify your API
         before_images: beforeImageUrls,
         after_images: afterImageUrls,
+        property_id: user?.profile?.properties?.[0]?.id || user?.property_id || 1, // Get from profile properties or fallback
       }
 
       console.log('📋 Creating work order with data:', submitData)
+      console.log('👤 User data:', user)
+      console.log('🏢 User property_id:', user?.property_id)
+      console.log('🏢 User profile properties:', user?.profile?.properties)
+      console.log('🏢 Selected property_id:', user?.profile?.properties?.[0]?.id || user?.property_id || 1)
 
-      // Create work order with image URLs
-      const newWorkOrder = await createWorkOrder(submitData, 1)
+      const newWorkOrder = await createWorkOrder(submitData)
       
       toast.success('Work order created successfully!', {
         description: `Work order "${newWorkOrder.task}" has been created with ${beforeImageUrls.length + afterImageUrls.length} images.`
       })
 
-      // Clean up and redirect
       reset()
       router.push('/work-orders')
       
@@ -241,12 +267,6 @@ export function CreateWorkOrderForm() {
     }
   }
 
-  const getImageCount = (fieldName: string) => {
-    const value = formData[fieldName]
-    return Array.isArray(value) ? value.length : 0
-  }
-
-  // Get upload status for display
   const uploadStatus = getUploadStatus()
 
   return (
@@ -321,7 +341,6 @@ export function CreateWorkOrderForm() {
                 )}
               </CardHeader>
               <CardContent className="space-y-6">
-                {/* Special handling for review step */}
                 {currentSection.id === 'review' ? (
                   <ReviewSection
                     formData={formData}
@@ -331,7 +350,6 @@ export function CreateWorkOrderForm() {
                     uploadStatus={uploadStatus}
                   />
                 ) : (
-                  // Regular form fields for other steps
                   currentSection.fields.map((field) => (
                     <DynamicFormRenderer
                       key={field.name}
@@ -385,7 +403,7 @@ export function CreateWorkOrderForm() {
           ) : (
             <Button
               type="submit"
-              disabled={loading || !areAllImagesUploaded()}
+              disabled={loading || !areAllImagesUploaded() || (!user?.property_id && (!user?.profile?.properties || user?.profile?.properties.length === 0))}
               className="flex items-center gap-2"
             >
               {loading ? (
@@ -396,6 +414,10 @@ export function CreateWorkOrderForm() {
               ) : !areAllImagesUploaded() ? (
                 <>
                   Waiting for uploads...
+                </>
+              ) : !user?.property_id ? (
+                <>
+                  Missing property ID
                 </>
               ) : (
                 'Create Work Order'
@@ -456,6 +478,10 @@ export function CreateWorkOrderForm() {
                 )}
               </div>
             )}
+            <div className="flex justify-between">
+              <span className="text-gray-600">Property ID:</span>
+              <span className="font-medium">{user?.property_id || 'Not set'}</span>
+            </div>
           </div>
         </CardContent>
       </Card>

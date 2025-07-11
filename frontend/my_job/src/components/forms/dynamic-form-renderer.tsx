@@ -1,4 +1,3 @@
-// src/components/forms/dynamic-form-renderer.tsx - Updated to handle new validation props
 import React from 'react'
 import { Input } from '@/components/ui/input'
 import { ImageUpload } from '@/components/ui/image-upload'
@@ -38,6 +37,9 @@ export function DynamicFormRenderer({
       case 'text':
       case 'email':
       case 'password':
+      case 'number':
+      case 'tel':
+      case 'url':
         return (
           <Input
             type={field.type}
@@ -46,6 +48,8 @@ export function DynamicFormRenderer({
             onBlur={onBlur}
             placeholder={field.placeholder}
             className={error ? 'border-red-500' : ''}
+            min={field.validation?.min}
+            max={field.validation?.max}
           />
         )
 
@@ -239,11 +243,13 @@ export function DynamicFormRenderer({
       {renderField()}
       {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
       
-      {/* Show validation hints */}
       {field.validation && !error && (
         <div className="mt-1 text-xs text-gray-500">
           {field.validation.minLength && field.validation.maxLength && (
             <div>Length: {field.validation.minLength}-{field.validation.maxLength} characters</div>
+          )}
+          {field.validation.min !== undefined && field.validation.max !== undefined && (
+            <div>Range: {field.validation.min}-{field.validation.max}</div>
           )}
           {field.type === 'image-upload' && (
             <div>
