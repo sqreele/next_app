@@ -4,7 +4,7 @@
 # ==============================================================================
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from typing import Optional
-from ..utils.image_utils import save_uploaded_file, get_image_url
+from my_app.utils.image_utils import save_uploaded_file, get_image_url
 
 router = APIRouter()
 

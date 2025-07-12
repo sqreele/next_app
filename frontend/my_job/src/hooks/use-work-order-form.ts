@@ -9,6 +9,9 @@ interface ImageFile {
   uploadProgress?: number
   uploadedUrl?: string
   error?: string
+  // Local storage for pending uploads
+  isLocal?: boolean
+  localUrl?: string
 }
 
 export function useWorkOrderForm(initialData: any) {
@@ -34,6 +37,7 @@ const setValue = useCallback((name: string, value: any) => {
     if (Array.isArray(value) && value.length === 0) {
       console.log(`⚠️ [setValue] Empty array passed for ${name}. Stack trace:`, new Error().stack)
       console.log(`⚠️ [setValue] Empty array call stack:`, new Error().stack?.split('\n').slice(0, 10).join('\n'))
+      console.log(`⚠️ [setValue] Previous value for ${name}:`, formData[name])
     }
   }
   
@@ -42,8 +46,26 @@ const setValue = useCallback((name: string, value: any) => {
     setFormData((prev: any) => {
       // Handle functional updates for image fields
       const newValue = typeof value === 'function' ? value(prev[name] || []) : value
+      
+      // Safeguard: Don't set empty arrays for image fields unless explicitly intended
+      if (Array.isArray(newValue) && newValue.length === 0 && Array.isArray(prev[name]) && prev[name].length > 0) {
+        console.warn(`⚠️ [setValue] Attempting to set empty array for ${name} when previous value had ${prev[name].length} items`)
+        console.warn(`⚠️ [setValue] This might be a race condition. Preserving previous value.`)
+        console.warn(`⚠️ [setValue] Stack trace:`, new Error().stack?.split('\n').slice(0, 5).join('\n'))
+        return prev
+      }
+      
+      // Additional safeguard: Log when setting empty arrays for image fields
+      if (Array.isArray(newValue) && newValue.length === 0) {
+        console.warn(`⚠️ [setValue] Setting empty array for ${name}`)
+        console.warn(`⚠️ [setValue] Previous value:`, prev[name])
+        console.warn(`⚠️ [setValue] Stack trace:`, new Error().stack?.split('\n').slice(0, 5).join('\n'))
+      }
+      
       const newData = { ...prev, [name]: newValue }
       console.log(`📝 New form data for ${name}:`, newData[name])
+      console.log(`📝 Previous value for ${name}:`, prev[name])
+      console.log(`📝 New value for ${name}:`, newValue)
       return newData
     })
   } else {
@@ -121,21 +143,33 @@ const setValue = useCallback((name: string, value: any) => {
       return []
     }
     
-    const successfulUploads = value.filter((item: ImageFile) => {
+    // Get both successful uploads and local images ready for upload
+    const validImages = value.filter((item: ImageFile) => {
       const isSuccess = item.uploadStatus === 'success'
       const hasUrl = item.uploadedUrl && typeof item.uploadedUrl === 'string' && item.uploadedUrl.trim() !== ''
+      const isLocalReady = item.uploadStatus === 'pending' && item.isLocal && item.localUrl
       
       console.log(`🔍 [getUploadedImageUrls] Item ${item.id}:`, {
         status: item.uploadStatus,
         hasUrl: !!hasUrl,
         url: item.uploadedUrl,
+        isLocal: item.isLocal,
+        localUrl: item.localUrl,
         fileName: item.file?.name
       })
       
-      return isSuccess && hasUrl
+      return (isSuccess && hasUrl) || isLocalReady
     })
     
-    const urls = successfulUploads.map((item: ImageFile) => item.uploadedUrl!)
+    // For successful uploads, use the uploaded URL; for local images, use the local URL
+    const urls = validImages.map((item: ImageFile) => {
+      if (item.uploadStatus === 'success' && item.uploadedUrl) {
+        return item.uploadedUrl
+      } else if (item.isLocal && item.localUrl) {
+        return item.localUrl
+      }
+      return null
+    }).filter(Boolean) as string[]
     
     console.log(`🔗 [getUploadedImageUrls] Final URLs for ${fieldName}:`, urls)
     return urls
@@ -152,13 +186,18 @@ const setValue = useCallback((name: string, value: any) => {
       return true
     }
     
-    const allUploaded = allImages.every((img: ImageFile) => img.uploadStatus === 'success')
-    console.log(`🔍 All images uploaded: ${allUploaded}`, {
+    // Check if all images are either uploaded or local (ready for upload)
+    const allReady = allImages.every((img: ImageFile) => 
+      img.uploadStatus === 'success' || (img.uploadStatus === 'pending' && img.isLocal)
+    )
+    
+    console.log(`🔍 All images ready: ${allReady}`, {
       total: allImages.length,
-      successful: allImages.filter((img: ImageFile) => img.uploadStatus === 'success').length
+      successful: allImages.filter((img: ImageFile) => img.uploadStatus === 'success').length,
+      local: allImages.filter((img: ImageFile) => img.isLocal).length
     })
     
-    return allUploaded
+    return allReady
   }, [formData])
 
   const getUploadStatus = useCallback(() => {
@@ -173,10 +212,30 @@ const setValue = useCallback((name: string, value: any) => {
       uploading: allImages.filter((img: ImageFile) => img.uploadStatus === 'uploading').length,
       failed: allImages.filter((img: ImageFile) => img.uploadStatus === 'error').length,
       pending: allImages.filter((img: ImageFile) => img.uploadStatus === 'pending').length,
+      local: allImages.filter((img: ImageFile) => img.isLocal).length,
     }
     
     console.log('📊 Upload status:', status)
     return status
+  }, [formData])
+
+  // Upload all local images (called during form submission)
+  const uploadAllLocalImages = useCallback(async (): Promise<{ beforePhotos: string[], afterPhotos: string[] }> => {
+    const beforePhotos = formData.beforePhotos || []
+    const afterPhotos = formData.afterPhotos || []
+    
+    const allLocalImages = [...beforePhotos, ...afterPhotos].filter(img => img.isLocal && img.uploadStatus === 'pending')
+    
+    if (allLocalImages.length === 0) {
+      console.log('📝 No local images to upload')
+      return { beforePhotos: [], afterPhotos: [] }
+    }
+    
+    console.log(`📤 Uploading ${allLocalImages.length} local images`)
+    
+    // This would need to be implemented in the ImageUpload component
+    // For now, we'll return empty arrays and handle uploads in the form submission
+    return { beforePhotos: [], afterPhotos: [] }
   }, [formData])
 
   const reset = useCallback(() => {
@@ -207,6 +266,7 @@ const setValue = useCallback((name: string, value: any) => {
     getUploadedImageUrls,
     areAllImagesUploaded,
     getUploadStatus,
+    uploadAllLocalImages,
     reset,
   }
 }

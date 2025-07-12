@@ -141,7 +141,8 @@ export const useUsersStore = create<UsersState>()(
           
           // Active status filter
           if (filters.is_active !== undefined && user.is_active !== filters.is_active) return false
-          if (filters.property_id !== undefined && user.property_id !== filters.property_id) return false
+          if (filters.property_id !== undefined && 
+              (!user.profile || !user.profile.properties.some(prop => prop.id === filters.property_id))) return false
           
           // Search filter
           if (filters.search) {
@@ -169,7 +170,14 @@ export const useUsersStore = create<UsersState>()(
         set({ loading: true, error: null })
         
         try {
+          console.log('🔍 [UsersStore] fetchUsers called with filters:', filters)
           const users = await usersAPI.getUsers(filters)
+          console.log('🔍 [UsersStore] Users loaded from API:', users.map(u => ({
+            id: u.id,
+            username: u.username,
+            profile_role: u.profile?.role,
+            is_active: u.is_active
+          })))
           get().setUsers(users)
         } catch (error: any) {
           const errorMessage = error?.response?.data?.message || error?.message || 'Failed to fetch users'
@@ -243,7 +251,21 @@ export const useUsersStore = create<UsersState>()(
 
       // Utilities
       getUsersByRole: (role) => {
-        return get().users.filter(user => user.profile.role === role)
+        const users = get().users.filter(user => user.profile.role === role)
+        console.log(`🔍 [UsersStore] getUsersByRole('${role}') called`)
+        console.log(`🔍 [UsersStore] All users:`, get().users.map(u => ({
+          id: u.id,
+          username: u.username,
+          profile_role: u.profile.role,
+          is_active: u.is_active
+        })))
+        console.log(`🔍 [UsersStore] Users with role '${role}':`, users.map(u => ({
+          id: u.id,
+          username: u.username,
+          profile_role: u.profile.role,
+          is_active: u.is_active
+        })))
+        return users
       },
 
       getActiveUsers: () => {
@@ -260,12 +282,14 @@ export const useUsersStore = create<UsersState>()(
 
       // Property-based filtering methods
       getUsersByProperty: (property_id) => {
-        return get().users.filter(user => user.property_id === property_id)
+        return get().users.filter(user => 
+          user.profile && user.profile.properties.some(prop => prop.id === property_id)
+        )
       },
 
       getActiveUsersByProperty: (property_id) => {
         return get().users.filter(user => 
-          user.is_active && user.property_id === property_id
+          user.is_active && user.profile && user.profile.properties.some(prop => prop.id === property_id)
         )
       },
 
@@ -273,7 +297,7 @@ export const useUsersStore = create<UsersState>()(
         return get().users.filter(user => 
           user.profile.role === 'Technician' && 
           user.is_active && 
-          user.property_id === property_id
+          user.profile && user.profile.properties.some(prop => prop.id === property_id)
         )
       },
 

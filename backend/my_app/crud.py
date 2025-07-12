@@ -148,10 +148,41 @@ async def get_work_order(db: AsyncSession, work_order_id: int):
     return result.scalars().first()
 
 async def create_work_order(db: AsyncSession, work_order: schemas.WorkOrderCreate):
-    db_work_order = models.WorkOrder(**work_order.dict())
+    print(f"🔍 [CRUD] Creating work order with data:")
+    print(f"   - Task: {work_order.task}")
+    print(f"   - Before image path: '{work_order.before_image_path}'")
+    print(f"   - After image path: '{work_order.after_image_path}'")
+    print(f"   - Before images array: {work_order.before_images}")
+    print(f"   - After images array: {work_order.after_images}")
+    print(f"   - PDF file path: '{work_order.pdf_file_path}'")
+    
+    # Convert to dict and handle None values properly
+    work_order_data = work_order.model_dump()
+    
+    # Ensure image paths are handled correctly
+    if work_order_data.get('before_image_path') == "":
+        work_order_data['before_image_path'] = None
+    if work_order_data.get('after_image_path') == "":
+        work_order_data['after_image_path'] = None
+    if work_order_data.get('pdf_file_path') == "":
+        work_order_data['pdf_file_path'] = None
+    
+    print(f"🔍 [CRUD] Processed data:")
+    print(f"   - Before image path: '{work_order_data.get('before_image_path')}'")
+    print(f"   - After image path: '{work_order_data.get('after_image_path')}'")
+    print(f"   - PDF file path: '{work_order_data.get('pdf_file_path')}'")
+    
+    db_work_order = models.WorkOrder(**work_order_data)
     db.add(db_work_order)
     await db.commit()
     await db.refresh(db_work_order)
+    
+    print(f"✅ [CRUD] Work order created successfully!")
+    print(f"   - ID: {db_work_order.id}")
+    print(f"   - Before image path: '{db_work_order.before_image_path}'")
+    print(f"   - After image path: '{db_work_order.after_image_path}'")
+    print(f"   - PDF file path: '{db_work_order.pdf_file_path}'")
+    
     return db_work_order
 
 async def update_work_order(db: AsyncSession, work_order_id: int, work_order: schemas.WorkOrderCreate):

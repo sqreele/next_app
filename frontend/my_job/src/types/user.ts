@@ -9,7 +9,6 @@ export interface UserProfile {
   user_id: number
   role: 'Admin' | 'Technician' | 'Manager' | 'Supervisor'
   position: string
-  property_id: number
   properties: Property[]
 }
 
@@ -19,7 +18,6 @@ export interface User {
   email: string
   is_active: boolean
   profile: UserProfile
-  property_id: number
 }
 
 export interface CreateUserData {

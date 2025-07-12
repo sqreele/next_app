@@ -12,6 +12,9 @@ interface ImageFile {
   uploadProgress?: number
   uploadedUrl?: string
   error?: string
+  // Local storage for pending uploads
+  isLocal?: boolean
+  localUrl?: string
 }
 
 interface ImageUploadProps {
@@ -103,7 +106,7 @@ export function ImageUpload({
     }
   }, [value, label])
 
-  // Upload image to server
+  // Upload image to server (only called during form submission)
   const uploadImageToServer = async (file: File, imageId: string): Promise<string> => {
     const formData = new FormData()
     formData.append('file', file)
@@ -174,76 +177,46 @@ export function ImageUpload({
   }
 
   // Update image status
-  const updateImageStatus = (id: string, updates: Partial<ImageFile>) => {
-    console.log(`🔄 [ImageUpload-${label}] updateImageStatus FUNCTION CALLED - id: ${id}`)
-    console.log(`🔄 [ImageUpload-${label}] updateImageStatus START - id: ${id}, updates:`, updates)
-    console.log(`🔄 [ImageUpload-${label}] updateImageStatus - value prop:`, value)
-    console.log(`🔄 [ImageUpload-${label}] updateImageStatus - ref current:`, currentValueRef.current)
-    console.log(`🔄 [ImageUpload-${label}] updateImageStatus - value length:`, value.length)
-    console.log(`🔄 [ImageUpload-${label}] updateImageStatus - ref length:`, currentValueRef.current.length)
-    console.log(`🔄 [ImageUpload-${label}] Current value before update:`, value)
-    console.log(`🔄 [ImageUpload-${label}] Current value ref:`, currentValueRef.current)
+ // Update image status
+// Update image status
+const updateImageStatus = (id: string, updates: Partial<ImageFile>) => {
+  console.log(`🔄 [ImageUpload-${label}] updateImageStatus called - id: ${id}`, updates)
+  
+  onChange((currentImages: ImageFile[]) => {
+    console.log(`🔄 [ImageUpload-${label}] Functional update called with ${currentImages.length} images`)
+    console.log(`🔄 [ImageUpload-${label}] Current images IDs:`, currentImages.map(img => img.id))
+    console.log(`🔄 [ImageUpload-${label}] Trying to update image with ID:`, id)
     
-    // Add stack trace to see where this is being called from
-    console.log(`🔄 [ImageUpload-${label}] updateImageStatus called from:`, new Error().stack)
+    // If current images is empty, this might be a race condition
+    if (currentImages.length === 0) {
+      console.warn(`⚠️ [ImageUpload-${label}] Current images is empty - this might be a race condition`)
+      console.warn(`⚠️ [ImageUpload-${label}] Updates:`, updates)
+      console.warn(`⚠️ [ImageUpload-${label}] Returning empty array to prevent further issues`)
+      return []
+    }
     
-    // Use functional update pattern to ensure we're working with the most current state
-    onChange((currentImages: ImageFile[]) => {
-      console.log(`🔄 [ImageUpload-${label}] Functional update called with current images:`, currentImages)
-      
-      // If current images is empty, this might be a new image
-      if (currentImages.length === 0) {
-        console.log(`⚠️ [ImageUpload-${label}] Current images is empty - this might be a new image`)
-        
-        // For new images, we need to create a complete ImageFile object
-        if (updates.file && updates.preview) {
-          const newImage = {
-            id,
-            file: updates.file,
-            preview: updates.preview,
-            uploadStatus: updates.uploadStatus || 'pending',
-            uploadProgress: updates.uploadProgress || 0,
-            uploadedUrl: updates.uploadedUrl,
-            error: updates.error
-          } as ImageFile
-          
-          console.log(`⚠️ [ImageUpload-${label}] Creating new image:`, newImage)
-          return [newImage]
-        } else {
-          console.warn(`⚠️ [ImageUpload-${label}] Cannot create new image without file and preview`)
-          return []
-        }
-      }
-      
-      // Find the image to update
-      const imageIndex = currentImages.findIndex((img: ImageFile) => img.id === id)
-      
-      if (imageIndex === -1) {
-        console.warn(`⚠️ [ImageUpload-${label}] Image with id ${id} not found in current images`)
-        console.log(`⚠️ [ImageUpload-${label}] Available IDs:`, currentImages.map(img => img.id))
-        return currentImages // Return unchanged if image not found
-      }
-      
-      // Create updated array with the specific image updated
-      const updatedImages = currentImages.map((img: ImageFile, index: number) => 
-        index === imageIndex ? { ...img, ...updates } : img
-      )
-      
-      console.log(`📝 [ImageUpload-${label}] Returning updated images:`, updatedImages)
-      console.log(`📝 [ImageUpload-${label}] Updated value length:`, updatedImages.length)
-      console.log(`📝 [ImageUpload-${label}] Updated value IDs:`, updatedImages.map(img => img.id))
-      console.log(`📝 [ImageUpload-${label}] Updated image:`, updatedImages[imageIndex])
-      
-      return updatedImages
-    })
+    // Find the image to update
+    const imageIndex = currentImages.findIndex((img: ImageFile) => img.id === id)
     
-    console.log(`📝 [ImageUpload-${label}] Functional update completed`)
-  }
+    if (imageIndex === -1) {
+      console.warn(`⚠️ [ImageUpload-${label}] Image with id ${id} not found`)
+      console.warn(`⚠️ [ImageUpload-${label}] Available IDs:`, currentImages.map(img => img.id))
+      return currentImages // Return unchanged to preserve existing state
+    }
+    
+    // Update the specific image
+    const updatedImages = currentImages.map((img: ImageFile, index: number) => 
+      index === imageIndex ? { ...img, ...updates } : img
+    )
+    
+    console.log(`✅ [ImageUpload-${label}] Updated image ${id} status to ${updates.uploadStatus}`)
+    return updatedImages
+  })
+}
 
-  // Start upload process for an image
-  const startImageUpload = async (imageFile: ImageFile) => {
-    console.log(`🚀 [ImageUpload-${label}] startImageUpload FUNCTION CALLED for ${imageFile.file.name}`)
-    console.log(`🚀 [ImageUpload-${label}] Starting upload for ${imageFile.file.name}`)
+  // Upload a local image to server (called during form submission)
+  const uploadLocalImage = async (imageFile: ImageFile): Promise<string> => {
+    console.log(`🚀 [ImageUpload-${label}] Uploading local image: ${imageFile.file.name}`)
     
     try {
       // Update status to uploading
@@ -253,43 +226,25 @@ export function ImageUpload({
         error: undefined
       })
 
-      // Simulate progress (since fetch doesn't provide real progress)
-      let currentProgress = 0
-      const progressInterval = setInterval(() => {
-        currentProgress = Math.min(currentProgress + 10, 90)
-        updateImageStatus(imageFile.id, { 
-          uploadProgress: currentProgress
-        })
-      }, 500)
+      // Upload the file
+      const uploadedUrl = await uploadImageToServer(imageFile.file, imageFile.id)
 
-      try {
-        // Upload the file
-        const uploadedUrl = await uploadImageToServer(imageFile.file, imageFile.id)
-        
-        // Clear progress interval
-        clearInterval(progressInterval)
-
-        // Validate the uploaded URL
-        if (!uploadedUrl || uploadedUrl.trim() === '') {
-          throw new Error('Server returned an empty URL')
-        }
-
-        // Update with success
-        updateImageStatus(imageFile.id, {
-          uploadStatus: 'success',
-          uploadProgress: 100,
-          uploadedUrl: uploadedUrl,
-          error: undefined
-        })
-
-        console.log(`✅ Upload completed for ${imageFile.file.name}, URL: ${uploadedUrl}`)
-        toast.success(`${imageFile.file.name} uploaded successfully`)
-        
-      } catch (uploadError) {
-        // Clear progress interval on error
-        clearInterval(progressInterval)
-        throw uploadError
+      // Validate the uploaded URL
+      if (!uploadedUrl || uploadedUrl.trim() === '') {
+        throw new Error('Server returned an empty URL')
       }
+
+      // Update with success
+      updateImageStatus(imageFile.id, {
+        uploadStatus: 'success',
+        uploadProgress: 100,
+        uploadedUrl: uploadedUrl,
+        error: undefined,
+        isLocal: false
+      })
+
+      console.log(`✅ Upload completed for ${imageFile.file.name}, URL: ${uploadedUrl}`)
+      return uploadedUrl
       
     } catch (error: any) {
       console.error(`❌ Upload failed for ${imageFile.file.name}:`, error)
@@ -301,7 +256,7 @@ export function ImageUpload({
         error: error.message || 'Upload failed'
       })
 
-      toast.error(`Failed to upload ${imageFile.file.name}: ${error.message}`)
+      throw error
     }
   }
 
@@ -313,7 +268,7 @@ export function ImageUpload({
       uploadProgress: 0,
       error: undefined 
     })
-    startImageUpload(imageFile)
+    uploadLocalImage(imageFile)
   }
 
   // Validate file
@@ -431,7 +386,7 @@ export function ImageUpload({
         setValidationErrors([])
       }
 
-      // Add valid files and start uploads
+      // Add valid files to local storage (no immediate upload)
       if (validFiles.length > 0) {
         const newImageFiles: ImageFile[] = validFiles.map(file => ({
           file,
@@ -439,27 +394,30 @@ export function ImageUpload({
           id: Math.random().toString(36).substr(2, 9),
           uploadStatus: 'pending',
           uploadProgress: 0,
+          isLocal: true,
+          localUrl: URL.createObjectURL(file),
         }))
 
-        console.log(`📝 [ImageUpload-${label}] Current value before adding files:`, currentValue)
-        console.log(`📝 [ImageUpload-${label}] New image files to add:`, newImageFiles.map(img => ({ id: img.id, fileName: img.file.name })))
-
-        console.log(`📝 [ImageUpload-${label}] Adding ${newImageFiles.length} new images to current ${currentValue.length} images`)
-        console.log(`📝 [ImageUpload-${label}] New image files to add:`, newImageFiles.map(img => ({ id: img.id, fileName: img.file.name })))
+        console.log(`📝 [ImageUpload-${label}] Adding ${newImageFiles.length} new images to local storage`)
+        console.log(`📝 [ImageUpload-${label}] New image files:`, newImageFiles.map(img => ({ id: img.id, fileName: img.file.name })))
         
         // Use functional update to ensure we're working with the most current state
         onChange((currentImages: ImageFile[]) => {
           const updatedValue = [...currentImages, ...newImageFiles]
           console.log(`📝 [ImageUpload-${label}] Functional update - current: ${currentImages.length}, new: ${newImageFiles.length}, total: ${updatedValue.length}`)
+          
+          // Safeguard: Ensure we're not losing images
+          if (updatedValue.length === 0) {
+            console.warn(`⚠️ [ImageUpload-${label}] Attempting to set empty array in handleFiles`)
+            console.warn(`⚠️ [ImageUpload-${label}] Current images:`, currentImages)
+            console.warn(`⚠️ [ImageUpload-${label}] New image files:`, newImageFiles)
+            return currentImages // Return current images to prevent data loss
+          }
+          
           return updatedValue
         })
         
-        console.log(`🚀 Starting uploads for ${newImageFiles.length} files`)
-        
-        // Start uploading each file immediately
-        newImageFiles.forEach(imageFile => {
-          startImageUpload(imageFile)
-        })
+        toast.success(`${validFiles.length} image(s) added successfully. They will be uploaded when you submit the form.`)
         
         if (validFiles.length < files.length) {
           toast.warning(`${validFiles.length} of ${files.length} files were added. Check validation errors above.`)
@@ -514,6 +472,13 @@ export function ImageUpload({
         URL.revokeObjectURL(imageToRemove.preview)
       }
       
+      // Safeguard: Ensure we're not accidentally removing all images
+      if (newValue.length === 0 && currentImages.length > 0) {
+        console.warn(`⚠️ [ImageUpload-${label}] Attempting to remove all images`)
+        console.warn(`⚠️ [ImageUpload-${label}] Returning current images to prevent data loss`)
+        return currentImages
+      }
+      
       return newValue
     })
   }
@@ -533,6 +498,25 @@ export function ImageUpload({
     success: value.filter(img => img.uploadStatus === 'success').length,
     failed: value.filter(img => img.uploadStatus === 'error').length,
     pending: value.filter(img => img.uploadStatus === 'pending').length,
+    local: value.filter(img => img.isLocal).length,
+  }
+
+  // Upload all local images (called during form submission)
+  const uploadAllLocalImages = async (): Promise<string[]> => {
+    const localImages = value.filter(img => img.isLocal && img.uploadStatus === 'pending')
+    
+    if (localImages.length === 0) {
+      console.log(`📝 [ImageUpload-${label}] No local images to upload`)
+      return []
+    }
+    
+    console.log(`📤 [ImageUpload-${label}] Uploading ${localImages.length} local images`)
+    
+    const uploadPromises = localImages.map(imageFile => uploadLocalImage(imageFile))
+    const uploadedUrls = await Promise.all(uploadPromises)
+    
+    console.log(`✅ [ImageUpload-${label}] All local images uploaded successfully`)
+    return uploadedUrls
   }
 
   // Calculate current total size
@@ -572,7 +556,12 @@ export function ImageUpload({
                 {uploadStatus.uploading} file(s) uploading...
               </div>
             )}
-            {uploadStatus.pending > 0 && (
+            {uploadStatus.local > 0 && (
+              <div className="text-purple-600 mt-1">
+                {uploadStatus.local} file(s) ready for upload
+              </div>
+            )}
+            {uploadStatus.pending > 0 && uploadStatus.local === 0 && (
               <div className="text-yellow-600 mt-1">
                 {uploadStatus.pending} file(s) pending...
               </div>
@@ -588,7 +577,7 @@ export function ImageUpload({
 
       {/* Upload Area */}
       <div
-        className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+        className={`border-2 border-dashed rounded-lg p-4 sm:p-6 text-center transition-colors ${
           isDragOver
             ? 'border-blue-400 bg-blue-50'
             : error || validationErrors.length > 0
@@ -599,8 +588,8 @@ export function ImageUpload({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
       >
-        <PhotoIcon className="mx-auto h-12 w-12 text-gray-400" />
-        <div className="mt-4">
+        <PhotoIcon className="mx-auto h-8 w-8 sm:h-12 sm:w-12 text-gray-400" />
+        <div className="mt-2 sm:mt-4">
           <label htmlFor={`file-upload-${label}`} className="cursor-pointer">
             <span className="mt-2 block text-sm font-medium text-gray-900">
               {multiple ? 'Upload images' : 'Upload image'}
@@ -608,13 +597,13 @@ export function ImageUpload({
             <span className="mt-1 block text-xs text-gray-500">
               Drag and drop or click to select {multiple ? 'files' : 'file'}
             </span>
-            <span className="mt-1 block text-xs text-red-500">
-              Images will be uploaded immediately after selection
+            <span className="mt-1 block text-xs text-blue-500">
+              Images will be uploaded when you submit the form
             </span>
             <div className="mt-2 text-xs text-gray-400 space-y-1">
               <div>Max {maxFiles} files, {maxSize}MB each, {maxTotalSize}MB total</div>
               <div>Formats: {allowedFormats.join(', ').toUpperCase()}</div>
-              <div>Dimensions: {minWidth}×{minHeight} to {maxWidth}×{maxHeight} pixels</div>
+              <div className="hidden sm:block">Dimensions: {minWidth}×{minHeight} to {maxWidth}×{maxHeight} pixels</div>
             </div>
           </label>
           <input
@@ -632,16 +621,18 @@ export function ImageUpload({
       {value.length > 0 && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
           <div className="text-sm text-blue-800">
-            <div>Files: {value.length} / {maxFiles}</div>
-            <div>Total size: {currentTotalSizeMB.toFixed(2)}MB / {maxTotalSize}MB</div>
-            <div>Status: {uploadStatus.success} uploaded, {uploadStatus.uploading} uploading, {uploadStatus.failed} failed</div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div>Files: {value.length} / {maxFiles}</div>
+              <div>Size: {currentTotalSizeMB.toFixed(1)}MB / {maxTotalSize}MB</div>
+              <div className="sm:col-span-2">Status: {uploadStatus.success} uploaded, {uploadStatus.uploading} uploading, {uploadStatus.failed} failed</div>
+            </div>
           </div>
         </div>
       )}
 
       {/* Image Previews */}
       {value.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
           {value.map((imageFile) => (
             <div key={imageFile.id} className="relative group">
               <div className="aspect-square rounded-lg overflow-hidden bg-gray-100">
@@ -656,21 +647,27 @@ export function ImageUpload({
                   <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
                     {imageFile.uploadStatus === 'uploading' && (
                       <div className="text-center">
-                        <ArrowPathIcon className="h-6 w-6 text-white animate-spin mx-auto mb-1" />
+                        <ArrowPathIcon className="h-4 w-4 sm:h-6 sm:w-6 text-white animate-spin mx-auto mb-1" />
                         <div className="text-white text-xs">
                           {imageFile.uploadProgress || 0}%
                         </div>
                       </div>
                     )}
-                    {imageFile.uploadStatus === 'pending' && (
+                    {imageFile.uploadStatus === 'pending' && imageFile.isLocal && (
                       <div className="text-center">
-                        <div className="h-6 w-6 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-1" />
+                        <div className="h-4 w-4 sm:h-6 sm:w-6 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-1" />
+                        <div className="text-white text-xs">Local</div>
+                      </div>
+                    )}
+                    {imageFile.uploadStatus === 'pending' && !imageFile.isLocal && (
+                      <div className="text-center">
+                        <div className="h-4 w-4 sm:h-6 sm:w-6 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-1" />
                         <div className="text-white text-xs">Pending...</div>
                       </div>
                     )}
                     {imageFile.uploadStatus === 'error' && (
                       <div className="text-center">
-                        <ExclamationTriangleIcon className="h-6 w-6 text-red-400 mx-auto mb-1" />
+                        <ExclamationTriangleIcon className="h-4 w-4 sm:h-6 sm:w-6 text-red-400 mx-auto mb-1" />
                         <button
                           onClick={() => retryUpload(imageFile)}
                           className="text-white text-xs bg-red-600 px-2 py-1 rounded hover:bg-red-700"
@@ -684,8 +681,8 @@ export function ImageUpload({
 
                 {/* Success Indicator */}
                 {imageFile.uploadStatus === 'success' && (
-                  <div className="absolute top-2 right-2 bg-green-500 rounded-full p-1">
-                    <svg className="h-3 w-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <div className="absolute top-1 right-1 sm:top-2 sm:right-2 bg-green-500 rounded-full p-1">
+                    <svg className="h-2 w-2 sm:h-3 sm:w-3 text-white" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>
                   </div>
@@ -694,20 +691,20 @@ export function ImageUpload({
               
               {/* Image Actions */}
               <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-opacity rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100">
-                <div className="flex space-x-2">
+                <div className="flex space-x-1 sm:space-x-2">
                   <button
                     type="button"
                     onClick={() => openPreview(imageFile.preview)}
-                    className="p-2 bg-white rounded-full text-gray-600 hover:text-gray-900"
+                    className="p-1 sm:p-2 bg-white rounded-full text-gray-600 hover:text-gray-900"
                   >
-                    <EyeIcon className="h-4 w-4" />
+                    <EyeIcon className="h-3 w-3 sm:h-4 sm:w-4" />
                   </button>
                   <button
                     type="button"
                     onClick={() => removeImage(imageFile.id)}
-                    className="p-2 bg-white rounded-full text-red-600 hover:text-red-900"
+                    className="p-1 sm:p-2 bg-white rounded-full text-red-600 hover:text-red-900"
                   >
-                    <XMarkIcon className="h-4 w-4" />
+                    <XMarkIcon className="h-3 w-3 sm:h-4 sm:w-4" />
                   </button>
                 </div>
               </div>
@@ -727,7 +724,10 @@ export function ImageUpload({
                 {imageFile.uploadStatus === 'uploading' && (
                   <span className="text-blue-600">⏳ Uploading</span>
                 )}
-                {imageFile.uploadStatus === 'pending' && (
+                {imageFile.uploadStatus === 'pending' && imageFile.isLocal && (
+                  <span className="text-purple-600">📁 Local</span>
+                )}
+                {imageFile.uploadStatus === 'pending' && !imageFile.isLocal && (
                   <span className="text-yellow-600">⏸ Pending</span>
                 )}
               </div>

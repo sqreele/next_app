@@ -48,6 +48,49 @@ async def read_users_me(
 ):
     return schemas.User.model_validate(current_user)
 
+@router.get("/", response_model=List[schemas.User])
+async def get_users(
+    skip: int = 0,
+    limit: int = 100,
+    role: str = None,
+    is_active: bool = None,
+    search: str = None,
+    property_id: int = None,
+    db: AsyncSession = Depends(dependencies.get_db)
+):
+    """Get all users with optional filtering"""
+    try:
+        users = await crud.get_users(db, skip=skip, limit=limit)
+        
+        # Apply filters
+        filtered_users = users
+        
+        if role:
+            filtered_users = [u for u in filtered_users if u.profile and u.profile.role == role]
+        
+        if is_active is not None:
+            filtered_users = [u for u in filtered_users if u.is_active == is_active]
+        
+        if search:
+            search_lower = search.lower()
+            filtered_users = [u for u in filtered_users if 
+                search_lower in u.username.lower() or 
+                search_lower in u.email.lower() or
+                (u.profile and search_lower in u.profile.role.lower()) or
+                (u.profile and u.profile.position and search_lower in u.profile.position.lower())
+            ]
+        
+        if property_id is not None:
+            # Filter by property through the UserProfile properties relationship
+            filtered_users = [u for u in filtered_users if 
+                u.profile and any(prop.id == property_id for prop in u.profile.properties)
+            ]
+        
+        return filtered_users
+    except Exception as e:
+        print(f"Error fetching users: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch users")
+
 @router.get("/check-username/{username}")
 async def check_username_availability(
     username: str, db: AsyncSession = Depends(dependencies.get_db)

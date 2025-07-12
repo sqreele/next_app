@@ -83,7 +83,7 @@ export default function CreateJobPage() {
   // Log user data for debugging
   useEffect(() => {
     console.log('User data:', user)
-    if (user && !user.property_id) {
+    if (user && (!user.profile?.properties || user.profile.properties.length === 0)) {
       toast.warning('No property ID associated with your account. Please contact support.')
     }
   }, [user])
@@ -166,7 +166,7 @@ export default function CreateJobPage() {
       return false
     }
 
-    if (!user.property_id && (!user.profile?.properties || user.profile.properties.length === 0)) {
+    if (!user.profile?.properties || user.profile.properties.length === 0) {
       toast.error('No property ID associated with your account')
       return false
     }
@@ -200,12 +200,11 @@ export default function CreateJobPage() {
         before_images: formData.before_images,
         after_images: formData.after_images,
         pdf_file_path: formData.pdf_file_path || undefined,
-        property_id: user?.profile?.properties?.[0]?.id || user?.property_id || 1, // Get from profile properties or fallback
+        property_id: user?.profile?.properties?.[0]?.id || 1, // Get from profile properties or fallback
       }
 
       console.log('📋 Creating work order with data:', workOrderData)
       console.log('👤 User data:', user)
-      console.log('🏢 User property_id:', user?.property_id)
       console.log('🏢 User profile properties:', user?.profile?.properties)
       
       await createWorkOrder(workOrderData)
@@ -254,13 +253,13 @@ export default function CreateJobPage() {
           <div className="text-green-900">Loading user data...</div>
         ) : !user ? (
           <div className="text-red-500">Please log in to create a job order.</div>
-        ) : (!user.property_id && (!user.profile?.properties || user.profile.properties.length === 0)) ? (
+        ) : (!user.profile?.properties || user.profile.properties.length === 0) ? (
           <div className="text-red-500">No property associated with your account. Contact support.</div>
         ) : (
           <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-8 flex flex-col items-center">
             <h1 className="text-2xl font-semibold text-green-900 mb-6">Create Job Order</h1>
             <p className="text-sm text-gray-600 mb-4">
-              Property: {user.profile?.properties?.[0]?.name || `ID: ${user.property_id}`}
+              Property: {user.profile?.properties?.[0]?.name || `ID: ${user.profile?.properties?.[0]?.id}`}
             </p>
             
             <form onSubmit={handleSubmit} className="w-full flex flex-col gap-4">
@@ -438,10 +437,10 @@ export default function CreateJobPage() {
               
               <button
                 type="submit"
-                disabled={isSubmitting || loading || isUserLoading || !user || (!user.property_id && (!user.profile?.properties || user.profile.properties.length === 0))}
+                disabled={isSubmitting || loading || isUserLoading || !user || (!user.profile?.properties || user.profile.properties.length === 0)}
                 className="w-full bg-green-500 text-white font-semibold py-2 rounded-lg mt-2 hover:bg-green-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isSubmitting ? 'Creating...' : isUserLoading ? 'Loading User...' : !user ? 'Please Log In' : (!user.property_id && (!user.profile?.properties || user.profile.properties.length === 0)) ? 'Missing Property ID' : 'Submit Job Order'}
+                {isSubmitting ? 'Creating...' : isUserLoading ? 'Loading User...' : !user ? 'Please Log In' : (!user.profile?.properties || user.profile.properties.length === 0) ? 'Missing Property ID' : 'Submit Job Order'}
               </button>
             </form>
           </div>

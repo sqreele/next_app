@@ -92,6 +92,17 @@ export function CreateWorkOrderForm() {
   const selectedRoom = activeRooms.find(room => room.number === formData.location)
   const selectedTechnician = availableTechnicians.find(tech => tech.username === formData.assignedTo)
   
+  // Debug technician loading
+  useEffect(() => {
+    console.log('🔍 [TechnicianDebug] Available technicians count:', availableTechnicians.length)
+    console.log('🔍 [TechnicianDebug] Form assignedTo:', formData.assignedTo)
+    console.log('🔍 [TechnicianDebug] Selected technician:', selectedTechnician)
+    if (formData.assignedTo && !selectedTechnician) {
+      console.warn('⚠️ [TechnicianDebug] AssignedTo is set but technician not found!')
+      console.warn('⚠️ [TechnicianDebug] Available technicians:', availableTechnicians.map(t => t.username))
+    }
+  }, [availableTechnicians, formData.assignedTo, selectedTechnician])
+
   const allFields = workOrderFormSections.flatMap(section => section.fields)
   const currentSection = workOrderFormSections[currentStep]
 
@@ -172,8 +183,16 @@ export function CreateWorkOrderForm() {
     }
     if (formData.assignedTo) {
       console.log('🔍 Selected technician:', selectedTechnician)
-      console.log('🔍 Available technicians:', availableTechnicians.map(t => ({ username: t.username, id: t.id })))
+      console.log('🔍 Available technicians:', availableTechnicians.map(t => ({ 
+        username: t.username, 
+        id: t.id,
+        profile: t.profile,
+        is_active: t.is_active
+      })))
       console.log('🔍 Looking for technician with username:', formData.assignedTo)
+      console.log('🔍 Technician found:', availableTechnicians.find(tech => tech.username === formData.assignedTo))
+      console.log('🔍 Technician ID if found:', selectedTechnician?.id)
+      console.log('🔍 Technician profile if found:', selectedTechnician?.profile)
     }
     if (formData.location) {
       console.log('🔍 Selected room:', selectedRoom)
@@ -248,15 +267,15 @@ export function CreateWorkOrderForm() {
       return
     }
 
-    const propertyId = user?.profile?.properties?.[0]?.id || user?.property_id
+    const propertyId = user?.profile?.properties?.[0]?.id
+    const numericPropertyId = propertyId ? Number(propertyId) : null
     if (!propertyId) {
       toast.error('No property ID associated with your account. Please contact support.')
       return
     }
 
     // Ensure propertyId is a number
-    const numericPropertyId = Number(propertyId)
-    if (isNaN(numericPropertyId)) {
+    if (isNaN(numericPropertyId!)) {
       toast.error('Invalid property ID. Please contact support.')
       return
     }
@@ -271,23 +290,28 @@ export function CreateWorkOrderForm() {
     }
 
     if (!areAllImagesUploaded()) {
-      const uploadStatus = getUploadStatus()
-      toast.error(`Please wait for all images to finish uploading. Status: ${uploadStatus.uploading} uploading, ${uploadStatus.failed} failed`)
+      toast.error('Please wait for all images to upload before submitting')
       return
     }
 
     try {
+      // Upload local images first
+      console.log('📤 Starting to upload local images...')
+      
       // Get uploaded image URLs
       const beforeImageUrls = getUploadedImageUrls('beforePhotos')
       const afterImageUrls = getUploadedImageUrls('afterPhotos')
+      
+      console.log('📤 Local images will be uploaded during form submission')
 
       // Debug logging
       console.log('👷 Selected Technician:', selectedTechnician)
       console.log('👷 Technician ID:', selectedTechnician?.id)
+      console.log('👷 Technician Profile User ID:', selectedTechnician?.profile?.user_id)
+      console.log('👷 Technician Profile:', selectedTechnician?.profile)
       console.log('👷 Available Technicians:', availableTechnicians)
       console.log('👷 Form Data Assigned To:', formData.assignedTo)
       console.log('👤 User data:', user)
-      console.log('🏢 User property_id:', user?.property_id)
       console.log('🏢 User profile properties:', user?.profile?.properties)
 
       const submitData = {
@@ -298,13 +322,14 @@ export function CreateWorkOrderForm() {
         due_date: formData.scheduledDate ? formData.scheduledDate.split('T')[0] : undefined,
         room_id: selectedRoom?.id ? Number(selectedRoom.id) : undefined,
         machine_id: undefined, // Set to undefined if no machine selected
-        assigned_to_id: selectedTechnician?.id ? Number(selectedTechnician.id) : undefined,
-        before_image_path: beforeImageUrls.length > 0 ? beforeImageUrls[0] : "",
-        after_image_path: afterImageUrls.length > 0 ? afterImageUrls[0] : "",
+        assigned_to_id: selectedTechnician?.id ? Number(selectedTechnician.id) : 
+                       selectedTechnician?.profile?.user_id ? Number(selectedTechnician.profile.user_id) : undefined,
+        before_image_path: beforeImageUrls.length > 0 ? beforeImageUrls[0] : null,
+        after_image_path: afterImageUrls.length > 0 ? afterImageUrls[0] : null,
         before_images: beforeImageUrls,
         after_images: afterImageUrls,
-        pdf_file_path: "",
-        property_id: numericPropertyId,
+        pdf_file_path: null,
+        property_id: numericPropertyId!,
       }
 
       console.log('📋 === ACTUAL REQUEST DATA ===')
@@ -368,262 +393,189 @@ export function CreateWorkOrderForm() {
   }
 
   const uploadStatus = getUploadStatus()
-  const propertyId = user?.profile?.properties?.[0]?.id || user?.property_id
+  const propertyId = user?.profile?.properties?.[0]?.id
   const numericPropertyId = propertyId ? Number(propertyId) : null
 
   console.log(`🔍 Current step: ${currentStep} (${currentSection?.id})`)
   console.log(`🔍 Current section fields:`, currentSection?.fields?.map(f => ({ name: f.name, type: f.type })))
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="p-2 bg-blue-100 rounded-lg">
-          <ClipboardDocumentListIcon className="h-6 w-6 text-blue-600" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Create Work Order</h1>
-          <p className="text-gray-600">Create a new maintenance or repair request</p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Mobile Header */}
+      <div className="lg:hidden bg-white border-b border-gray-200 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => router.back()}
+            className="p-2 rounded-md text-gray-400 hover:text-gray-600"
+          >
+            <ChevronLeftIcon className="h-5 w-5" />
+          </button>
+          <h1 className="text-lg font-semibold text-gray-900">Create Work Order</h1>
+          <div className="w-10"></div> {/* Spacer for centering */}
         </div>
       </div>
 
-      {/* Upload Status Alert */}
-      {uploadStatus.total > 0 && (uploadStatus.uploading > 0 || uploadStatus.failed > 0) && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <div className="flex items-center gap-2">
-            <div className="text-yellow-800">
-              <strong>Image Upload Status:</strong> {uploadStatus.uploaded} uploaded, {uploadStatus.uploading} uploading, {uploadStatus.failed} failed
+      <div className="max-w-4xl mx-auto p-4 lg:p-8">
+        {/* Desktop Header */}
+        <div className="hidden lg:block mb-8">
+          <div className="flex items-center gap-4 mb-4">
+            <button
+              onClick={() => router.back()}
+              className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
+            >
+              <ChevronLeftIcon className="h-4 w-4" />
+              Back
+            </button>
+            <h1 className="text-3xl font-bold text-gray-900">Create Work Order</h1>
+          </div>
+          <p className="text-gray-600">Fill out the form below to create a new work order</p>
+        </div>
+
+        {/* Progress Bar */}
+        <div className="mb-6 lg:mb-8">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-gray-700">
+              Step {currentStep + 1} of {workOrderFormSections.length}
+            </span>
+            <span className="text-sm text-gray-500">
+              {getCompletionPercentage()}% Complete
+            </span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${getCompletionPercentage()}%` }}
+            />
+          </div>
+          
+          {/* Mobile Step Indicator */}
+          <div className="lg:hidden mt-4">
+            <div className="flex justify-between text-xs text-gray-500">
+              {workOrderFormSections.map((section, index) => (
+                <div
+                  key={index}
+                  className={`flex flex-col items-center ${
+                    index <= currentStep ? 'text-blue-600' : 'text-gray-400'
+                  }`}
+                >
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center mb-1 ${
+                    index < currentStep 
+                      ? 'bg-green-500 text-white' 
+                      : index === currentStep 
+                      ? 'bg-blue-500 text-white' 
+                      : 'bg-gray-200 text-gray-500'
+                  }`}>
+                    {index < currentStep ? '✓' : index + 1}
+                  </div>
+                  <span className="text-center">{section.title}</span>
+                </div>
+              ))}
             </div>
           </div>
-          {uploadStatus.failed > 0 && (
-            <p className="text-yellow-700 text-sm mt-1">
-              Please retry failed uploads before submitting the form.
-            </p>
-          )}
         </div>
-      )}
 
-      {/* Progress Bar */}
-      <ProgressBar
-        steps={progressSteps}
-        currentStep={currentStep}
-        completedSteps={completedSteps}
-        stepsWithErrors={stepsWithErrors}
-        onStepClick={goToStep}
-        showProgress={true}
-        className="mb-8"
-      />
-
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Current Section */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={currentStep}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3 }}
-          >
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  {progressSteps[currentStep]?.icon && (
-                    React.createElement(progressSteps[currentStep].icon, { className: "h-5 w-5" })
-                  )}
-                  {currentSection.title}
-                </CardTitle>
-                {progressSteps[currentStep]?.description && (
-                  <p className="text-sm text-gray-600">
-                    {progressSteps[currentStep].description}
-                  </p>
-                )}
-                {currentSection.id === 'images' && (
-                  <div className="mt-2 p-3 bg-blue-50 rounded-md">
-                    <p className="text-sm text-blue-700">
-                      💡 Images will be uploaded immediately when selected. Please wait for uploads to complete before proceeding.
-                    </p>
+        {/* Form Container */}
+        <Card className="mb-6">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-xl lg:text-2xl">
+              {currentSection.title}
+            </CardTitle>
+            <p className="text-gray-600 text-sm lg:text-base">
+              Complete the {currentSection.title.toLowerCase()} information
+            </p>
+          </CardHeader>
+          <CardContent>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentStep}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                {currentSection.fields.map((field) => (
+                  <div key={field.name} className="mb-6">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      {field.label}
+                      {field.required && <span className="text-red-500 ml-1">*</span>}
+                    </label>
+                    <DynamicFormRenderer
+                      field={field}
+                      value={formData[field.name]}
+                      error={errors[field.name]}
+                      onChange={(value) => setValue(field.name, value)}
+                      selectOptions={getSelectOptions(field.name)}
+                      autocompleteItems={field.name === 'location' ? activeRooms : []}
+                      onAutocompleteSelect={field.name === 'location' ? handleRoomSelect : undefined}
+                    />
+                    {errors[field.name] && (
+                      <p className="mt-1 text-sm text-red-600">{errors[field.name]}</p>
+                    )}
                   </div>
-                )}
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {currentSection.id === 'review' ? (
-                  <ReviewSection
-                    formData={formData}
-                    activeRooms={activeRooms}
-                    availableTechnicians={availableTechnicians}
-                    getUploadedImageUrls={getUploadedImageUrls}
-                    uploadStatus={uploadStatus}
-                  />
-                ) : (
-                  currentSection.fields.map((field) => {
-                    console.log(`🔍 Rendering field: ${field.name}`, {
-                      type: field.type,
-                      value: formData[field.name],
-                      isImageUpload: field.type === 'image-upload'
-                    })
-                    return (
-                      <DynamicFormRenderer
-                        key={field.name}
-                        field={field}
-                        value={formData[field.name]}
-                        error={errors[field.name]}
-                        onChange={(value) => {
-                          console.log(`🔧 Field ${field.name} onChange called with:`, value)
-                          console.log(`🔧 Field ${field.name} onChange - isArray:`, Array.isArray(value))
-                          console.log(`🔧 Field ${field.name} onChange - length:`, Array.isArray(value) ? value.length : 'not array')
-                          if (Array.isArray(value) && value.length > 0) {
-                            console.log(`🔧 Field ${field.name} onChange - first item:`, {
-                              id: value[0].id,
-                              fileName: value[0].file?.name,
-                              uploadStatus: value[0].uploadStatus
-                            })
-                          }
-                          console.log(`🔧 Field ${field.name} onChange - calling setValue`)
-                          setValue(field.name, value)
-                          console.log(`🔧 Field ${field.name} onChange - setValue called`)
-                          
-                          // Add a small delay to see if the form data is updated
-                          setTimeout(() => {
-                            console.log(`🔧 Field ${field.name} onChange - form data after setValue:`, formData[field.name])
-                          }, 100)
-                        }}
-                        selectOptions={getSelectOptions(field.name)}
-                        autocompleteItems={field.name === 'location' ? activeRooms : []}
-                        onAutocompleteSelect={field.name === 'location' ? handleRoomSelect : undefined}
-                      />
-                    )
-                  })
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
-        </AnimatePresence>
+                ))}
+              </motion.div>
+            </AnimatePresence>
+          </CardContent>
+        </Card>
 
-        {/* Navigation */}
-        <div className="flex justify-between items-center pt-6 border-t">
+        {/* Navigation Buttons */}
+        <div className="flex flex-col sm:flex-row gap-3 lg:gap-4">
           <Button
-            type="button"
-            variant="secondary"
             onClick={prevStep}
-            disabled={!canGoPrev()}
-            className="flex items-center gap-2"
+            disabled={!canGoPrev}
+            variant="secondary"
+            className="flex-1 sm:flex-none sm:w-auto"
           >
-            <ChevronLeftIcon className="h-4 w-4" />
+            <ChevronLeftIcon className="h-4 w-4 mr-2" />
             Previous
           </Button>
 
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <span>Step {currentStep + 1} of {progressSteps.length}</span>
-            <div className="w-2 h-2 bg-gray-300 rounded-full" />
-            <span>{getCompletionPercentage()}% Complete</span>
-          </div>
-
-          {canGoNext() ? (
+          {currentStep < workOrderFormSections.length - 1 ? (
             <Button
-              type="button"
-              onClick={handleNext}
-              className="flex items-center gap-2"
-              disabled={
-                currentSection.id === 'images' && 
-                (uploadStatus.uploading > 0 || uploadStatus.failed > 0)
-              }
+              onClick={nextStep}
+              disabled={!canGoNext}
+              className="flex-1 sm:flex-none sm:w-auto"
             >
               Next
-              <ChevronRightIcon className="h-4 w-4" />
+              <ChevronRightIcon className="h-4 w-4 ml-2" />
             </Button>
           ) : (
             <Button
-              type="submit"
-              disabled={loading || !areAllImagesUploaded() || !propertyId}
-              className="flex items-center gap-2"
+              onClick={handleSubmit}
+              disabled={loading || !canGoNext}
+              className="flex-1 sm:flex-none sm:w-auto"
             >
               {loading ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
                   Creating...
                 </>
-              ) : !areAllImagesUploaded() ? (
-                <>
-                  Waiting for uploads...
-                </>
-              ) : !propertyId ? (
-                <>
-                  Missing property ID
-                </>
               ) : (
-                'Create Work Order'
+                <>
+                  <ClipboardDocumentListIcon className="h-4 w-4 mr-2" />
+                  Create Work Order
+                </>
               )}
             </Button>
           )}
         </div>
-      </form>
 
-      {/* Summary Sidebar */}
-      <Card className="lg:fixed lg:top-4 lg:right-4 lg:w-80 lg:max-h-[80vh] lg:overflow-y-auto">
-        <CardHeader>
-          <CardTitle className="text-lg">Summary</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Progress:</span>
-              <span className="font-medium">{getCompletionPercentage()}%</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Title:</span>
-              <span className="font-medium truncate">{formData.title || 'Not set'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Status:</span>
-              <Badge className="bg-yellow-100 text-yellow-800">
-                {formData.status || 'Not set'}
-              </Badge>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Priority:</span>
-              <Badge className="bg-blue-100 text-blue-800">
-                {formData.priority || 'Not set'}
-              </Badge>
-            </div>
-            {formData.scheduledDate && (
-              <div className="flex justify-between">
-                <span className="text-gray-600">Due:</span>
-                <span className="font-medium">{new Date(formData.scheduledDate).toLocaleDateString()}</span>
-              </div>
-            )}
-            {uploadStatus.total > 0 && (
-              <div className="border-t pt-2">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Images:</span>
-                  <span className="font-medium">{uploadStatus.uploaded} / {uploadStatus.total} uploaded</span>
-                </div>
-                {uploadStatus.uploading > 0 && (
-                  <Badge className="bg-yellow-100 text-yellow-800 mt-1">
-                    {uploadStatus.uploading} uploading
-                  </Badge>
-                )}
-                {uploadStatus.failed > 0 && (
-                  <Badge className="bg-red-100 text-red-800 mt-1">
-                    {uploadStatus.failed} failed
-                  </Badge>
-                )}
-              </div>
-            )}
-            <div className="flex justify-between">
-              <span className="text-gray-600">Property ID:</span>
-              <span className="font-medium">{numericPropertyId || 'Not set'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Room:</span>
-              <span className="font-medium">{selectedRoom?.name || 'Not selected'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Technician:</span>
-              <span className="font-medium">{selectedTechnician?.username || 'Not assigned'}</span>
-            </div>
+        {/* Review Section */}
+        {currentStep === workOrderFormSections.length - 1 && (
+          <div className="mt-6">
+            <ReviewSection 
+              formData={formData}
+              activeRooms={activeRooms}
+              availableTechnicians={availableTechnicians}
+              getUploadedImageUrls={getUploadedImageUrls}
+              uploadStatus={getUploadStatus()}
+            />
           </div>
-        </CardContent>
-      </Card>
+        )}
+
+        {/* Mobile Bottom Spacing */}
+        <div className="h-20 lg:hidden"></div>
+      </div>
     </div>
   )
 }

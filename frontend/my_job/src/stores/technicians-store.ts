@@ -58,16 +58,40 @@ export const useTechnicianStore = create<TechnicianState>()(
       fetchTechnicians: async () => {
         set({ loading: true, error: null })
         try {
+          // First ensure users are loaded
+          const usersStore = useUsersStore.getState()
+          if (usersStore.users.length === 0) {
+            console.log('🔍 [TechnicianStore] No users loaded, fetching users first...')
+            await usersStore.fetchUsers()
+          }
+          
           // Get technicians from users store
-          const users = useUsersStore.getState().getUsersByRole('Technician')
+          const users = usersStore.getUsersByRole('Technician')
+          console.log('🔍 [TechnicianStore] Users with Technician role:', users)
+          console.log('🔍 [TechnicianStore] Users structure:', users.map(u => ({
+            id: u.id,
+            username: u.username,
+            profile: u.profile,
+            is_active: u.is_active
+          })))
+          
           const technicians = users.map(user => ({
             ...user,
             available: true,
             skills: [],
           })) as Technician[]
           
+          console.log('🔍 [TechnicianStore] Created technicians:', technicians.map(t => ({
+            id: t.id,
+            username: t.username,
+            profile: t.profile,
+            is_active: t.is_active,
+            available: t.available
+          })))
+          
           set({ technicians })
         } catch (error: any) {
+          console.error('❌ [TechnicianStore] Error fetching technicians:', error)
           set({ error: error.message })
         } finally {
           set({ loading: false })
@@ -103,8 +127,23 @@ export const useTechnicianStore = create<TechnicianState>()(
         }
       },
 
-      getAvailableTechnicians: () =>
-        get().technicians.filter((tech) => tech.available && tech.is_active),
+      getAvailableTechnicians: () => {
+        const available = get().technicians.filter((tech) => tech.available && tech.is_active)
+        console.log('🔍 [TechnicianStore] getAvailableTechnicians called')
+        console.log('🔍 [TechnicianStore] All technicians:', get().technicians.map(t => ({
+          id: t.id,
+          username: t.username,
+          available: t.available,
+          is_active: t.is_active
+        })))
+        console.log('🔍 [TechnicianStore] Available technicians:', available.map(t => ({
+          id: t.id,
+          username: t.username,
+          available: t.available,
+          is_active: t.is_active
+        })))
+        return available
+      },
       
       getTechnicianById: (id) =>
         get().technicians.find((tech) => tech.id === id),

@@ -17,7 +17,7 @@ export default function ProfilePage() {
   if (!user) return <div className="p-8 text-red-500">Not logged in.</div>
 
   const properties = user.profile?.properties || []
-  const hasProperty = properties.length > 0 || !!user.property_id
+  const hasProperty = properties.length > 0
 
   return (
     <div className="max-w-xl mx-auto mt-10 p-6 bg-white rounded shadow">
@@ -35,12 +35,6 @@ export default function ProfilePage() {
                 <b>ID:</b> {prop.id} <b>Name:</b> {prop.name}
               </li>
             ))}
-            {/* fallback if only property_id is present */}
-            {!properties.length && user.property_id && (
-              <li>
-                <b>ID:</b> {user.property_id}
-              </li>
-            )}
           </ul>
         ) : (
           <span className="text-red-500 ml-2">No property assigned!</span>

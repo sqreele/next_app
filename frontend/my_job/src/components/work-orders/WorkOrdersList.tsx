@@ -22,9 +22,12 @@ import {
   ClockIcon,
   ExclamationTriangleIcon,
   CheckCircleIcon,
-  XMarkIcon
+  XMarkIcon,
+  FunnelIcon,
+  XMarkIcon as XMark,
 } from '@heroicons/react/24/outline'
 import { formatDistanceToNow, format } from 'date-fns'
+import { StatusUpdateButton } from './StatusUpdateButton'
 
 export function WorkOrdersList() {
   const {
@@ -44,6 +47,9 @@ export function WorkOrdersList() {
   const { machines, fetchMachines } = useMachineStore()
   const { rooms, fetchRooms } = useRoomStore()
   const { technicians, fetchTechnicians } = useTechnicianStore()
+
+  // Mobile filter state
+  const [showFilters, setShowFilters] = useState(false)
 
   // Fetch initial data
   useEffect(() => {
@@ -168,13 +174,13 @@ export function WorkOrdersList() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Work Orders</h1>
           <p className="text-gray-600">Manage maintenance and repair requests</p>
         </div>
         <Link href="/work-orders/create">
-          <Button>
+          <Button className="w-full sm:w-auto">
             <PlusIcon className="h-4 w-4 mr-2" />
             Create Work Order
           </Button>
@@ -232,12 +238,24 @@ export function WorkOrdersList() {
         </Card>
       </div>
 
-      {/* Search and Filters */}
+      {/* Filters */}
       <Card>
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">Filters</CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowFilters(!showFilters)}
+              className="lg:hidden"
+            >
+              <FunnelIcon className="h-4 w-4 mr-2" />
+              {showFilters ? 'Hide' : 'Show'} Filters
+            </Button>
+          </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className={`space-y-4 ${showFilters ? 'block' : 'hidden lg:block'}`}>
+          {/* Search and Filters */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="relative">
               <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -252,7 +270,7 @@ export function WorkOrdersList() {
             <select
               value={filters.status || ''}
               onChange={(e) => handleStatusFilter(e.target.value)}
-              className="border rounded-md px-3 py-2"
+              className="w-full border rounded-md px-3 py-2"
             >
               <option value="">All Status</option>
               <option value="Pending">Pending</option>
@@ -264,7 +282,7 @@ export function WorkOrdersList() {
             <select
               value={filters.priority || ''}
               onChange={(e) => handlePriorityFilter(e.target.value)}
-              className="border rounded-md px-3 py-2"
+              className="w-full border rounded-md px-3 py-2"
             >
               <option value="">All Priority</option>
               <option value="Low">Low</option>
@@ -274,7 +292,7 @@ export function WorkOrdersList() {
             </select>
           </div>
 
-          <div className="flex gap-2 mt-4">
+          <div className="flex flex-wrap gap-2">
             <Button onClick={clearFilters} variant="secondary" size="sm">
               Clear Filters
             </Button>
@@ -285,7 +303,7 @@ export function WorkOrdersList() {
         </CardContent>
       </Card>
 
-      {/* Work Orders Table */}
+      {/* Work Orders - Mobile Cards / Desktop Table */}
       <Card>
         <CardHeader>
           <CardTitle>
@@ -293,7 +311,114 @@ export function WorkOrdersList() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
+          {/* Mobile Cards View */}
+          <div className="lg:hidden space-y-4">
+            {filteredWorkOrders.map((workOrder) => {
+              const StatusIcon = getStatusIcon(workOrder.status)
+              const isOverdue = new Date(workOrder.due_date) < new Date() && 
+                               workOrder.status !== 'Completed' && 
+                               workOrder.status !== 'Cancelled'
+              
+              return (
+                <Card key={workOrder.id} className="border-l-4 border-l-blue-500">
+                  <CardContent className="p-4">
+                    <div className="space-y-3">
+                      {/* Header */}
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className="p-1 bg-gray-100 rounded">
+                              <ClipboardDocumentListIcon className="h-4 w-4 text-gray-600" />
+                            </div>
+                            <h3 className="text-sm font-medium text-gray-900 truncate">
+                              {workOrder.task}
+                            </h3>
+                          </div>
+                          <p className="text-xs text-gray-500 line-clamp-2">
+                            {workOrder.description}
+                          </p>
+                        </div>
+                        <Badge className={getPriorityColor(workOrder.priority)}>
+                          {workOrder.priority}
+                        </Badge>
+                      </div>
+
+                      {/* Status and Actions */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleStatusToggle(workOrder.id, workOrder.status)}
+                            className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full transition-colors hover:opacity-80 ${getStatusColor(workOrder.status)}`}
+                          >
+                            <StatusIcon className="h-3 w-3" />
+                            {workOrder.status}
+                          </button>
+                          <StatusUpdateButton 
+                            workOrderId={workOrder.id} 
+                            currentStatus={workOrder.status}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Details */}
+                      <div className="grid grid-cols-2 gap-4 text-xs text-gray-500">
+                        <div>
+                          <span className="font-medium">Assigned:</span>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Avatar className="h-6 w-6">
+                              <AvatarFallback className="text-xs">
+                                {getTechnicianName(workOrder.assigned_to_id).substring(0, 2)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="truncate">
+                              {getTechnicianName(workOrder.assigned_to_id)}
+                            </span>
+                          </div>
+                        </div>
+                        <div>
+                          <span className="font-medium">Due:</span>
+                          <div className={`mt-1 ${isOverdue ? 'text-red-600 font-medium' : ''}`}>
+                            {format(new Date(workOrder.due_date), 'MMM d, yyyy')}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Location Info */}
+                      <div className="text-xs text-gray-400">
+                        Machine: {getMachineName(workOrder.machine_id)} | 
+                        Room: {getRoomName(workOrder.room_id)}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex gap-2 pt-2 border-t">
+                        <Link href={`/work-orders/${workOrder.id}`} className="flex-1">
+                          <Button variant="secondary" size="sm" className="w-full">
+                            View
+                          </Button>
+                        </Link>
+                        <Link href={`/work-orders/${workOrder.id}/edit`} className="flex-1">
+                          <Button variant="secondary" size="sm" className="w-full">
+                            <PencilIcon className="h-4 w-4" />
+                          </Button>
+                        </Link>
+                        <Button 
+                          variant="secondary" 
+                          size="sm"
+                          onClick={() => handleDelete(workOrder.id, workOrder.task)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+
+          {/* Desktop Table View */}
+          <div className="hidden lg:block overflow-x-auto">
             <table className="min-w-full">
               <thead className="bg-gray-50">
                 <tr>
@@ -353,13 +478,19 @@ export function WorkOrdersList() {
                       </td>
                       
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <button
-                          onClick={() => handleStatusToggle(workOrder.id, workOrder.status)}
-                          className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full transition-colors hover:opacity-80 ${getStatusColor(workOrder.status)}`}
-                        >
-                          <StatusIcon className="h-3 w-3" />
-                          {workOrder.status}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleStatusToggle(workOrder.id, workOrder.status)}
+                            className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full transition-colors hover:opacity-80 ${getStatusColor(workOrder.status)}`}
+                          >
+                            <StatusIcon className="h-3 w-3" />
+                            {workOrder.status}
+                          </button>
+                          <StatusUpdateButton 
+                            workOrderId={workOrder.id} 
+                            currentStatus={workOrder.status}
+                          />
+                        </div>
                       </td>
                       
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -411,20 +542,20 @@ export function WorkOrdersList() {
                 })}
               </tbody>
             </table>
-
-            {filteredWorkOrders.length === 0 && (
-              <div className="text-center py-8">
-                <ClipboardDocumentListIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">No work orders found</p>
-                <p className="text-sm text-gray-400 mt-1">
-                  {filters.search || filters.status || filters.priority
-                    ? 'Try adjusting your filters' 
-                    : 'Get started by creating your first work order'
-                  }
-                </p>
-              </div>
-            )}
           </div>
+
+          {filteredWorkOrders.length === 0 && (
+            <div className="text-center py-8">
+              <ClipboardDocumentListIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-500">No work orders found</p>
+              <p className="text-sm text-gray-400 mt-1">
+                {filters.search || filters.status || filters.priority
+                  ? 'Try adjusting your filters' 
+                  : 'Get started by creating your first work order'
+                }
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
