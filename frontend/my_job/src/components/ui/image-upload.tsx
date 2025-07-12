@@ -1,7 +1,8 @@
 // src/components/ui/image-upload.tsx - With immediate upload functionality
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useState, useEffect } from 'react'
 import { PhotoIcon, XMarkIcon, EyeIcon, ExclamationTriangleIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
 import { toast } from 'sonner'
+import { useAuthStore } from '@/stores/auth-store'
 
 interface ImageFile {
   file: File
@@ -58,6 +59,13 @@ export function ImageUpload({
   const [previewImage, setPreviewImage] = useState<string | null>(null)
   const [validationErrors, setValidationErrors] = useState<string[]>([])
 
+  // Debug effect to monitor value changes
+  useEffect(() => {
+    console.log(`🔍 ImageUpload [${label}] value changed:`, value)
+    console.log(`🔍 Successful uploads:`, value.filter(img => img.uploadStatus === 'success'))
+    console.log(`🔍 URLs:`, value.filter(img => img.uploadStatus === 'success').map(img => img.uploadedUrl))
+  }, [value, label])
+
   // Upload image to server
   const uploadImageToServer = async (file: File, imageId: string): Promise<string> => {
     const formData = new FormData()
@@ -68,13 +76,35 @@ export function ImageUpload({
     try {
       console.log(`📤 Uploading ${file.name} to ${uploadEndpoint}`)
       
+      // Get token from auth store with proper error handling
+      const authState = useAuthStore.getState()
+      const token = authState.token
+      
+      if (!token) {
+        throw new Error('No authentication token available. Please log in again.')
+      }
+
+      console.log('📡 Request headers:', {
+        'Authorization': `Bearer ${token.substring(0, 10)}...`,
+        'Content-Type': 'multipart/form-data (auto-set by browser)'
+      })
+
+      console.log('📡 Request body:', {
+        file: file.name,
+        upload_type: uploadType,
+        category: 'work_order'
+      })
+      
       const response = await fetch(uploadEndpoint, {
         method: 'POST',
         body: formData,
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('auth-token')}`,
+          'Authorization': `Bearer ${token}`,
         },
       })
+
+      console.log('📡 Response status:', response.status)
+      console.log('📡 Response headers:', Object.fromEntries(response.headers.entries()))
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
@@ -84,7 +114,16 @@ export function ImageUpload({
       const result = await response.json()
       console.log(`✅ Upload successful for ${file.name}:`, result)
       
-      return result.file_path || result.url || result.path
+      // Handle different possible response formats and validate URL
+      const uploadedUrl = result.file_path || result.url || result.path || result.data?.url || result.data?.file_path
+      
+      if (!uploadedUrl || typeof uploadedUrl !== 'string' || uploadedUrl.trim() === '') {
+        console.error('❌ Server response missing valid URL:', result)
+        throw new Error('Server did not return a valid file URL')
+      }
+      
+      console.log(`✅ Extracted URL: ${uploadedUrl}`)
+      return uploadedUrl.trim()
     } catch (error) {
       console.error(`❌ Upload failed for ${file.name}:`, error)
       throw error
@@ -93,6 +132,7 @@ export function ImageUpload({
 
   // Update image status
   const updateImageStatus = (id: string, updates: Partial<ImageFile>) => {
+    console.log(`🔄 Updating image ${id} status:`, updates)
     onChange(value.map(img => 
       img.id === id ? { ...img, ...updates } : img
     ))
@@ -100,11 +140,14 @@ export function ImageUpload({
 
   // Start upload process for an image
   const startImageUpload = async (imageFile: ImageFile) => {
+    console.log(`🚀 Starting upload for ${imageFile.file.name}`)
+    
     try {
       // Update status to uploading
       updateImageStatus(imageFile.id, { 
         uploadStatus: 'uploading', 
-        uploadProgress: 0 
+        uploadProgress: 0,
+        error: undefined
       })
 
       // Simulate progress (since fetch doesn't provide real progress)
@@ -114,23 +157,38 @@ export function ImageUpload({
         })
       }, 200)
 
-      // Upload the file
-      const uploadedUrl = await uploadImageToServer(imageFile.file, imageFile.id)
-      
-      // Clear progress interval
-      clearInterval(progressInterval)
+      try {
+        // Upload the file
+        const uploadedUrl = await uploadImageToServer(imageFile.file, imageFile.id)
+        
+        // Clear progress interval
+        clearInterval(progressInterval)
 
-      // Update with success
-      updateImageStatus(imageFile.id, {
-        uploadStatus: 'success',
-        uploadProgress: 100,
-        uploadedUrl,
-        error: undefined
-      })
+        // Validate the uploaded URL
+        if (!uploadedUrl || uploadedUrl.trim() === '') {
+          throw new Error('Server returned an empty URL')
+        }
 
-      toast.success(`${imageFile.file.name} uploaded successfully`)
+        // Update with success
+        updateImageStatus(imageFile.id, {
+          uploadStatus: 'success',
+          uploadProgress: 100,
+          uploadedUrl: uploadedUrl,
+          error: undefined
+        })
+
+        console.log(`✅ Upload completed for ${imageFile.file.name}, URL: ${uploadedUrl}`)
+        toast.success(`${imageFile.file.name} uploaded successfully`)
+        
+      } catch (uploadError) {
+        // Clear progress interval on error
+        clearInterval(progressInterval)
+        throw uploadError
+      }
       
     } catch (error: any) {
+      console.error(`❌ Upload failed for ${imageFile.file.name}:`, error)
+      
       // Update with error
       updateImageStatus(imageFile.id, {
         uploadStatus: 'error',
@@ -144,6 +202,7 @@ export function ImageUpload({
 
   // Retry upload for failed images
   const retryUpload = (imageFile: ImageFile) => {
+    console.log(`🔄 Retrying upload for ${imageFile.file.name}`)
     updateImageStatus(imageFile.id, { 
       uploadStatus: 'pending',
       uploadProgress: 0,
@@ -205,6 +264,7 @@ export function ImageUpload({
       const img = new Image()
       img.onload = () => {
         resolve({ width: img.naturalWidth, height: img.naturalHeight })
+        URL.revokeObjectURL(img.src) // Clean up
       }
       img.onerror = reject
       img.src = URL.createObjectURL(file)
@@ -276,6 +336,8 @@ export function ImageUpload({
         const updatedValue = [...value, ...newImageFiles]
         onChange(updatedValue)
         
+        console.log(`🚀 Starting uploads for ${newImageFiles.length} files`)
+        
         // Start uploading each file immediately
         newImageFiles.forEach(imageFile => {
           startImageUpload(imageFile)
@@ -286,7 +348,7 @@ export function ImageUpload({
         }
       }
     },
-    [value, onChange, maxFiles, maxSize, minSize, maxTotalSize, allowedFormats, maxWidth, maxHeight, minWidth, minHeight, label]
+    [value, onChange, maxFiles, maxSize, minSize, maxTotalSize, allowedFormats, maxWidth, maxHeight, minWidth, minHeight, label, uploadEndpoint, uploadType]
   )
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -315,6 +377,7 @@ export function ImageUpload({
   }
 
   const removeImage = (id: string) => {
+    console.log(`🗑️ Removing image ${id}`)
     const newValue = value.filter(img => img.id !== id)
     onChange(newValue)
     
@@ -339,6 +402,7 @@ export function ImageUpload({
     uploading: value.filter(img => img.uploadStatus === 'uploading').length,
     success: value.filter(img => img.uploadStatus === 'success').length,
     failed: value.filter(img => img.uploadStatus === 'error').length,
+    pending: value.filter(img => img.uploadStatus === 'pending').length,
   }
 
   // Calculate current total size
@@ -366,7 +430,7 @@ export function ImageUpload({
       )}
 
       {/* Upload Progress Summary */}
-      {value.length > 0 && (uploadStatus.uploading > 0 || uploadStatus.failed > 0) && (
+      {value.length > 0 && (uploadStatus.uploading > 0 || uploadStatus.failed > 0 || uploadStatus.pending > 0) && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
           <div className="text-sm text-blue-800">
             <div className="flex items-center justify-between">
@@ -376,6 +440,11 @@ export function ImageUpload({
             {uploadStatus.uploading > 0 && (
               <div className="text-blue-600 mt-1">
                 {uploadStatus.uploading} file(s) uploading...
+              </div>
+            )}
+            {uploadStatus.pending > 0 && (
+              <div className="text-yellow-600 mt-1">
+                {uploadStatus.pending} file(s) pending...
               </div>
             )}
             {uploadStatus.failed > 0 && (
@@ -435,6 +504,7 @@ export function ImageUpload({
           <div className="text-sm text-blue-800">
             <div>Files: {value.length} / {maxFiles}</div>
             <div>Total size: {currentTotalSizeMB.toFixed(2)}MB / {maxTotalSize}MB</div>
+            <div>Status: {uploadStatus.success} uploaded, {uploadStatus.uploading} uploading, {uploadStatus.failed} failed</div>
           </div>
         </div>
       )}
@@ -458,8 +528,14 @@ export function ImageUpload({
                       <div className="text-center">
                         <ArrowPathIcon className="h-6 w-6 text-white animate-spin mx-auto mb-1" />
                         <div className="text-white text-xs">
-                          {imageFile.uploadProgress}%
+                          {imageFile.uploadProgress || 0}%
                         </div>
+                      </div>
+                    )}
+                    {imageFile.uploadStatus === 'pending' && (
+                      <div className="text-center">
+                        <div className="h-6 w-6 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-1" />
+                        <div className="text-white text-xs">Pending...</div>
                       </div>
                     )}
                     {imageFile.uploadStatus === 'error' && (
@@ -518,9 +594,20 @@ export function ImageUpload({
                 {imageFile.uploadStatus === 'error' && (
                   <span className="text-red-600">✗ Failed</span>
                 )}
+                {imageFile.uploadStatus === 'uploading' && (
+                  <span className="text-blue-600">⏳ Uploading</span>
+                )}
+                {imageFile.uploadStatus === 'pending' && (
+                  <span className="text-yellow-600">⏸ Pending</span>
+                )}
               </div>
               {imageFile.error && (
                 <div className="text-xs text-red-600 mt-1">{imageFile.error}</div>
+              )}
+              {imageFile.uploadedUrl && (
+                <div className="text-xs text-green-600 mt-1 truncate" title={imageFile.uploadedUrl}>
+                  URL: {imageFile.uploadedUrl}
+                </div>
               )}
             </div>
           ))}

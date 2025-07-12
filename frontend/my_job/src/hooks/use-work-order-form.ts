@@ -21,7 +21,7 @@ export function useWorkOrderForm(initialData: any) {
     
     setFormData((prev: any) => {
       const newData = { ...prev, [name]: value }
-      console.log(`📝 New form data:`, newData)
+      console.log(`📝 New form data for ${name}:`, newData[name])
       return newData
     })
     
@@ -84,16 +84,36 @@ export function useWorkOrderForm(initialData: any) {
 
   const getUploadedImageUrls = useCallback((fieldName: string): string[] => {
     const value = formData[fieldName]
-    console.log(`🔗 Getting uploaded URLs for ${fieldName}:`, value)
+    console.log(`🔗 [getUploadedImageUrls] Getting URLs for ${fieldName}:`, value)
     
-    if (Array.isArray(value)) {
-      const urls = value
-        .filter((item: ImageFile) => item.uploadStatus === 'success' && item.uploadedUrl)
-        .map((item: ImageFile) => item.uploadedUrl!)
-      console.log(`🔗 Extracted URLs:`, urls)
-      return urls
+    if (!Array.isArray(value)) {
+      console.warn(`⚠️ [getUploadedImageUrls] ${fieldName} is not an array:`, typeof value, value)
+      return []
     }
-    return []
+    
+    if (value.length === 0) {
+      console.log(`📝 [getUploadedImageUrls] ${fieldName} array is empty`)
+      return []
+    }
+    
+    const successfulUploads = value.filter((item: ImageFile) => {
+      const isSuccess = item.uploadStatus === 'success'
+      const hasUrl = item.uploadedUrl && typeof item.uploadedUrl === 'string' && item.uploadedUrl.trim() !== ''
+      
+      console.log(`🔍 [getUploadedImageUrls] Item ${item.id}:`, {
+        status: item.uploadStatus,
+        hasUrl: !!hasUrl,
+        url: item.uploadedUrl,
+        fileName: item.file?.name
+      })
+      
+      return isSuccess && hasUrl
+    })
+    
+    const urls = successfulUploads.map((item: ImageFile) => item.uploadedUrl!)
+    
+    console.log(`🔗 [getUploadedImageUrls] Final URLs for ${fieldName}:`, urls)
+    return urls
   }, [formData])
 
   const areAllImagesUploaded = useCallback((): boolean => {
@@ -102,9 +122,18 @@ export function useWorkOrderForm(initialData: any) {
     
     const allImages = [...beforePhotos, ...afterPhotos]
     
-    if (allImages.length === 0) return true
+    if (allImages.length === 0) {
+      console.log('✅ No images to upload')
+      return true
+    }
     
-    return allImages.every((img: ImageFile) => img.uploadStatus === 'success')
+    const allUploaded = allImages.every((img: ImageFile) => img.uploadStatus === 'success')
+    console.log(`🔍 All images uploaded: ${allUploaded}`, {
+      total: allImages.length,
+      successful: allImages.filter((img: ImageFile) => img.uploadStatus === 'success').length
+    })
+    
+    return allUploaded
   }, [formData])
 
   const getUploadStatus = useCallback(() => {
@@ -113,16 +142,20 @@ export function useWorkOrderForm(initialData: any) {
     
     const allImages = [...beforePhotos, ...afterPhotos]
     
-    return {
+    const status = {
       total: allImages.length,
       uploaded: allImages.filter((img: ImageFile) => img.uploadStatus === 'success').length,
       uploading: allImages.filter((img: ImageFile) => img.uploadStatus === 'uploading').length,
       failed: allImages.filter((img: ImageFile) => img.uploadStatus === 'error').length,
       pending: allImages.filter((img: ImageFile) => img.uploadStatus === 'pending').length,
     }
+    
+    console.log('📊 Upload status:', status)
+    return status
   }, [formData])
 
   const reset = useCallback(() => {
+    // Clean up object URLs to prevent memory leaks
     Object.values(formData).forEach((value: any) => {
       if (Array.isArray(value)) {
         value.forEach((item: any) => {

@@ -42,11 +42,11 @@ async def login_for_access_token(
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
-@router.get("/me/", response_model=schemas.User)
+@router.get("/me", response_model=schemas.User)  # Remove trailing slash
 async def read_users_me(
     current_user: models.User = Depends(dependencies.get_current_active_user),
 ):
-    return schemas.User.from_orm(current_user)
+    return schemas.User.model_validate(current_user)
 
 @router.get("/check-username/{username}")
 async def check_username_availability(

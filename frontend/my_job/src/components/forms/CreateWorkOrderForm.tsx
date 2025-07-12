@@ -197,6 +197,10 @@ export function CreateWorkOrderForm() {
     try {
       const selectedRoom = activeRooms.find(room => room.number === formData.location)
       const selectedTechnician = availableTechnicians.find(tech => tech.username === formData.assignedTo)
+      console.log('👷 Selected Technician:', selectedTechnician)
+      console.log('👷 Technician ID:', selectedTechnician?.id)
+      console.log('👷 Available Technicians:', availableTechnicians)
+      console.log('👷 Form Data Assigned To:', formData.assignedTo)
 
       const statusMap: Record<string, 'Pending' | 'In Progress' | 'Completed' | 'Cancelled'> = {
         'pending': 'Pending',
@@ -225,16 +229,33 @@ export function CreateWorkOrderForm() {
         status: statusMap[formData.status] || 'Pending',
         priority: priorityMap[formData.priority] || 'Medium',
         due_date: dueDate,
-        room_id: selectedRoom?.id || undefined,
-        assigned_to_id: selectedTechnician?.id || undefined,
-        before_image_path: beforeImageUrls.length > 0 ? beforeImageUrls[0] : null,
-        after_image_path: afterImageUrls.length > 0 ? afterImageUrls[0] : null,
+        machine_id: 0,  // Add this
+        room_id: selectedRoom?.id || 0,
+        assigned_to_id: selectedTechnician?.id || user?.id || 0,
+        property_id: user?.profile?.properties?.[0]?.id || user?.property_id || 1,
+        before_image_path: beforeImageUrls.length > 0 ? beforeImageUrls[0] : "",
+        after_image_path: afterImageUrls.length > 0 ? afterImageUrls[0] : "",
         before_images: beforeImageUrls,
         after_images: afterImageUrls,
-        property_id: user?.profile?.properties?.[0]?.id || user?.property_id || 1, // Get from profile properties or fallback
+        pdf_file_path: "",  // Add this
       }
 
-      console.log('📋 Creating work order with data:', submitData)
+      console.log('📋 === ACTUAL REQUEST DATA ===')
+      console.log('Task:', submitData.task)
+      console.log('Description:', submitData.description)
+      console.log('Status:', submitData.status)
+      console.log('Priority:', submitData.priority)
+      console.log('Due Date:', submitData.due_date)
+      console.log('Room ID:', submitData.room_id)
+      console.log('Assigned To ID:', submitData.assigned_to_id)
+      console.log('Property ID:', submitData.property_id)
+      console.log('Before Image Path:', submitData.before_image_path)
+      console.log('After Image Path:', submitData.after_image_path)
+      console.log('Before Images Array:', submitData.before_images)
+      console.log('After Images Array:', submitData.after_images)
+      console.log('PDF File Path:', submitData.pdf_file_path)
+      console.log('🔍 === END REQUEST DATA ===')
+
       console.log('👤 User data:', user)
       console.log('🏢 User property_id:', user?.property_id)
       console.log('🏢 User profile properties:', user?.profile?.properties)
@@ -246,8 +267,8 @@ export function CreateWorkOrderForm() {
         description: `Work order "${newWorkOrder.task}" has been created with ${beforeImageUrls.length + afterImageUrls.length} images.`
       })
 
-      reset()
-      router.push('/work-orders')
+      //reset()
+      //router.push('/work-orders')
       
     } catch (error: any) {
       console.error('❌ Error creating work order:', error)

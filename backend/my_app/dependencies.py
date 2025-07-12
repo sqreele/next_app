@@ -1,12 +1,11 @@
-# ==============================================================================
-# File: backend/my_app/dependencies.py (Corrected)
-# Description: Defines async dependencies for the application.
-# ==============================================================================
+# File: backend/my_app/dependencies.py
 from typing import AsyncGenerator, Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from sqlalchemy import select
 from . import crud, models, schemas
 from .database import SessionLocal
 from .security import SECRET_KEY, ALGORITHM
@@ -36,7 +35,17 @@ async def get_current_user(
         token_data = schemas.TokenData(username=username)
     except JWTError:
         raise credentials_exception
-    user = await crud.get_user_by_username(db, username=token_data.username)
+    
+    # Ensure proper loading of relationships
+    result = await db.execute(
+        select(models.User)
+        .options(
+            selectinload(models.User.profile).selectinload(models.UserProfile.properties)
+        )
+        .filter(models.User.username == token_data.username)
+    )
+    user = result.scalars().first()
+    
     if user is None:
         raise credentials_exception
     return user
@@ -66,7 +75,16 @@ async def try_get_current_active_user(
         if username is None:
             return None
         
-        user = await crud.get_user_by_username(db, username=username)
+        # Ensure proper loading of relationships
+        result = await db.execute(
+            select(models.User)
+            .options(
+                selectinload(models.User.profile).selectinload(models.UserProfile.properties)
+            )
+            .filter(models.User.username == username)
+        )
+        user = result.scalars().first()
+        
         if user is None or not user.is_active:
             return None
         return user

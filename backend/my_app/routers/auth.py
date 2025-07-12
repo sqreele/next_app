@@ -13,7 +13,7 @@ from datetime import timedelta, datetime, timezone
 import secrets
 from ..dependencies import get_db, get_current_active_user, try_get_current_active_user
 
-from .. import crud, schemas, security
+from .. import crud, schemas, security,models 
 from ..dependencies import get_db, get_current_active_user
 from fastapi.security import OAuth2PasswordRequestForm
 
@@ -170,10 +170,9 @@ async def logout():
 
 # --- User and Status Endpoints ---
 @router.get("/me", response_model=schemas.User)
-async def get_current_user_info(current_user: schemas.User = Depends(get_current_active_user)):
+async def get_current_user_info(current_user: models.User = Depends(get_current_active_user)):
     """Returns the information of the currently authenticated user."""
-    return current_user
-
+    return schemas.User.model_validate(current_user)  
 
 @router.get("/status")
 async def auth_status(current_user: Optional[schemas.User] = Depends(try_get_current_active_user)):
