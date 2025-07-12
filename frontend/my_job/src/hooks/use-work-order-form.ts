@@ -19,9 +19,25 @@ export function useWorkOrderForm(initialData: any) {
   const setValue = useCallback((name: string, value: any) => {
     console.log(`🔧 setValue called: ${name}`, value)
     
+    if (name === 'beforePhotos' || name === 'afterPhotos') {
+      console.log(`📸 [setValue] Image field ${name}:`, {
+        isArray: Array.isArray(value),
+        length: Array.isArray(value) ? value.length : 'not array',
+        uploadStatuses: Array.isArray(value) ? value.map((img: any) => img.uploadStatus) : 'not array',
+        ids: Array.isArray(value) ? value.map((img: any) => img.id) : 'not array'
+      })
+      
+      // Add stack trace to see where this is being called from
+      if (Array.isArray(value) && value.length === 0) {
+        console.log(`⚠️ [setValue] Empty array passed for ${name}. Stack trace:`, new Error().stack)
+      }
+    }
+    
     setFormData((prev: any) => {
       const newData = { ...prev, [name]: value }
       console.log(`📝 New form data for ${name}:`, newData[name])
+      console.log(`📝 New form data length for ${name}:`, Array.isArray(newData[name]) ? newData[name].length : 'not array')
+      console.log(`📝 Previous form data for ${name}:`, prev[name])
       return newData
     })
     

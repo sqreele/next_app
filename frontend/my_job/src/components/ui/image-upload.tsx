@@ -1,5 +1,5 @@
 // src/components/ui/image-upload.tsx - With immediate upload functionality
-import React, { useCallback, useState, useEffect } from 'react'
+import React, { useCallback, useState, useEffect, useRef } from 'react'
 import { PhotoIcon, XMarkIcon, EyeIcon, ExclamationTriangleIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
@@ -55,15 +55,33 @@ export function ImageUpload({
   uploadEndpoint = '/api/v1/work_orders/upload_image',
   uploadType = 'before',
 }: ImageUploadProps) {
+  console.log(`📸 [ImageUpload-${label}] Component rendered with value:`, {
+    length: value.length,
+    ids: value.map(img => img.id),
+    statuses: value.map(img => img.uploadStatus)
+  })
   const [isDragOver, setIsDragOver] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
   const [validationErrors, setValidationErrors] = useState<string[]>([])
+  
+  // Use a ref to track the current value to avoid timing issues
+  const currentValueRef = useRef<ImageFile[]>(value)
+  
+  // Update the ref whenever value changes
+  useEffect(() => {
+    currentValueRef.current = value
+  }, [value])
 
   // Debug effect to monitor value changes
   useEffect(() => {
     console.log(`🔍 ImageUpload [${label}] value changed:`, value)
     console.log(`🔍 Successful uploads:`, value.filter(img => img.uploadStatus === 'success'))
     console.log(`🔍 URLs:`, value.filter(img => img.uploadStatus === 'success').map(img => img.uploadedUrl))
+    
+    // Add stack trace when value becomes empty unexpectedly
+    if (value.length === 0) {
+      console.log(`⚠️ [ImageUpload-${label}] Value became empty. Stack trace:`, new Error().stack)
+    }
   }, [value, label])
 
   // Upload image to server
@@ -74,11 +92,14 @@ export function ImageUpload({
     formData.append('category', 'work_order')
 
     try {
-      console.log(`📤 Uploading ${file.name} to ${uploadEndpoint}`)
+      console.log(`📤 [ImageUpload-${label}] Uploading ${file.name} to ${uploadEndpoint}`)
+      console.log(`📤 [ImageUpload-${label}] Upload type: ${uploadType}`)
       
       // Get token from auth store with proper error handling
       const authState = useAuthStore.getState()
       const token = authState.token
+      
+      console.log(`🔑 [ImageUpload-${label}] Token available:`, !!token)
       
       if (!token) {
         throw new Error('No authentication token available. Please log in again.')
@@ -108,39 +129,85 @@ export function ImageUpload({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.message || `Upload failed: ${response.statusText}`)
+        console.error(`❌ [ImageUpload-${label}] Upload failed with status ${response.status}:`, errorData)
+        throw new Error(errorData.message || errorData.detail || `Upload failed: ${response.statusText}`)
       }
 
       const result = await response.json()
-      console.log(`✅ Upload successful for ${file.name}:`, result)
+      console.log(`✅ [ImageUpload-${label}] Upload successful for ${file.name}:`, result)
       
       // Handle different possible response formats and validate URL
       const uploadedUrl = result.file_path || result.url || result.path || result.data?.url || result.data?.file_path
       
+      console.log(`🔍 [ImageUpload-${label}] Extracted URL from response:`, uploadedUrl)
+      
       if (!uploadedUrl || typeof uploadedUrl !== 'string' || uploadedUrl.trim() === '') {
-        console.error('❌ Server response missing valid URL:', result)
+        console.error(`❌ [ImageUpload-${label}] Server response missing valid URL:`, result)
         throw new Error('Server did not return a valid file URL')
       }
       
-      console.log(`✅ Extracted URL: ${uploadedUrl}`)
+      console.log(`✅ [ImageUpload-${label}] Final URL: ${uploadedUrl}`)
       return uploadedUrl.trim()
     } catch (error) {
-      console.error(`❌ Upload failed for ${file.name}:`, error)
+      console.error(`❌ [ImageUpload-${label}] Upload failed for ${file.name}:`, error)
       throw error
     }
   }
 
   // Update image status
   const updateImageStatus = (id: string, updates: Partial<ImageFile>) => {
-    console.log(`🔄 Updating image ${id} status:`, updates)
-    onChange(value.map(img => 
+    console.log(`🔄 [ImageUpload-${label}] updateImageStatus FUNCTION CALLED - id: ${id}`)
+    console.log(`🔄 [ImageUpload-${label}] updateImageStatus START - id: ${id}, updates:`, updates)
+    console.log(`🔄 [ImageUpload-${label}] Current value before update:`, value)
+    console.log(`🔄 [ImageUpload-${label}] Current value ref:`, currentValueRef.current)
+    
+    // Add stack trace to see where this is being called from
+    console.log(`🔄 [ImageUpload-${label}] updateImageStatus called from:`, new Error().stack)
+    
+    // Use the ref to get the most current value, fallback to prop if ref is empty
+    const currentValue = currentValueRef.current.length > 0 ? currentValueRef.current : value
+    
+    console.log(`🔄 [ImageUpload-${label}] Using current value:`, currentValue)
+    console.log(`🔄 [ImageUpload-${label}] Ref length:`, currentValueRef.current.length)
+    console.log(`🔄 [ImageUpload-${label}] Value length:`, value.length)
+    
+    // If both are empty, this might be a timing issue
+    if (currentValue.length === 0) {
+      console.log(`⚠️ [ImageUpload-${label}] Both value and ref are empty, this might be a timing issue`)
+      console.log(`⚠️ [ImageUpload-${label}] Attempting to update with just the current image:`, { id, ...updates })
+      
+      // Create a minimal update with just the current image
+      const currentImage = {
+        id,
+        ...updates,
+        // We need to provide minimal required fields if this is a new image
+        file: updates.file || new File([], 'temp.jpg'),
+        preview: updates.preview || '',
+        uploadStatus: updates.uploadStatus || 'pending'
+      } as ImageFile
+      
+      console.log(`⚠️ [ImageUpload-${label}] Calling onChange with single image:`, [currentImage])
+      onChange([currentImage])
+      console.log(`⚠️ [ImageUpload-${label}] onChange called with single image`)
+      return
+    }
+    
+    const updatedValue = currentValue.map((img: ImageFile) => 
       img.id === id ? { ...img, ...updates } : img
-    ))
+    )
+    
+    console.log(`📝 [ImageUpload-${label}] Calling onChange with updated value:`, updatedValue)
+    console.log(`📝 [ImageUpload-${label}] Updated value length:`, updatedValue.length)
+    console.log(`📝 [ImageUpload-${label}] Updated value IDs:`, updatedValue.map(img => img.id))
+    
+    onChange(updatedValue)
+    console.log(`📝 [ImageUpload-${label}] onChange called with updated value`)
   }
 
   // Start upload process for an image
   const startImageUpload = async (imageFile: ImageFile) => {
-    console.log(`🚀 Starting upload for ${imageFile.file.name}`)
+    console.log(`🚀 [ImageUpload-${label}] startImageUpload FUNCTION CALLED for ${imageFile.file.name}`)
+    console.log(`🚀 [ImageUpload-${label}] Starting upload for ${imageFile.file.name}`)
     
     try {
       // Update status to uploading
@@ -151,11 +218,13 @@ export function ImageUpload({
       })
 
       // Simulate progress (since fetch doesn't provide real progress)
+      let currentProgress = 0
       const progressInterval = setInterval(() => {
+        currentProgress = Math.min(currentProgress + 10, 90)
         updateImageStatus(imageFile.id, { 
-          uploadProgress: Math.min((imageFile.uploadProgress || 0) + 10, 90)
+          uploadProgress: currentProgress
         })
-      }, 200)
+      }, 500)
 
       try {
         // Upload the file
@@ -287,18 +356,21 @@ export function ImageUpload({
   const handleFiles = useCallback(
     async (files: FileList) => {
       console.log(`📁 [ImageUpload-${label}] Handling ${files.length} files`)
+      console.log(`📁 [ImageUpload-${label}] Current value at start:`, value)
+      console.log(`📁 [ImageUpload-${label}] Current value ref at start:`, currentValueRef.current)
       
       const validFiles: File[] = []
       const allErrors: string[] = []
       
       // Check file count
-      if (value.length + files.length > maxFiles) {
-        toast.error(`Maximum ${maxFiles} files allowed. You're trying to add ${files.length} more to ${value.length} existing files.`)
+      const currentValue = currentValueRef.current
+      if (currentValue.length + files.length > maxFiles) {
+        toast.error(`Maximum ${maxFiles} files allowed. You're trying to add ${files.length} more to ${currentValue.length} existing files.`)
         return
       }
 
       // Check total size first
-      if (!validateTotalSize(Array.from(files), value)) {
+      if (!validateTotalSize(Array.from(files), currentValue)) {
         return
       }
 
@@ -333,7 +405,16 @@ export function ImageUpload({
           uploadProgress: 0,
         }))
 
-        const updatedValue = [...value, ...newImageFiles]
+        console.log(`📝 [ImageUpload-${label}] Current value before adding files:`, currentValue)
+        console.log(`📝 [ImageUpload-${label}] New image files to add:`, newImageFiles.map(img => ({ id: img.id, fileName: img.file.name })))
+
+        const updatedValue = [...currentValue, ...newImageFiles]
+        console.log(`📝 [ImageUpload-${label}] Calling onChange with ${updatedValue.length} images:`, updatedValue)
+        console.log(`📝 [ImageUpload-${label}] Updated value details:`, updatedValue.map(img => ({
+          id: img.id,
+          fileName: img.file.name,
+          uploadStatus: img.uploadStatus
+        })))
         onChange(updatedValue)
         
         console.log(`🚀 Starting uploads for ${newImageFiles.length} files`)
@@ -348,13 +429,17 @@ export function ImageUpload({
         }
       }
     },
-    [value, onChange, maxFiles, maxSize, minSize, maxTotalSize, allowedFormats, maxWidth, maxHeight, minWidth, minHeight, label, uploadEndpoint, uploadType]
+    [onChange, maxFiles, maxSize, minSize, maxTotalSize, allowedFormats, maxWidth, maxHeight, minWidth, minHeight, label, uploadEndpoint, uploadType]
   )
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log(`📁 [ImageUpload-${label}] handleFileInput called with:`, e.target.files)
     if (e.target.files && e.target.files.length > 0) {
+      console.log(`📁 [ImageUpload-${label}] Calling handleFiles with ${e.target.files.length} files`)
       handleFiles(e.target.files)
       e.target.value = '' // Reset input
+    } else {
+      console.log(`📁 [ImageUpload-${label}] No files selected`)
     }
   }
 
@@ -378,11 +463,12 @@ export function ImageUpload({
 
   const removeImage = (id: string) => {
     console.log(`🗑️ Removing image ${id}`)
-    const newValue = value.filter(img => img.id !== id)
+    const currentValue = currentValueRef.current
+    const newValue = currentValue.filter(img => img.id !== id)
     onChange(newValue)
     
     // Revoke object URL to prevent memory leaks
-    const imageToRemove = value.find(img => img.id === id)
+    const imageToRemove = currentValue.find(img => img.id === id)
     if (imageToRemove) {
       URL.revokeObjectURL(imageToRemove.preview)
     }

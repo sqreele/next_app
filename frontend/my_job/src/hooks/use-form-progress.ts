@@ -12,6 +12,20 @@ export function useFormProgress(sections: any[], formData: any, errors: any) {
         if (field.conditional && !formData[field.conditional]) return true
         
         const value = formData[field.name]
+        
+        if (field.type === 'image-upload') {
+          if (!field.required) return true
+          if (!value || !Array.isArray(value) || value.length === 0) return false
+          
+          // Check if all images are successfully uploaded
+          const hasFailedUploads = value.some((img: any) => img.uploadStatus === 'error')
+          const hasUploading = value.some((img: any) => 
+            img.uploadStatus === 'pending' || img.uploadStatus === 'uploading'
+          )
+          
+          return !hasFailedUploads && !hasUploading
+        }
+        
         return value !== null && value !== undefined && value !== '' && value !== 0
       })
     })

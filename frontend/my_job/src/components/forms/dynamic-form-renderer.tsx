@@ -163,6 +163,11 @@ export function DynamicFormRenderer({
         )
 
       case 'image-upload':
+        console.log(`📸 [DynamicFormRenderer] Rendering image upload for ${field.name}:`, {
+          value: value,
+          label: field.name,
+          uploadType: field.name === 'beforePhotos' ? 'before' : 'after'
+        })
         return (
           <ImageUpload
             value={value || []}
@@ -181,6 +186,7 @@ export function DynamicFormRenderer({
             label={field.name}
             error={error}
             required={field.required}
+            uploadType={field.name === 'beforePhotos' ? 'before' : 'after'}
           />
         )
 

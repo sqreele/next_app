@@ -66,6 +66,35 @@ export function CreateWorkOrderForm() {
     getCompletionPercentage,
   } = useFormProgress(workOrderFormSections, formData, errors)
 
+  // Status and priority mappings
+  const statusMap: Record<string, 'Pending' | 'In Progress' | 'Completed' | 'Cancelled'> = {
+    'pending': 'Pending',
+    'scheduled': 'In Progress',
+    'in-progress': 'In Progress',
+    'on-hold': 'Pending',
+    'completed': 'Completed',
+    'cancelled': 'Cancelled',
+  }
+
+  const priorityMap: Record<string, 'Low' | 'Medium' | 'High' | 'Urgent'> = {
+    'low': 'Low',
+    'medium': 'Medium', 
+    'high': 'High',
+    'urgent': 'Urgent',
+  }
+
+  // Data from stores
+  const operationalMachines = getOperationalMachines()
+  const activeRooms = getActiveRooms()
+  const availableTechnicians = getAvailableTechnicians()
+
+  // Derived variables
+  const selectedRoom = activeRooms.find(room => room.number === formData.location)
+  const selectedTechnician = availableTechnicians.find(tech => tech.username === formData.assignedTo)
+  
+  const allFields = workOrderFormSections.flatMap(section => section.fields)
+  const currentSection = workOrderFormSections[currentStep]
+
   // Fetch data on component mount
   useEffect(() => {
     const fetchData = async () => {
@@ -91,6 +120,7 @@ export function CreateWorkOrderForm() {
   // Set assignedTo to current user when available
   useEffect(() => {
     if (user?.username && !formData.assignedTo) {
+      console.log(`🔍 Setting assignedTo to current user: ${user.username}`)
       setValue('assignedTo', user.username)
     }
   }, [user, setValue, formData.assignedTo])
@@ -119,12 +149,36 @@ export function CreateWorkOrderForm() {
     }
   }, [user])
 
-  const operationalMachines = getOperationalMachines()
-  const activeRooms = getActiveRooms()
-  const availableTechnicians = getAvailableTechnicians()
-
-  const allFields = workOrderFormSections.flatMap(section => section.fields)
-  const currentSection = workOrderFormSections[currentStep]
+  // Debug form data changes
+  useEffect(() => {
+    console.log('🔍 Form data changed:', formData)
+    console.log('🔍 Before photos:', formData.beforePhotos?.length || 0)
+    console.log('🔍 After photos:', formData.afterPhotos?.length || 0)
+    if (formData.beforePhotos?.length > 0) {
+      console.log('🔍 Before photos details:', formData.beforePhotos.map((img: any) => ({
+        id: img.id,
+        fileName: img.file?.name,
+        uploadStatus: img.uploadStatus,
+        uploadedUrl: img.uploadedUrl
+      })))
+    }
+    if (formData.afterPhotos?.length > 0) {
+      console.log('🔍 After photos details:', formData.afterPhotos.map((img: any) => ({
+        id: img.id,
+        fileName: img.file?.name,
+        uploadStatus: img.uploadStatus,
+        uploadedUrl: img.uploadedUrl
+      })))
+    }
+    if (formData.assignedTo) {
+      console.log('🔍 Selected technician:', selectedTechnician)
+      console.log('🔍 Available technicians:', availableTechnicians.map(t => ({ username: t.username, id: t.id })))
+      console.log('🔍 Looking for technician with username:', formData.assignedTo)
+    }
+    if (formData.location) {
+      console.log('🔍 Selected room:', selectedRoom)
+    }
+  }, [formData, selectedTechnician, selectedRoom, availableTechnicians])
 
   const handleRoomSelect = (room: any) => {
     setValue('location', room.number)
@@ -170,21 +224,49 @@ export function CreateWorkOrderForm() {
     nextStep()
   }
 
+  const validateSubmissionData = () => {
+    const issues = []
+    
+    if (!formData.title?.trim()) issues.push('Title is required')
+    if (!formData.description?.trim()) issues.push('Description is required')
+    if (!selectedRoom) issues.push('Location/Room must be selected')
+    if (!selectedTechnician) issues.push('Technician must be assigned')
+    
+    if (issues.length > 0) {
+      toast.error(`Validation failed: ${issues.join(', ')}`)
+      return false
+    }
+    
+    return true
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     if (!user) {
-      toast.error('User authentication is missing')
+      toast.error('User authentication is required')
       return
     }
 
-    if (!user.property_id && (!user.profile?.properties || user.profile.properties.length === 0)) {
-      toast.error('No property ID associated with your account')
+    const propertyId = user?.profile?.properties?.[0]?.id || user?.property_id
+    if (!propertyId) {
+      toast.error('No property ID associated with your account. Please contact support.')
+      return
+    }
+
+    // Ensure propertyId is a number
+    const numericPropertyId = Number(propertyId)
+    if (isNaN(numericPropertyId)) {
+      toast.error('Invalid property ID. Please contact support.')
       return
     }
 
     if (!validateForm(allFields)) {
       toast.error('Please fix the errors in the form')
+      return
+    }
+
+    if (!validateSubmissionData()) {
       return
     }
 
@@ -195,49 +277,34 @@ export function CreateWorkOrderForm() {
     }
 
     try {
-      const selectedRoom = activeRooms.find(room => room.number === formData.location)
-      const selectedTechnician = availableTechnicians.find(tech => tech.username === formData.assignedTo)
+      // Get uploaded image URLs
+      const beforeImageUrls = getUploadedImageUrls('beforePhotos')
+      const afterImageUrls = getUploadedImageUrls('afterPhotos')
+
+      // Debug logging
       console.log('👷 Selected Technician:', selectedTechnician)
       console.log('👷 Technician ID:', selectedTechnician?.id)
       console.log('👷 Available Technicians:', availableTechnicians)
       console.log('👷 Form Data Assigned To:', formData.assignedTo)
-
-      const statusMap: Record<string, 'Pending' | 'In Progress' | 'Completed' | 'Cancelled'> = {
-        'pending': 'Pending',
-        'scheduled': 'In Progress',
-        'in-progress': 'In Progress',
-        'on-hold': 'Pending',
-      }
-
-      const priorityMap: Record<string, 'Low' | 'Medium' | 'High' | 'Urgent'> = {
-        'low': 'Low',
-        'medium': 'Medium', 
-        'high': 'High',
-        'urgent': 'Urgent',
-      }
-
-      const dueDate = formData.scheduledDate ? 
-        formData.scheduledDate.split('T')[0] : 
-        undefined
-
-      const beforeImageUrls = getUploadedImageUrls('beforePhotos')
-      const afterImageUrls = getUploadedImageUrls('afterPhotos')
+      console.log('👤 User data:', user)
+      console.log('🏢 User property_id:', user?.property_id)
+      console.log('🏢 User profile properties:', user?.profile?.properties)
 
       const submitData = {
         task: formData.title,
         description: formData.description,
         status: statusMap[formData.status] || 'Pending',
         priority: priorityMap[formData.priority] || 'Medium',
-        due_date: dueDate,
-        machine_id: 0,  // Add this
-        room_id: selectedRoom?.id || 0,
-        assigned_to_id: selectedTechnician?.id || user?.id || 0,
-        property_id: user?.profile?.properties?.[0]?.id || user?.property_id || 1,
+        due_date: formData.scheduledDate ? formData.scheduledDate.split('T')[0] : undefined,
+        room_id: selectedRoom?.id ? Number(selectedRoom.id) : undefined,
+        machine_id: undefined, // Set to undefined if no machine selected
+        assigned_to_id: selectedTechnician?.id ? Number(selectedTechnician.id) : undefined,
         before_image_path: beforeImageUrls.length > 0 ? beforeImageUrls[0] : "",
         after_image_path: afterImageUrls.length > 0 ? afterImageUrls[0] : "",
         before_images: beforeImageUrls,
         after_images: afterImageUrls,
-        pdf_file_path: "",  // Add this
+        pdf_file_path: "",
+        property_id: numericPropertyId,
       }
 
       console.log('📋 === ACTUAL REQUEST DATA ===')
@@ -256,39 +323,56 @@ export function CreateWorkOrderForm() {
       console.log('PDF File Path:', submitData.pdf_file_path)
       console.log('🔍 === END REQUEST DATA ===')
 
-      console.log('👤 User data:', user)
-      console.log('🏢 User property_id:', user?.property_id)
-      console.log('🏢 User profile properties:', user?.profile?.properties)
-      console.log('🏢 Selected property_id:', user?.profile?.properties?.[0]?.id || user?.property_id || 1)
-
       const newWorkOrder = await createWorkOrder(submitData)
       
       toast.success('Work order created successfully!', {
-        description: `Work order "${newWorkOrder.task}" has been created with ${beforeImageUrls.length + afterImageUrls.length} images.`
+        description: `Work order "${newWorkOrder.task}" has been created.`
       })
 
-      //reset()
-      //router.push('/work-orders')
+      reset()
+      router.push('/work-orders')
       
     } catch (error: any) {
       console.error('❌ Error creating work order:', error)
-      toast.error('Failed to create work order')
+      
+      let errorMessage = 'Failed to create work order'
+      if (error?.response?.data?.detail) {
+        if (Array.isArray(error.response.data.detail)) {
+          errorMessage = error.response.data.detail.map((err: any) => err.msg || err).join(', ')
+        } else {
+          errorMessage = error.response.data.detail
+        }
+      } else if (error?.response?.data?.message) {
+        errorMessage = error.response.data.message
+      } else if (error?.message) {
+        errorMessage = error.message
+      }
+      
+      toast.error(errorMessage)
     }
   }
 
   const getSelectOptions = (fieldName: string) => {
     switch (fieldName) {
       case 'assignedTo':
-        return availableTechnicians.map(tech => ({
+        console.log(`🔍 [getSelectOptions] Available technicians:`, availableTechnicians.map(t => ({ username: t.username, id: t.id })))
+        const options = availableTechnicians.map(tech => ({
           value: tech.username,
-          label: `${tech.username} - ${tech.profile.position}`
+          label: `${tech.username} - ${tech.profile?.position || 'Technician'}`
         }))
+        console.log(`🔍 [getSelectOptions] Generated options:`, options)
+        return options
       default:
         return []
     }
   }
 
   const uploadStatus = getUploadStatus()
+  const propertyId = user?.profile?.properties?.[0]?.id || user?.property_id
+  const numericPropertyId = propertyId ? Number(propertyId) : null
+
+  console.log(`🔍 Current step: ${currentStep} (${currentSection?.id})`)
+  console.log(`🔍 Current section fields:`, currentSection?.fields?.map(f => ({ name: f.name, type: f.type })))
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -371,18 +455,39 @@ export function CreateWorkOrderForm() {
                     uploadStatus={uploadStatus}
                   />
                 ) : (
-                  currentSection.fields.map((field) => (
-                    <DynamicFormRenderer
-                      key={field.name}
-                      field={field}
-                      value={formData[field.name]}
-                      error={errors[field.name]}
-                      onChange={(value) => setValue(field.name, value)}
-                      selectOptions={getSelectOptions(field.name)}
-                      autocompleteItems={field.name === 'location' ? activeRooms : []}
-                      onAutocompleteSelect={field.name === 'location' ? handleRoomSelect : undefined}
-                    />
-                  ))
+                  currentSection.fields.map((field) => {
+                    console.log(`🔍 Rendering field: ${field.name}`, {
+                      type: field.type,
+                      value: formData[field.name],
+                      isImageUpload: field.type === 'image-upload'
+                    })
+                    return (
+                      <DynamicFormRenderer
+                        key={field.name}
+                        field={field}
+                        value={formData[field.name]}
+                        error={errors[field.name]}
+                        onChange={(value) => {
+                          console.log(`🔧 Field ${field.name} onChange called with:`, value)
+                          console.log(`🔧 Field ${field.name} onChange - isArray:`, Array.isArray(value))
+                          console.log(`🔧 Field ${field.name} onChange - length:`, Array.isArray(value) ? value.length : 'not array')
+                          if (Array.isArray(value) && value.length > 0) {
+                            console.log(`🔧 Field ${field.name} onChange - first item:`, {
+                              id: value[0].id,
+                              fileName: value[0].file?.name,
+                              uploadStatus: value[0].uploadStatus
+                            })
+                          }
+                          console.log(`🔧 Field ${field.name} onChange - calling setValue`)
+                          setValue(field.name, value)
+                          console.log(`🔧 Field ${field.name} onChange - setValue called`)
+                        }}
+                        selectOptions={getSelectOptions(field.name)}
+                        autocompleteItems={field.name === 'location' ? activeRooms : []}
+                        onAutocompleteSelect={field.name === 'location' ? handleRoomSelect : undefined}
+                      />
+                    )
+                  })
                 )}
               </CardContent>
             </Card>
@@ -424,7 +529,7 @@ export function CreateWorkOrderForm() {
           ) : (
             <Button
               type="submit"
-              disabled={loading || !areAllImagesUploaded() || (!user?.property_id && (!user?.profile?.properties || user?.profile?.properties.length === 0))}
+              disabled={loading || !areAllImagesUploaded() || !propertyId}
               className="flex items-center gap-2"
             >
               {loading ? (
@@ -436,7 +541,7 @@ export function CreateWorkOrderForm() {
                 <>
                   Waiting for uploads...
                 </>
-              ) : !user?.property_id ? (
+              ) : !propertyId ? (
                 <>
                   Missing property ID
                 </>
@@ -501,7 +606,15 @@ export function CreateWorkOrderForm() {
             )}
             <div className="flex justify-between">
               <span className="text-gray-600">Property ID:</span>
-              <span className="font-medium">{user?.property_id || 'Not set'}</span>
+              <span className="font-medium">{numericPropertyId || 'Not set'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Room:</span>
+              <span className="font-medium">{selectedRoom?.name || 'Not selected'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Technician:</span>
+              <span className="font-medium">{selectedTechnician?.username || 'Not assigned'}</span>
             </div>
           </div>
         </CardContent>
