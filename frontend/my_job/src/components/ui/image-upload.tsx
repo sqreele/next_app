@@ -16,7 +16,7 @@ interface ImageFile {
 
 interface ImageUploadProps {
   value: ImageFile[]
-  onChange: (files: ImageFile[]) => void
+  onChange: (files: ImageFile[] | ((current: ImageFile[]) => ImageFile[])) => void
   accept?: string
   multiple?: boolean
   maxFiles?: number
@@ -69,8 +69,27 @@ export function ImageUpload({
   
   // Update the ref whenever value changes
   useEffect(() => {
-    currentValueRef.current = value
-  }, [value])
+    console.log(`🔄 [ImageUpload-${label}] Updating ref with new value:`, {
+      length: value.length,
+      ids: value.map(img => img.id),
+      statuses: value.map(img => img.uploadStatus)
+    })
+    
+    // Only update ref if the value is actually different
+    const currentRef = currentValueRef.current
+    const isDifferent = currentRef.length !== value.length || 
+      currentRef.some((img, index) => {
+        const newImg = value[index]
+        return !newImg || img.id !== newImg.id || img.uploadStatus !== newImg.uploadStatus
+      })
+    
+    if (isDifferent) {
+      console.log(`🔄 [ImageUpload-${label}] Ref updated - was different`)
+      currentValueRef.current = value
+    } else {
+      console.log(`🔄 [ImageUpload-${label}] Ref not updated - was same`)
+    }
+  }, [value, label])
 
   // Debug effect to monitor value changes
   useEffect(() => {
@@ -158,50 +177,67 @@ export function ImageUpload({
   const updateImageStatus = (id: string, updates: Partial<ImageFile>) => {
     console.log(`🔄 [ImageUpload-${label}] updateImageStatus FUNCTION CALLED - id: ${id}`)
     console.log(`🔄 [ImageUpload-${label}] updateImageStatus START - id: ${id}, updates:`, updates)
+    console.log(`🔄 [ImageUpload-${label}] updateImageStatus - value prop:`, value)
+    console.log(`🔄 [ImageUpload-${label}] updateImageStatus - ref current:`, currentValueRef.current)
+    console.log(`🔄 [ImageUpload-${label}] updateImageStatus - value length:`, value.length)
+    console.log(`🔄 [ImageUpload-${label}] updateImageStatus - ref length:`, currentValueRef.current.length)
     console.log(`🔄 [ImageUpload-${label}] Current value before update:`, value)
     console.log(`🔄 [ImageUpload-${label}] Current value ref:`, currentValueRef.current)
     
     // Add stack trace to see where this is being called from
     console.log(`🔄 [ImageUpload-${label}] updateImageStatus called from:`, new Error().stack)
     
-    // Use the ref to get the most current value, fallback to prop if ref is empty
-    const currentValue = currentValueRef.current.length > 0 ? currentValueRef.current : value
-    
-    console.log(`🔄 [ImageUpload-${label}] Using current value:`, currentValue)
-    console.log(`🔄 [ImageUpload-${label}] Ref length:`, currentValueRef.current.length)
-    console.log(`🔄 [ImageUpload-${label}] Value length:`, value.length)
-    
-    // If both are empty, this might be a timing issue
-    if (currentValue.length === 0) {
-      console.log(`⚠️ [ImageUpload-${label}] Both value and ref are empty, this might be a timing issue`)
-      console.log(`⚠️ [ImageUpload-${label}] Attempting to update with just the current image:`, { id, ...updates })
+    // Use functional update pattern to ensure we're working with the most current state
+    onChange((currentImages: ImageFile[]) => {
+      console.log(`🔄 [ImageUpload-${label}] Functional update called with current images:`, currentImages)
       
-      // Create a minimal update with just the current image
-      const currentImage = {
-        id,
-        ...updates,
-        // We need to provide minimal required fields if this is a new image
-        file: updates.file || new File([], 'temp.jpg'),
-        preview: updates.preview || '',
-        uploadStatus: updates.uploadStatus || 'pending'
-      } as ImageFile
+      // If current images is empty, this might be a new image
+      if (currentImages.length === 0) {
+        console.log(`⚠️ [ImageUpload-${label}] Current images is empty - this might be a new image`)
+        
+        // For new images, we need to create a complete ImageFile object
+        if (updates.file && updates.preview) {
+          const newImage = {
+            id,
+            file: updates.file,
+            preview: updates.preview,
+            uploadStatus: updates.uploadStatus || 'pending',
+            uploadProgress: updates.uploadProgress || 0,
+            uploadedUrl: updates.uploadedUrl,
+            error: updates.error
+          } as ImageFile
+          
+          console.log(`⚠️ [ImageUpload-${label}] Creating new image:`, newImage)
+          return [newImage]
+        } else {
+          console.warn(`⚠️ [ImageUpload-${label}] Cannot create new image without file and preview`)
+          return []
+        }
+      }
       
-      console.log(`⚠️ [ImageUpload-${label}] Calling onChange with single image:`, [currentImage])
-      onChange([currentImage])
-      console.log(`⚠️ [ImageUpload-${label}] onChange called with single image`)
-      return
-    }
+      // Find the image to update
+      const imageIndex = currentImages.findIndex((img: ImageFile) => img.id === id)
+      
+      if (imageIndex === -1) {
+        console.warn(`⚠️ [ImageUpload-${label}] Image with id ${id} not found in current images`)
+        console.log(`⚠️ [ImageUpload-${label}] Available IDs:`, currentImages.map(img => img.id))
+        return currentImages // Return unchanged if image not found
+      }
+      
+      // Create updated array with the specific image updated
+      const updatedImages = currentImages.map((img: ImageFile, index: number) => 
+        index === imageIndex ? { ...img, ...updates } : img
+      )
+      
+      console.log(`📝 [ImageUpload-${label}] Returning updated images:`, updatedImages)
+      console.log(`📝 [ImageUpload-${label}] Updated value length:`, updatedImages.length)
+      console.log(`📝 [ImageUpload-${label}] Updated value IDs:`, updatedImages.map(img => img.id))
+      console.log(`📝 [ImageUpload-${label}] Updated image:`, updatedImages[imageIndex])
+      
+      return updatedImages
+    })
     
-    const updatedValue = currentValue.map((img: ImageFile) => 
-      img.id === id ? { ...img, ...updates } : img
-    )
-    
-    console.log(`📝 [ImageUpload-${label}] Calling onChange with updated value:`, updatedValue)
-    console.log(`📝 [ImageUpload-${label}] Updated value length:`, updatedValue.length)
-    console.log(`📝 [ImageUpload-${label}] Updated value IDs:`, updatedValue.map(img => img.id))
-    
-    onChange(updatedValue)
-    console.log(`📝 [ImageUpload-${label}] onChange called with updated value`)
+    console.log(`📝 [ImageUpload-${label}] Functional update completed`)
   }
 
   // Start upload process for an image
@@ -408,14 +444,15 @@ export function ImageUpload({
         console.log(`📝 [ImageUpload-${label}] Current value before adding files:`, currentValue)
         console.log(`📝 [ImageUpload-${label}] New image files to add:`, newImageFiles.map(img => ({ id: img.id, fileName: img.file.name })))
 
-        const updatedValue = [...currentValue, ...newImageFiles]
-        console.log(`📝 [ImageUpload-${label}] Calling onChange with ${updatedValue.length} images:`, updatedValue)
-        console.log(`📝 [ImageUpload-${label}] Updated value details:`, updatedValue.map(img => ({
-          id: img.id,
-          fileName: img.file.name,
-          uploadStatus: img.uploadStatus
-        })))
-        onChange(updatedValue)
+        console.log(`📝 [ImageUpload-${label}] Adding ${newImageFiles.length} new images to current ${currentValue.length} images`)
+        console.log(`📝 [ImageUpload-${label}] New image files to add:`, newImageFiles.map(img => ({ id: img.id, fileName: img.file.name })))
+        
+        // Use functional update to ensure we're working with the most current state
+        onChange((currentImages: ImageFile[]) => {
+          const updatedValue = [...currentImages, ...newImageFiles]
+          console.log(`📝 [ImageUpload-${label}] Functional update - current: ${currentImages.length}, new: ${newImageFiles.length}, total: ${updatedValue.length}`)
+          return updatedValue
+        })
         
         console.log(`🚀 Starting uploads for ${newImageFiles.length} files`)
         
@@ -463,15 +500,22 @@ export function ImageUpload({
 
   const removeImage = (id: string) => {
     console.log(`🗑️ Removing image ${id}`)
-    const currentValue = currentValueRef.current
-    const newValue = currentValue.filter(img => img.id !== id)
-    onChange(newValue)
     
-    // Revoke object URL to prevent memory leaks
-    const imageToRemove = currentValue.find(img => img.id === id)
-    if (imageToRemove) {
-      URL.revokeObjectURL(imageToRemove.preview)
-    }
+    // Use functional update to ensure we're working with the most current state
+    onChange((currentImages: ImageFile[]) => {
+      console.log(`🗑️ [ImageUpload-${label}] Removing image ${id} from ${currentImages.length} images`)
+      
+      const newValue = currentImages.filter(img => img.id !== id)
+      console.log(`🗑️ [ImageUpload-${label}] New value length:`, newValue.length)
+      
+      // Revoke object URL to prevent memory leaks
+      const imageToRemove = currentImages.find(img => img.id === id)
+      if (imageToRemove) {
+        URL.revokeObjectURL(imageToRemove.preview)
+      }
+      
+      return newValue
+    })
   }
 
   const openPreview = (preview: string) => {

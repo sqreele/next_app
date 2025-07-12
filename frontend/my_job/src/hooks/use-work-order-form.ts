@@ -16,35 +16,44 @@ export function useWorkOrderForm(initialData: any) {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [imagePreviews, setImagePreviews] = useState<Record<string, string | null>>({})
 
-  const setValue = useCallback((name: string, value: any) => {
-    console.log(`🔧 setValue called: ${name}`, value)
-    
-    if (name === 'beforePhotos' || name === 'afterPhotos') {
-      console.log(`📸 [setValue] Image field ${name}:`, {
-        isArray: Array.isArray(value),
-        length: Array.isArray(value) ? value.length : 'not array',
-        uploadStatuses: Array.isArray(value) ? value.map((img: any) => img.uploadStatus) : 'not array',
-        ids: Array.isArray(value) ? value.map((img: any) => img.id) : 'not array'
-      })
-      
-      // Add stack trace to see where this is being called from
-      if (Array.isArray(value) && value.length === 0) {
-        console.log(`⚠️ [setValue] Empty array passed for ${name}. Stack trace:`, new Error().stack)
-      }
-    }
-    
-    setFormData((prev: any) => {
-      const newData = { ...prev, [name]: value }
-      console.log(`📝 New form data for ${name}:`, newData[name])
-      console.log(`📝 New form data length for ${name}:`, Array.isArray(newData[name]) ? newData[name].length : 'not array')
-      console.log(`📝 Previous form data for ${name}:`, prev[name])
-      return newData
+  // In src/hooks/use-work-order-form.ts, update the setValue function:
+
+const setValue = useCallback((name: string, value: any) => {
+  console.log(`🔧 setValue called: ${name}`, value)
+  
+  if (name === 'beforePhotos' || name === 'afterPhotos') {
+    console.log(`📸 [setValue] Image field ${name}:`, {
+      isArray: Array.isArray(value),
+      isFunction: typeof value === 'function',
+      length: Array.isArray(value) ? value.length : 'not array',
+      uploadStatuses: Array.isArray(value) ? value.map((img: any) => img.uploadStatus) : 'not array',
+      ids: Array.isArray(value) ? value.map((img: any) => img.id) : 'not array'
     })
     
-    if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: '' }))
+    // Add stack trace to see where this is being called from
+    if (Array.isArray(value) && value.length === 0) {
+      console.log(`⚠️ [setValue] Empty array passed for ${name}. Stack trace:`, new Error().stack)
+      console.log(`⚠️ [setValue] Empty array call stack:`, new Error().stack?.split('\n').slice(0, 10).join('\n'))
     }
-  }, [errors])
+  }
+  
+  // Use functional update for image fields to prevent race conditions
+  if (name === 'beforePhotos' || name === 'afterPhotos') {
+    setFormData((prev: any) => {
+      // Handle functional updates for image fields
+      const newValue = typeof value === 'function' ? value(prev[name] || []) : value
+      const newData = { ...prev, [name]: newValue }
+      console.log(`📝 New form data for ${name}:`, newData[name])
+      return newData
+    })
+  } else {
+    setFormData((prev: any) => ({ ...prev, [name]: value }))
+  }
+  
+  if (errors[name]) {
+    setErrors(prev => ({ ...prev, [name]: '' }))
+  }
+}, [errors])
 
   const setImagePreview = useCallback((name: string, preview: string | null) => {
     setImagePreviews(prev => ({ ...prev, [name]: preview }))

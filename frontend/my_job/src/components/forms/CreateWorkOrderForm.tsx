@@ -481,6 +481,11 @@ export function CreateWorkOrderForm() {
                           console.log(`🔧 Field ${field.name} onChange - calling setValue`)
                           setValue(field.name, value)
                           console.log(`🔧 Field ${field.name} onChange - setValue called`)
+                          
+                          // Add a small delay to see if the form data is updated
+                          setTimeout(() => {
+                            console.log(`🔧 Field ${field.name} onChange - form data after setValue:`, formData[field.name])
+                          }, 100)
                         }}
                         selectOptions={getSelectOptions(field.name)}
                         autocompleteItems={field.name === 'location' ? activeRooms : []}
