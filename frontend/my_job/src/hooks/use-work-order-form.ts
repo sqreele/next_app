@@ -94,14 +94,15 @@ const setValue = useCallback((name: string, value: any) => {
             newErrors[field.name] = `${field.label} is required`
           } else {
             const failedUploads = value.filter((img: ImageFile) => img.uploadStatus === 'error')
-            const pendingUploads = value.filter((img: ImageFile) => 
-              img.uploadStatus === 'pending' || img.uploadStatus === 'uploading'
-            )
+            const uploadingUploads = value.filter((img: ImageFile) => img.uploadStatus === 'uploading')
+            const pendingUploads = value.filter((img: ImageFile) => img.uploadStatus === 'pending')
             
             if (failedUploads.length > 0) {
               newErrors[field.name] = `${failedUploads.length} image(s) failed to upload. Please retry or remove them.`
+            } else if (uploadingUploads.length > 0) {
+              newErrors[field.name] = `${uploadingUploads.length} image(s) are still uploading. Please wait for uploads to complete.`
             } else if (pendingUploads.length > 0) {
-              newErrors[field.name] = `${pendingUploads.length} image(s) are still uploading. Please wait for uploads to complete.`
+              newErrors[field.name] = `${pendingUploads.length} image(s) are pending upload. Please wait for uploads to complete.`
             }
           }
         } else {
@@ -143,33 +144,22 @@ const setValue = useCallback((name: string, value: any) => {
       return []
     }
     
-    // Get both successful uploads and local images ready for upload
-    const validImages = value.filter((item: ImageFile) => {
+    // Get only successfully uploaded images
+    const successfulUploads = value.filter((item: ImageFile) => {
       const isSuccess = item.uploadStatus === 'success'
       const hasUrl = item.uploadedUrl && typeof item.uploadedUrl === 'string' && item.uploadedUrl.trim() !== ''
-      const isLocalReady = item.uploadStatus === 'pending' && item.isLocal && item.localUrl
       
       console.log(`🔍 [getUploadedImageUrls] Item ${item.id}:`, {
         status: item.uploadStatus,
         hasUrl: !!hasUrl,
         url: item.uploadedUrl,
-        isLocal: item.isLocal,
-        localUrl: item.localUrl,
         fileName: item.file?.name
       })
       
-      return (isSuccess && hasUrl) || isLocalReady
+      return isSuccess && hasUrl
     })
     
-    // For successful uploads, use the uploaded URL; for local images, use the local URL
-    const urls = validImages.map((item: ImageFile) => {
-      if (item.uploadStatus === 'success' && item.uploadedUrl) {
-        return item.uploadedUrl
-      } else if (item.isLocal && item.localUrl) {
-        return item.localUrl
-      }
-      return null
-    }).filter(Boolean) as string[]
+    const urls = successfulUploads.map((item: ImageFile) => item.uploadedUrl!)
     
     console.log(`🔗 [getUploadedImageUrls] Final URLs for ${fieldName}:`, urls)
     return urls
@@ -186,15 +176,17 @@ const setValue = useCallback((name: string, value: any) => {
       return true
     }
     
-    // Check if all images are either uploaded or local (ready for upload)
+    // Check if all images are successfully uploaded
     const allReady = allImages.every((img: ImageFile) => 
-      img.uploadStatus === 'success' || (img.uploadStatus === 'pending' && img.isLocal)
+      img.uploadStatus === 'success'
     )
     
     console.log(`🔍 All images ready: ${allReady}`, {
       total: allImages.length,
       successful: allImages.filter((img: ImageFile) => img.uploadStatus === 'success').length,
-      local: allImages.filter((img: ImageFile) => img.isLocal).length
+      uploading: allImages.filter((img: ImageFile) => img.uploadStatus === 'uploading').length,
+      pending: allImages.filter((img: ImageFile) => img.uploadStatus === 'pending').length,
+      failed: allImages.filter((img: ImageFile) => img.uploadStatus === 'error').length
     })
     
     return allReady

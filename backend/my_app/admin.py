@@ -7,8 +7,8 @@ def format_image_preview(model, attribute):
     image_path = getattr(model, attribute, None)
     if image_path and isinstance(image_path, str) and image_path.strip():
         clean_path = image_path.strip('/')
-        url = f"/Uploads/{clean_path}"
-        return Markup(f'<a href="{url}" target="_blank"><img src="{url}" width="100" alt="Image" loading="lazy"></a>')
+        url = f"/uploads/{clean_path}"
+        return Markup(f'<a href="{url}" target="_blank"><img src="{url}" width="100" height="75" style="object-fit: cover; border-radius: 4px;" alt="Image" loading="lazy"></a>')
     return Markup('<span style="color: #ccc; font-size: 12px;">No Image</span>')
 
 # Helper function for image array formatting
@@ -19,11 +19,11 @@ def format_image_array(model, attribute):
         for img_path in images[:3]:
             if img_path and isinstance(img_path, str) and img_path.strip():
                 clean_path = img_path.strip('/')
-                url = f"/Uploads/{clean_path}"
-                previews.append(f'<a href="{url}" target="_blank"><img src="{url}" width="50" style="margin-right: 5px;" alt="Image" loading="lazy"></a>')
+                url = f"/uploads/{clean_path}"
+                previews.append(f'<a href="{url}" target="_blank"><img src="{url}" width="50" height="50" style="object-fit: cover; border-radius: 4px;" alt="Image" loading="lazy"></a>')
         if len(images) > 3:
-            previews.append('<span style="color: #666; font-size: 12px;">...and more</span>')
-        return Markup(''.join(previews))
+            previews.append(f'<span style="color: #666; font-size: 12px;">...and {len(images) - 3} more</span>')
+        return Markup(f'<div class="image-preview-container">{("".join(previews))}</div>')
     return Markup('<span style="color: #ccc; font-size: 12px;">No Images</span>')
 
 class UserAdmin(ModelView, model=User):
@@ -220,6 +220,35 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         WorkOrder.pdf_file_path,
     ]
     
+    # Add custom CSS for better image display
+    def get_css(self):
+        return """
+        <style>
+        .image-preview-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            align-items: center;
+        }
+        .image-preview-container img {
+            border: 1px solid #ddd;
+            transition: transform 0.2s;
+        }
+        .image-preview-container img:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .pdf-link {
+            color: #007bff;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .pdf-link:hover {
+            text-decoration: underline;
+        }
+        </style>
+        """
+    
     form_columns = [
         WorkOrder.property_id,
         WorkOrder.task,
@@ -260,6 +289,7 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         'before_images': lambda m, a: format_image_array(m, 'before_images'),
         'after_images': lambda m, a: format_image_array(m, 'after_images'),
         'assigned_to': lambda m, a: m.assigned_to.username if m.assigned_to else "Unassigned",
+        'pdf_file_path': lambda m, a: Markup(f'<a href="/uploads/{m.pdf_file_path.strip("/")}" target="_blank" class="pdf-link">📄 View PDF</a>') if m.pdf_file_path else Markup('<span style="color: #ccc; font-size: 12px;">No PDF</span>'),
     }
 
     form_args = {

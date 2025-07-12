@@ -11,10 +11,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from sqladmin import Admin
 from sqlalchemy import create_engine
-from database import engine as async_engine, Base, SQLALCHEMY_DATABASE_URL
-from routers import users, properties, rooms, machines, work_orders, auth
-from connection_manager import manager
-from admin import (
+from my_app.database import engine as async_engine, Base, SQLALCHEMY_DATABASE_URL
+from my_app.routers import users, properties, rooms, machines, work_orders, auth
+from my_app.connection_manager import manager
+from my_app.admin import (
     UserAdmin,
     UserProfileAdmin,
     PropertyAdmin,

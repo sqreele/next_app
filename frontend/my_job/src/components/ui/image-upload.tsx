@@ -386,7 +386,7 @@ const updateImageStatus = (id: string, updates: Partial<ImageFile>) => {
         setValidationErrors([])
       }
 
-      // Add valid files to local storage (no immediate upload)
+      // Add valid files and upload them immediately
       if (validFiles.length > 0) {
         const newImageFiles: ImageFile[] = validFiles.map(file => ({
           file,
@@ -398,7 +398,7 @@ const updateImageStatus = (id: string, updates: Partial<ImageFile>) => {
           localUrl: URL.createObjectURL(file),
         }))
 
-        console.log(`📝 [ImageUpload-${label}] Adding ${newImageFiles.length} new images to local storage`)
+        console.log(`📝 [ImageUpload-${label}] Adding ${newImageFiles.length} new images and uploading immediately`)
         console.log(`📝 [ImageUpload-${label}] New image files:`, newImageFiles.map(img => ({ id: img.id, fileName: img.file.name })))
         
         // Use functional update to ensure we're working with the most current state
@@ -417,7 +417,19 @@ const updateImageStatus = (id: string, updates: Partial<ImageFile>) => {
           return updatedValue
         })
         
-        toast.success(`${validFiles.length} image(s) added successfully. They will be uploaded when you submit the form.`)
+        // Upload all new images immediately
+        newImageFiles.forEach(async (imageFile) => {
+          try {
+            console.log(`📤 [ImageUpload-${label}] Starting immediate upload for ${imageFile.file.name}`)
+            await uploadLocalImage(imageFile)
+            console.log(`✅ [ImageUpload-${label}] Immediate upload completed for ${imageFile.file.name}`)
+          } catch (error) {
+            console.error(`❌ [ImageUpload-${label}] Immediate upload failed for ${imageFile.file.name}:`, error)
+            toast.error(`Failed to upload ${imageFile.file.name}. Please try again.`)
+          }
+        })
+        
+        toast.success(`${validFiles.length} image(s) added and uploading...`)
         
         if (validFiles.length < files.length) {
           toast.warning(`${validFiles.length} of ${files.length} files were added. Check validation errors above.`)
@@ -598,7 +610,7 @@ const updateImageStatus = (id: string, updates: Partial<ImageFile>) => {
               Drag and drop or click to select {multiple ? 'files' : 'file'}
             </span>
             <span className="mt-1 block text-xs text-blue-500">
-              Images will be uploaded when you submit the form
+              Images will be uploaded immediately when selected
             </span>
             <div className="mt-2 text-xs text-gray-400 space-y-1">
               <div>Max {maxFiles} files, {maxSize}MB each, {maxTotalSize}MB total</div>
