@@ -12,6 +12,24 @@ from datetime import datetime
 
 router = APIRouter(prefix="/work_orders", tags=["work_orders"])
 
+# Debug endpoint to check available routes (moved to top to avoid conflicts)
+@router.get("/debug")
+async def debug_routes():
+    return {
+        "message": "Work orders router is working",
+        "available_endpoints": [
+            "GET /api/v1/work_orders/",
+            "POST /api/v1/work_orders/",
+            "GET /api/v1/work_orders/{id}",
+            "PUT /api/v1/work_orders/{id}",
+            "PATCH /api/v1/work_orders/{id}",
+            "DELETE /api/v1/work_orders/{id}",
+            "POST /api/v1/work_orders/upload_image",  # This is what you need
+            "POST /api/v1/work_orders/upload",
+            "GET /api/v1/work_orders/debug"
+        ]
+    }
+
 @router.post("/", response_model=schemas.WorkOrder)
 async def create_work_order(
     work_order: schemas.WorkOrderCreate,  # Updated as per previous solution
@@ -19,7 +37,7 @@ async def create_work_order(
 ):
     return await crud.create_work_order(db=db, work_order=work_order)
 
-@router.get("/", response_model=List[schemas.WorkOrder])
+@router.get("/", response_model=List[schemas.WorkOrderWithRelations])
 async def read_work_orders(
     skip: int = 0,
     limit: int = 100,
@@ -28,7 +46,7 @@ async def read_work_orders(
     work_orders = await crud.get_work_orders(db, skip=skip, limit=limit)
     return work_orders
 
-@router.get("/{work_order_id}", response_model=schemas.WorkOrder)
+@router.get("/{work_order_id}", response_model=schemas.WorkOrderWithRelations)
 async def read_work_order(
     work_order_id: int,
     db: AsyncSession = Depends(dependencies.get_db),
@@ -38,13 +56,25 @@ async def read_work_order(
         raise HTTPException(status_code=404, detail="Work order not found")
     return work_order
 
-@router.put("/{work_order_id}", response_model=schemas.WorkOrder)
+@router.put("/{work_order_id}", response_model=schemas.WorkOrderWithRelations)
 async def update_work_order(
     work_order_id: int,
     work_order: schemas.WorkOrderCreate,
     db: AsyncSession = Depends(dependencies.get_db),
 ):
     updated_work_order = await crud.update_work_order(db, work_order_id=work_order_id, work_order=work_order)
+    if updated_work_order is None:
+        raise HTTPException(status_code=404, detail="Work order not found")
+    return updated_work_order
+
+@router.patch("/{work_order_id}", response_model=schemas.WorkOrderWithRelations)
+async def patch_work_order(
+    work_order_id: int,
+    work_order_update: schemas.WorkOrderUpdate,
+    db: AsyncSession = Depends(dependencies.get_db),
+):
+    """Update work order with partial data (PATCH method)"""
+    updated_work_order = await crud.patch_work_order(db, work_order_id=work_order_id, work_order_update=work_order_update)
     if updated_work_order is None:
         raise HTTPException(status_code=404, detail="Work order not found")
     return updated_work_order
@@ -121,19 +151,4 @@ async def upload_file_with_work_order(
     db_file = await crud.create_work_order_file(db, file_record)
     return {"filename": file.filename, "path": file_location, "db_id": db_file.id}
 
-# Debug endpoint to check available routes
-@router.get("/debug")
-async def debug_routes():
-    return {
-        "message": "Work orders router is working",
-        "available_endpoints": [
-            "GET /api/v1/work_orders/",
-            "POST /api/v1/work_orders/",
-            "GET /api/v1/work_orders/{id}",
-            "PUT /api/v1/work_orders/{id}",
-            "DELETE /api/v1/work_orders/{id}",
-            "POST /api/v1/work_orders/upload_image",  # This is what you need
-            "POST /api/v1/work_orders/upload",
-            "GET /api/v1/work_orders/debug"
-        ]
-    }
+

@@ -14,6 +14,20 @@ const storage =
         removeItem: (_: string) => {},
       }
 
+// Utility to check if a JWT token is expired
+function isTokenExpired(token: string | null): boolean {
+  if (!token) return true;
+  try {
+    const [, payload] = token.split('.');
+    const decoded = JSON.parse(atob(payload));
+    if (!decoded.exp) return false;
+    const now = Math.floor(Date.now() / 1000);
+    return decoded.exp < now;
+  } catch {
+    return true;
+  }
+}
+
 interface AuthState {
   // State
   user: User | null
@@ -45,6 +59,7 @@ interface AuthState {
   isAdmin: () => boolean
   isTechnician: () => boolean
   reset: () => void
+  isTokenExpired: () => boolean;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -242,6 +257,7 @@ export const useAuthStore = create<AuthState>()(
           error: null,
         })
       },
+      isTokenExpired: () => isTokenExpired(get().token),
     }),
     {
       name: 'auth-storage',

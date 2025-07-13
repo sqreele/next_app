@@ -101,6 +101,13 @@ class User(UserBase):
     
     model_config = ConfigDict(from_attributes=True)
 
+class UserSimple(UserBase):
+    """Simplified User schema for nested relationships"""
+    id: int
+    is_active: bool = True
+    
+    model_config = ConfigDict(from_attributes=True)
+
 # --- Room Schemas ---
 class RoomBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
@@ -190,6 +197,49 @@ class WorkOrderCreate(BaseModel):
             return []
         return [img for img in v if img and isinstance(img, str)]  # Fixed: Added missing ]
 # Add the missing WorkOrder response class
+class WorkOrderUpdate(BaseModel):
+    """Schema for partial updates to work orders (PATCH method)"""
+    task: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = Field(None, max_length=2000)
+    status: Optional[WorkOrderStatus] = None
+    priority: Optional[WorkOrderPriority] = None
+    due_date: Optional[date] = None
+    machine_id: Optional[int] = None
+    room_id: Optional[int] = None
+    assigned_to_id: Optional[int] = None
+    property_id: Optional[int] = Field(None, gt=0)
+    before_image_path: Optional[str] = Field(None, max_length=500)
+    after_image_path: Optional[str] = Field(None, max_length=500)
+    before_images: Optional[List[str]] = Field(default_factory=list)
+    after_images: Optional[List[str]] = Field(default_factory=list)
+    pdf_file_path: Optional[str] = Field(None, max_length=500)
+
+    @field_validator('due_date', mode='before')
+    @classmethod
+    def parse_due_date(cls, v):
+        if v is None or v == '':
+            return None
+        if isinstance(v, date):
+            return v
+        if isinstance(v, str):
+            try:
+                parsed_date = datetime.strptime(v, '%Y-%m-%d').date()
+                return parsed_date
+            except ValueError as e:
+                if 'time data' in str(e):
+                    raise ValueError('Due date must be in YYYY-MM-DD format')
+                raise e
+        raise ValueError('Due date must be a valid date string in YYYY-MM-DD format')
+
+    @field_validator('before_images', 'after_images', mode='before')
+    @classmethod
+    def validate_image_arrays(cls, v):
+        if v is None:
+            return []
+        if not isinstance(v, list):
+            return []
+        return [img for img in v if img and isinstance(img, str)]
+
 class WorkOrder(BaseModel):
     id: int
     task: str
@@ -210,6 +260,14 @@ class WorkOrder(BaseModel):
     pdf_file_path: Optional[str] = None
     
     model_config = ConfigDict(from_attributes=True)
+
+class WorkOrderWithRelations(WorkOrder):
+    """WorkOrder schema with nested relationships loaded"""
+    # Nested relationships
+    property: Optional[Property] = None
+    room: Optional[Room] = None
+    machine: Optional[Machine] = None
+    assigned_to: Optional[UserSimple] = None
 
 # --- WorkOrderFile Schemas ---
 class WorkOrderFileBase(BaseModel):

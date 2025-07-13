@@ -22,7 +22,7 @@ export interface FormFieldOption {
 
 export interface FormField {
   name: string
-  label: string
+  label?: string // Made optional to allow fields without a label
   type: 'text' | 'email' | 'password' | 'textarea' | 'select' | 'checkbox' | 'date' | 'datetime-local' | 'image-upload' | 'file' | 'autocomplete' | 'number' | 'tel' | 'url'
   required?: boolean
   placeholder?: string
@@ -95,7 +95,6 @@ export const workOrderFormSections: FormSection[] = [
     fields: [
       {
         name: 'title',
-        label: 'Work Order Title',
         type: 'text',
         required: true,
         placeholder: 'Enter work order title...',
@@ -106,7 +105,6 @@ export const workOrderFormSections: FormSection[] = [
       },
       {
         name: 'description',
-        label: 'Description',
         type: 'textarea',
         required: true,
         placeholder: 'Describe the work to be done...',

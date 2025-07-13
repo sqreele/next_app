@@ -140,11 +140,30 @@ async def create_machine(db: AsyncSession, machine: schemas.MachineCreate, prope
 
 # --- WorkOrder CRUD ---
 async def get_work_orders(db: AsyncSession, skip: int = 0, limit: int = 100):
-    result = await db.execute(select(models.WorkOrder).offset(skip).limit(limit))
+    result = await db.execute(
+        select(models.WorkOrder)
+        .options(
+            selectinload(models.WorkOrder.room),
+            selectinload(models.WorkOrder.property),
+            selectinload(models.WorkOrder.machine),
+            selectinload(models.WorkOrder.assigned_to)
+        )
+        .offset(skip)
+        .limit(limit)
+    )
     return result.scalars().all()
 
 async def get_work_order(db: AsyncSession, work_order_id: int):
-    result = await db.execute(select(models.WorkOrder).filter(models.WorkOrder.id == work_order_id))
+    result = await db.execute(
+        select(models.WorkOrder)
+        .options(
+            selectinload(models.WorkOrder.room),
+            selectinload(models.WorkOrder.property),
+            selectinload(models.WorkOrder.machine),
+            selectinload(models.WorkOrder.assigned_to)
+        )
+        .filter(models.WorkOrder.id == work_order_id)
+    )
     return result.scalars().first()
 
 async def create_work_order(db: AsyncSession, work_order: schemas.WorkOrderCreate):
@@ -183,7 +202,18 @@ async def create_work_order(db: AsyncSession, work_order: schemas.WorkOrderCreat
     print(f"   - After image path: '{db_work_order.after_image_path}'")
     print(f"   - PDF file path: '{db_work_order.pdf_file_path}'")
     
-    return db_work_order
+    # Reload with all relationships
+    result = await db.execute(
+        select(models.WorkOrder)
+        .options(
+            selectinload(models.WorkOrder.room),
+            selectinload(models.WorkOrder.property),
+            selectinload(models.WorkOrder.machine),
+            selectinload(models.WorkOrder.assigned_to)
+        )
+        .filter(models.WorkOrder.id == db_work_order.id)
+    )
+    return result.scalars().first()
 
 async def update_work_order(db: AsyncSession, work_order_id: int, work_order: schemas.WorkOrderCreate):
     result = await db.execute(select(models.WorkOrder).filter(models.WorkOrder.id == work_order_id))
@@ -193,7 +223,46 @@ async def update_work_order(db: AsyncSession, work_order_id: int, work_order: sc
             setattr(db_work_order, key, value)
         await db.commit()
         await db.refresh(db_work_order)
-    return db_work_order
+        
+        # Reload with all relationships
+        result = await db.execute(
+            select(models.WorkOrder)
+            .options(
+                selectinload(models.WorkOrder.room),
+                selectinload(models.WorkOrder.property),
+                selectinload(models.WorkOrder.machine),
+                selectinload(models.WorkOrder.assigned_to)
+            )
+            .filter(models.WorkOrder.id == work_order_id)
+        )
+        return result.scalars().first()
+    return None
+
+async def patch_work_order(db: AsyncSession, work_order_id: int, work_order_update: schemas.WorkOrderUpdate):
+    """Update work order with partial data (PATCH method)"""
+    result = await db.execute(select(models.WorkOrder).filter(models.WorkOrder.id == work_order_id))
+    db_work_order = result.scalars().first()
+    if db_work_order:
+        # Only update fields that are provided (not None)
+        update_data = work_order_update.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(db_work_order, key, value)
+        await db.commit()
+        await db.refresh(db_work_order)
+        
+        # Reload with all relationships
+        result = await db.execute(
+            select(models.WorkOrder)
+            .options(
+                selectinload(models.WorkOrder.room),
+                selectinload(models.WorkOrder.property),
+                selectinload(models.WorkOrder.machine),
+                selectinload(models.WorkOrder.assigned_to)
+            )
+            .filter(models.WorkOrder.id == work_order_id)
+        )
+        return result.scalars().first()
+    return None
 
 async def delete_work_order(db: AsyncSession, work_order_id: int):
     result = await db.execute(select(models.WorkOrder).filter(models.WorkOrder.id == work_order_id))

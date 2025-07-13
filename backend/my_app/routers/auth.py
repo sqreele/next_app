@@ -16,6 +16,9 @@ from ..dependencies import get_db, get_current_active_user, try_get_current_acti
 from .. import crud, schemas, security,models 
 from ..dependencies import get_db, get_current_active_user
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
+from pydantic import EmailStr
+from fastapi import BackgroundTasks
 
 # Create the router - THIS MUST BE AT THE TOP
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -252,3 +255,14 @@ async def reset_password(
     await crud.update_user_password(db, user=user, new_password=new_password)
     
     return {"message": "Your password has been successfully reset."}
+
+conf = ConnectionConfig(
+    MAIL_USERNAME = os.getenv("MAIL_USERNAME"),
+    MAIL_PASSWORD = os.getenv("MAIL_PASSWORD"),
+    MAIL_FROM = os.getenv("MAIL_FROM"),
+    MAIL_PORT = int(os.getenv("MAIL_PORT")),
+    MAIL_SERVER = os.getenv("MAIL_SERVER"),
+    MAIL_TLS = os.getenv("MAIL_TLS") == "True",
+    MAIL_SSL = os.getenv("MAIL_SSL") == "True",
+    USE_CREDENTIALS = True
+)

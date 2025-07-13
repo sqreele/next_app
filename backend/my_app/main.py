@@ -34,8 +34,8 @@ app = FastAPI(
 )
 
 # --- CORRECTED UPLOADS PATH ---
-# Define the relative path to the uploads directory
-UPLOADS_DIR = "uploads"
+# Define the absolute path to the uploads directory inside the container
+UPLOADS_DIR = "/app/uploads"
 
 # Create the directory if it doesn't exist to prevent errors on startup
 try:

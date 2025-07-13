@@ -244,13 +244,15 @@ export function SimpleWorkOrderForm({ onSubmit, onCancel }: SimpleWorkOrderFormP
             {/* Basic Information */}
             <div className="space-y-4">
               <div>
-                <Label htmlFor="title">Title *</Label>
+                <Label htmlFor="title" className="font-bold">Work Order Title*</Label>
                 <Input
                   id="title"
                   value={formData.title}
                   onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
                   placeholder="Enter work order title"
                   required
+                  minLength={5}
+                  maxLength={100}
                 />
               </div>
 
