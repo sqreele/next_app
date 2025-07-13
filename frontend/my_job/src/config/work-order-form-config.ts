@@ -1,3 +1,5 @@
+// src/config/work-order-form-config.ts
+
 import {
   ClipboardDocumentListIcon,
   CalendarIcon,
@@ -6,6 +8,7 @@ import {
   PhotoIcon,
   DocumentIcon,
   CheckCircleIcon,
+  WrenchScrewdriverIcon, // Add this import
 } from '@heroicons/react/24/outline'
 
 export interface ProgressStep {
@@ -23,9 +26,10 @@ export interface FormFieldOption {
 export interface FormField {
   name: string
   label?: string // Made optional to allow fields without a label
-  type: 'text' | 'email' | 'password' | 'textarea' | 'select' | 'checkbox' | 'date' | 'datetime-local' | 'image-upload' | 'file' | 'autocomplete' | 'number' | 'tel' | 'url'
+  type: 'text' | 'email' | 'password' | 'textarea' | 'select' | 'checkbox' | 'enhanced-checkbox' | 'date' | 'datetime-local' | 'image-upload' | 'file' | 'autocomplete' | 'number' | 'tel' | 'url'
   required?: boolean
   placeholder?: string
+  description?: string // Add description field for enhanced checkboxes
   options?: FormFieldOption[]
   accept?: string
   multiple?: boolean
@@ -63,9 +67,15 @@ export const progressSteps: ProgressStep[] = [
     icon: ClipboardDocumentListIcon,
   },
   {
+    id: 'maintenance',
+    label: 'Maintenance',
+    description: 'Maintenance type and priority',
+    icon: WrenchScrewdriverIcon,
+  },
+  {
     id: 'scheduling',
     label: 'Scheduling',
-    description: 'Due date and priority',
+    description: 'Due date and assignment',
     icon: CalendarIcon,
   },
   {
@@ -118,21 +128,22 @@ export const workOrderFormSections: FormSection[] = [
     ],
   },
   {
-    id: 'scheduling',
-    title: 'Scheduling & Priority',
+    id: 'maintenance',
+    title: 'Maintenance Details',
     fields: [
       {
-        name: 'scheduledDate',
-        label: 'Scheduled Date',
-        type: 'datetime-local',
-        required: true,
-        validation: {
-          custom: (value: string) => {
-            const selectedDate = new Date(value)
-            const now = new Date()
-            return selectedDate > now || 'Scheduled date must be in the future'
-          },
-        },
+        name: 'has_pm',
+        label: 'Has Preventive Maintenance',
+        type: 'enhanced-checkbox',
+        description: 'This work order includes preventive maintenance tasks',
+        required: false,
+      },
+      {
+        name: 'has_issue',
+        label: 'Has Issue/Problem',
+        type: 'enhanced-checkbox',
+        description: 'This work order addresses a specific issue or problem',
+        required: false,
       },
       {
         name: 'priority',
@@ -161,21 +172,21 @@ export const workOrderFormSections: FormSection[] = [
     ],
   },
   {
-    id: 'assignment',
-    title: 'Assignment & Location',
+    id: 'scheduling',
+    title: 'Scheduling & Assignment',
     fields: [
       {
-        name: 'location',
-        label: 'Room/Location',
-        type: 'autocomplete',
+        name: 'scheduledDate',
+        label: 'Scheduled Date',
+        type: 'datetime-local',
         required: true,
-        placeholder: 'Search for a room...',
-      },
-      {
-        name: 'assignedTo',
-        label: 'Assigned To',
-        type: 'select',
-        required: true,
+        validation: {
+          custom: (value: string) => {
+            const selectedDate = new Date(value)
+            const now = new Date()
+            return selectedDate > now || 'Scheduled date must be in the future'
+          },
+        },
       },
       {
         name: 'recurring',
@@ -196,6 +207,25 @@ export const workOrderFormSections: FormSection[] = [
           { value: 'quarterly', label: 'Quarterly' },
           { value: 'annually', label: 'Annually' },
         ],
+      },
+    ],
+  },
+  {
+    id: 'assignment',
+    title: 'Assignment & Location',
+    fields: [
+      {
+        name: 'location',
+        label: 'Room/Location',
+        type: 'autocomplete',
+        required: true,
+        placeholder: 'Search for a room...',
+      },
+      {
+        name: 'assignedTo',
+        label: 'Assigned To',
+        type: 'select',
+        required: true,
       },
     ],
   },

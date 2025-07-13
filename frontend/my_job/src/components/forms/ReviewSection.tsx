@@ -9,6 +9,7 @@ import {
   PhotoIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
+  WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline'
 
 interface ReviewSectionProps {
@@ -204,7 +205,40 @@ export function ReviewSection({
           )}
         </CardContent>
       </Card>
-
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <WrenchScrewdriverIcon className="h-5 w-5" />
+            Maintenance Details
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-600">Has Preventive Maintenance:</span>
+            <Badge className={formData.has_pm ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+              {formData.has_pm ? 'Yes' : 'No'}
+            </Badge>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-600">Has Issue/Problem:</span>
+            <Badge className={formData.has_issue ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}>
+              {formData.has_issue ? 'Yes' : 'No'}
+            </Badge>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-600">Priority:</span>
+            <Badge className={getPriorityColor(formData.priority)}>
+              {formData.priority || 'Not specified'}
+            </Badge>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-600">Status:</span>
+            <Badge className={getStatusColor(formData.status)}>
+              {formData.status || 'Not specified'}
+            </Badge>
+          </div>
+        </CardContent>
+      </Card>
       {/* Summary Status */}
       <div className={`border rounded-lg p-4 ${
         uploadStatus.uploading > 0 || uploadStatus.failed > 0 

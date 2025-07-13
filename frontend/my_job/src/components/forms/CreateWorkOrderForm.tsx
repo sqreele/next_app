@@ -28,6 +28,8 @@ const initialFormData = {
   assignedTo: '',
   priority: '',
   status: '',
+  has_pm: false,        // Add this
+  has_issue: false,     // Add this
   recurring: false,
   recurringFrequency: '',
   beforePhotos: [],
@@ -165,6 +167,8 @@ export function CreateWorkOrderForm() {
     console.log('🔍 Form data changed:', formData)
     console.log('🔍 Before photos:', formData.beforePhotos?.length || 0)
     console.log('🔍 After photos:', formData.afterPhotos?.length || 0)
+    console.log('🔍 Has PM:', formData.has_pm)
+    console.log('🔍 Has Issue:', formData.has_issue)
     if (formData.beforePhotos?.length > 0) {
       console.log('🔍 Before photos details:', formData.beforePhotos.map((img: any) => ({
         id: img.id,
@@ -330,6 +334,8 @@ export function CreateWorkOrderForm() {
         after_images: afterImageUrls,
         pdf_file_path: null,
         property_id: numericPropertyId!,
+        has_pm: formData.has_pm || false,           
+        has_issue: formData.has_issue || false, 
       }
 
       console.log('📋 === ACTUAL REQUEST DATA ===')
@@ -341,6 +347,8 @@ export function CreateWorkOrderForm() {
       console.log('Room ID:', submitData.room_id)
       console.log('Assigned To ID:', submitData.assigned_to_id)
       console.log('Property ID:', submitData.property_id)
+      console.log('Has PM:', submitData.has_pm)           // Add debug logs
+      console.log('Has Issue:', submitData.has_issue)     // Add debug logs
       console.log('Before Image Path:', submitData.before_image_path)
       console.log('After Image Path:', submitData.after_image_path)
       console.log('Before Images Array:', submitData.before_images)
@@ -500,10 +508,13 @@ export function CreateWorkOrderForm() {
               >
                 {currentSection.fields.map((field) => (
                   <div key={field.name} className="mb-6">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      {field.label}
-                      {field.required && <span className="text-red-500 ml-1">*</span>}
-                    </label>
+                    {/* Only show label for non-enhanced-checkbox fields */}
+                    {field.type !== 'enhanced-checkbox' && (
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        {field.label}
+                        {field.required && <span className="text-red-500 ml-1">*</span>}
+                      </label>
+                    )}
                     <DynamicFormRenderer
                       field={field}
                       value={formData[field.name]}
@@ -571,7 +582,7 @@ export function CreateWorkOrderForm() {
 
           {currentStep < workOrderFormSections.length - 1 ? (
             <Button
-              onClick={nextStep}
+              onClick={handleNext}
               disabled={!canGoNext}
               className="flex-1 sm:flex-none sm:w-auto"
             >

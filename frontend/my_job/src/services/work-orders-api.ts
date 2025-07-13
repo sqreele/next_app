@@ -30,6 +30,8 @@ export interface CreateWorkOrderData {
   after_image_path?: string | null
   before_images: string[]
   after_images: string[]
+  has_pm?: boolean        // Add this
+  has_issue?: boolean    
 }
 
 export interface UpdateWorkOrderData extends Partial<CreateWorkOrderData> {}
