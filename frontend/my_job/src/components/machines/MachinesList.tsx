@@ -16,7 +16,9 @@ import {
   XMarkIcon,
   WrenchScrewdriverIcon,
   PlusIcon,
-  CogIcon
+  CogIcon,
+  ClipboardDocumentListIcon,
+  ExclamationCircleIcon
 } from '@heroicons/react/24/outline'
 
 export function MachinesList() {
@@ -157,12 +159,26 @@ export function MachinesList() {
          <h1 className="text-2xl font-bold text-gray-900">Machines</h1>
          <p className="text-gray-600">Manage your equipment and machinery</p>
        </div>
-       <Link href="/machines/create">
-         <Button>
-           <PlusIcon className="h-4 w-4 mr-2" />
-           Add Machine
-         </Button>
-       </Link>
+       <div className="flex gap-2">
+         <Link href="/pm/create">
+           <Button variant="secondary">
+             <ClipboardDocumentListIcon className="h-4 w-4 mr-2" />
+             Create PM
+           </Button>
+         </Link>
+         <Link href="/issues/create">
+           <Button variant="secondary">
+             <ExclamationCircleIcon className="h-4 w-4 mr-2" />
+             Create Issue
+           </Button>
+         </Link>
+         <Link href="/machines/create">
+           <Button>
+             <PlusIcon className="h-4 w-4 mr-2" />
+             Add Machine
+           </Button>
+         </Link>
+       </div>
      </div>
 
      {/* Statistics Cards */}
@@ -172,7 +188,7 @@ export function MachinesList() {
            <div className="flex items-center justify-between">
              <div>
                <p className="text-sm text-gray-600">Total</p>
-               <p className="text-2xl font-bold text-blue-600">{stats.total}</p>
+               <p className="text-2xl font-bold text-blue-600">{stats?.total || 0}</p>
              </div>
              <CogIcon className="h-8 w-8 text-blue-600" />
            </div>
@@ -184,7 +200,7 @@ export function MachinesList() {
            <div className="flex items-center justify-between">
              <div>
                <p className="text-sm text-gray-600">Operational</p>
-               <p className="text-2xl font-bold text-green-600">{stats.operational}</p>
+               <p className="text-2xl font-bold text-green-600">{stats?.operational || 0}</p>
              </div>
              <CheckCircleIcon className="h-8 w-8 text-green-600" />
            </div>
@@ -196,7 +212,7 @@ export function MachinesList() {
            <div className="flex items-center justify-between">
              <div>
                <p className="text-sm text-gray-600">Maintenance</p>
-               <p className="text-2xl font-bold text-yellow-600">{stats.maintenance}</p>
+               <p className="text-2xl font-bold text-yellow-600">{stats?.maintenance || 0}</p>
              </div>
              <WrenchScrewdriverIcon className="h-8 w-8 text-yellow-600" />
            </div>
@@ -208,7 +224,7 @@ export function MachinesList() {
            <div className="flex items-center justify-between">
              <div>
                <p className="text-sm text-gray-600">Offline</p>
-               <p className="text-2xl font-bold text-red-600">{stats.offline}</p>
+               <p className="text-2xl font-bold text-red-600">{stats?.offline || 0}</p>
              </div>
              <XMarkIcon className="h-8 w-8 text-red-600" />
            </div>
@@ -263,6 +279,23 @@ export function MachinesList() {
              <option value="1">Property 1</option>
              <option value="2">Property 2</option>
            </select>
+
+           <select
+             value={filters.type || ''}
+             onChange={e => {
+              const value = e.target.value;
+              if (value === 'pm' || value === 'issue') {
+                setFilters({ type: value });
+              } else {
+                setFilters({ type: undefined });
+              }
+            }}
+             className="border rounded-md px-3 py-2"
+           >
+             <option value="">All Types</option>
+             <option value="pm">PM</option>
+             <option value="issue">Issue</option>
+           </select>
          </div>
 
          <div className="flex gap-2 mt-4">
@@ -299,6 +332,12 @@ export function MachinesList() {
                  </th>
                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                    Property
+                 </th>
+                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                   Has PM
+                 </th>
+                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                   Has Issue
                  </th>
                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                    Actions
@@ -344,7 +383,18 @@ export function MachinesList() {
                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                        Property {machine.property_id}
                      </td>
-                     
+                     {/* Has PM column */}
+                     <td className="px-6 py-4 whitespace-nowrap text-sm">
+                       <Badge className={machine.has_pm ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                         {machine.has_pm ? 'Yes' : 'No'}
+                       </Badge>
+                     </td>
+                     {/* Has Issue column */}
+                     <td className="px-6 py-4 whitespace-nowrap text-sm">
+                       <Badge className={machine.has_issue ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}>
+                         {machine.has_issue ? 'Yes' : 'No'}
+                       </Badge>
+                     </td>
                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                        <div className="flex gap-2">
                          <Link href={`/machines/${machine.id}`}>

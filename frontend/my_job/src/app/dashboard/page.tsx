@@ -2,11 +2,10 @@
 import React from 'react'
 import { Metadata } from 'next'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
-import { DashboardOverview } from '@/components/dashboard/dashboard-overview'
+import { TechnicianStatus } from '@/components/dashboard/dashboard-overview'
 import { QuickStats } from '@/components/dashboard/quick-stats'
 import { RecentWorkOrders } from '@/components/dashboard/recent-work-orders'
 import { UpcomingJobs } from '@/components/dashboard/upcoming-jobs'
-import { TechnicianStatus } from '@/components/dashboard/technician-status'
 import { AssetAlerts } from '@/components/dashboard/asset-alerts'
 import { PerformanceCharts } from '@/components/dashboard/performance-charts'
 import { QuickActions } from '@/components/dashboard/quick-actions'
@@ -63,7 +62,7 @@ export default function DashboardPage() {
                   <ChartBarIcon className="w-5 h-5 text-green-600" />
                   <h2 className="text-xl font-semibold text-gray-800">Overview</h2>
                 </div>
-                <DashboardOverview />
+                <TechnicianStatus />
               </div>
 
               {/* Performance Section */}

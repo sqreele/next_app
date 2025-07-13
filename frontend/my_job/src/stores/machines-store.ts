@@ -11,6 +11,15 @@ interface MachineState {
   loading: boolean
   error: string | null
   
+  // Statistics
+  stats: {
+    total: number
+    operational: number
+    maintenance: number
+    offline: number
+    decommissioned: number
+  }
+  
   // Pagination
   pagination: {
     page: number
@@ -52,6 +61,7 @@ interface MachineState {
   getMachinesByRoom: (room_id: number) => Machine[]
   getMachinesByProperty: (property_id: number) => Machine[]
   refreshMachines: () => Promise<void>
+  calculateStats: () => void
 }
 
 export const useMachineStore = create<MachineState>()(
@@ -63,6 +73,13 @@ export const useMachineStore = create<MachineState>()(
       filters: {},
       loading: false,
       error: null,
+      stats: {
+        total: 0,
+        operational: 0,
+        maintenance: 0,
+        offline: 0,
+        decommissioned: 0,
+      },
       pagination: {
         page: 1,
         limit: 20,
@@ -72,6 +89,7 @@ export const useMachineStore = create<MachineState>()(
       // Basic state management
       setMachines: (machines) => {
         set({ machines })
+        get().calculateStats()
       },
 
       addMachine: (machine) => {
@@ -82,6 +100,7 @@ export const useMachineStore = create<MachineState>()(
             total: state.pagination.total + 1
           }
         }))
+        get().calculateStats()
       },
 
       updateMachine: (id, updates) => {
@@ -93,6 +112,7 @@ export const useMachineStore = create<MachineState>()(
             ? { ...state.selectedMachine, ...updates } 
             : state.selectedMachine
         }))
+        get().calculateStats()
       },
 
       deleteMachine: (id) => {
@@ -104,6 +124,7 @@ export const useMachineStore = create<MachineState>()(
             total: Math.max(0, state.pagination.total - 1)
           }
         }))
+        get().calculateStats()
       },
 
       setSelectedMachine: (machine) => {
@@ -138,6 +159,10 @@ export const useMachineStore = create<MachineState>()(
           // Property filter
           if (filters.property_id && machine.property_id !== filters.property_id) return false
           
+          // Type filter
+          if (filters.type === 'pm' && !machine.has_pm) return false
+          if (filters.type === 'issue' && !machine.has_issue) return false
+
           // Search filter
           if (filters.search) {
             const searchTerm = filters.search.toLowerCase()
@@ -182,6 +207,7 @@ export const useMachineStore = create<MachineState>()(
               total: machines.length, // API doesn't return total, so use array length
             }
           })
+          get().calculateStats()
         } catch (error: any) {
           const errorMessage = error?.response?.data?.message || error?.message || 'Failed to fetch machines'
           set({ error: errorMessage })
@@ -197,6 +223,7 @@ export const useMachineStore = create<MachineState>()(
         try {
           const machines = await machinesAPI.getMachinesByProperty(property_id)
           set({ machines })
+          get().calculateStats()
         } catch (error: any) {
           const errorMessage = error?.response?.data?.message || error?.message || 'Failed to fetch machines by property'
           set({ error: errorMessage })
@@ -301,6 +328,18 @@ export const useMachineStore = create<MachineState>()(
         return get().machines.filter(machine => machine.property_id === property_id)
       },
 
+      calculateStats: () => {
+        const { machines } = get()
+        const stats = {
+          total: machines.length,
+          operational: machines.filter(m => m.status === 'Operational').length,
+          maintenance: machines.filter(m => m.status === 'Maintenance').length,
+          offline: machines.filter(m => m.status === 'Offline').length,
+          decommissioned: machines.filter(m => m.status === 'Decommissioned').length,
+        }
+        set({ stats })
+      },
+
       refreshMachines: async () => {
         const { filters } = get()
         await get().fetchMachines(filters)
@@ -312,6 +351,7 @@ export const useMachineStore = create<MachineState>()(
         machines: state.machines,
         filters: state.filters,
         pagination: state.pagination,
+        stats: state.stats,
       }),
     }
   )

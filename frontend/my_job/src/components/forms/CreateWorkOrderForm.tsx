@@ -387,6 +387,11 @@ export function CreateWorkOrderForm() {
         }))
         console.log(`🔍 [getSelectOptions] Generated options:`, options)
         return options
+      case 'machine_id':
+        return operationalMachines.map(machine => ({
+          value: machine.id,
+          label: machine.name
+        }))
       default:
         return []
     }
@@ -510,6 +515,40 @@ export function CreateWorkOrderForm() {
                     />
                     {errors[field.name] && (
                       <p className="mt-1 text-sm text-red-600">{errors[field.name]}</p>
+                    )}
+                    {/* Show Has PM / Has Issue badges below the machine select */}
+                    {field.name === 'machine_id' && (
+                      (() => {
+                        const selectedMachine = operationalMachines.find(m => m.id === Number(formData.machine_id))
+                        return (
+                          <div className="flex gap-4 mt-2">
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-gray-500">Has PM:</span>
+                              <Badge className={
+                                selectedMachine
+                                  ? (selectedMachine.has_pm ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800')
+                                  : 'bg-gray-100 text-gray-800'
+                              }>
+                                {selectedMachine
+                                  ? (selectedMachine.has_pm ? 'Yes' : 'No')
+                                  : 'N/A'}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-gray-500">Has Issue:</span>
+                              <Badge className={
+                                selectedMachine
+                                  ? (selectedMachine.has_issue ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800')
+                                  : 'bg-gray-100 text-gray-800'
+                              }>
+                                {selectedMachine
+                                  ? (selectedMachine.has_issue ? 'Yes' : 'No')
+                                  : 'N/A'}
+                              </Badge>
+                            </div>
+                          </div>
+                        )
+                      })()
                     )}
                   </div>
                 ))}

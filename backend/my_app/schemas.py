@@ -1,6 +1,6 @@
 # File: backend/my_app/schemas.py
 from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict
-from typing import List, Optional
+from typing import List, Optional, Literal
 from datetime import date, datetime
 from enum import Enum
 
@@ -167,6 +167,7 @@ class WorkOrderCreate(BaseModel):
     before_images: Optional[List[str]] = Field(default_factory=list)
     after_images: Optional[List[str]] = Field(default_factory=list)
     pdf_file_path: Optional[str] = Field(None, max_length=500)
+    type: Literal['pm', 'issue'] = Field(...)
 
     @field_validator('due_date', mode='before')
     @classmethod
@@ -213,6 +214,7 @@ class WorkOrderUpdate(BaseModel):
     before_images: Optional[List[str]] = Field(default_factory=list)
     after_images: Optional[List[str]] = Field(default_factory=list)
     pdf_file_path: Optional[str] = Field(None, max_length=500)
+    type: Optional[Literal['pm', 'issue']] = None
 
     @field_validator('due_date', mode='before')
     @classmethod
@@ -258,6 +260,7 @@ class WorkOrder(BaseModel):
     before_images: Optional[List[str]] = Field(default_factory=list)
     after_images: Optional[List[str]] = Field(default_factory=list)
     pdf_file_path: Optional[str] = None
+    type: Literal['pm', 'issue']
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -315,3 +318,12 @@ class FileUploadResponse(BaseModel):
     url: str
     path: str
     message: str
+
+class TechnicianStatus(BaseModel):
+    id: int
+    name: str
+    status: str
+    currentWorkOrder: Optional[str] = None
+    completedToday: int
+    utilization: int
+    location: Optional[str] = None

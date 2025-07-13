@@ -135,6 +135,9 @@ class WorkOrder(Base):
     after_image_path = Column(String(500), nullable=True)
     pdf_file_path = Column(String(500), nullable=True)
     
+    # Add this line:
+    type = Column(String(50), nullable=False, default='pm')
+    
     def __str__(self):
         return f"{self.task} - {self.status}"
 

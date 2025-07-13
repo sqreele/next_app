@@ -8,6 +8,10 @@ export interface Machine {
   status: 'Operational' | 'Maintenance' | 'Offline' | 'Decommissioned'
   room_id: number
   property_id: number
+  created_at?: string
+  updated_at?: string
+  has_pm?: boolean
+  has_issue?: boolean
 }
 
 export interface CreateMachineData {
@@ -25,6 +29,7 @@ export interface MachineFilters {
   search?: string
   page?: number
   limit?: number
+  type?: 'pm' | 'issue'
 }
 
 export interface MachinesResponse {
@@ -73,11 +78,10 @@ class MachinesAPI {
    * Get machines by property ID
    */
   async getMachinesByProperty(property_id: number): Promise<Machine[]> {
-    const response: AxiosResponse<Machine[]> = await apiClient.get(
+    const response: AxiosResponse<MachinesResponse> = await apiClient.get(
       `${this.endpoint}/property/${property_id}`
     )
-    
-    return Array.isArray(response.data) ? response.data : response.data.data || []
+    return response.data.data || []
   }
 
   /**

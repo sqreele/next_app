@@ -1,6 +1,7 @@
 from sqladmin import ModelView
 from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile
 from markupsafe import Markup
+from sqlalchemy.orm import selectinload
 
 # Helper function for single image formatting
 def format_image_preview(model, attribute):
@@ -171,7 +172,15 @@ class RoomAdmin(ModelView, model=Room):
     icon = "fa-solid fa-door-open"
 
 class MachineAdmin(ModelView, model=Machine):
-    column_list = [Machine.id, Machine.name, Machine.status, "property.name", "room.name"]
+    column_list = [
+        Machine.id, 
+        Machine.name, 
+        Machine.status, 
+        "property.name", 
+        "room.name",
+        "has_pm",
+        "has_issue"
+    ]
     form_columns = [
         Machine.property,
         Machine.name,
@@ -203,6 +212,14 @@ class MachineAdmin(ModelView, model=Machine):
     name = "Machine"
     name_plural = "Machines"
     icon = "fa-solid fa-robot"
+
+    column_labels = {
+        "has_pm": "Has PM",
+        "has_issue": "Has Issue",
+    }
+
+    def get_query(self, request):
+        return super().get_query(request).options(selectinload(Machine.work_orders))
 
 class WorkOrderAdmin(ModelView, model=WorkOrder):
     column_list = [

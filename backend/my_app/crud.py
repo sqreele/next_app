@@ -293,3 +293,36 @@ async def update_user_password(db: AsyncSession, user: models.User, new_password
     user.hashed_password = get_password_hash(new_password)
     await db.commit()
     return user
+async def get_machine(db: AsyncSession, machine_id: int):
+    result = await db.execute(
+        select(models.Machine).filter(models.Machine.id == machine_id)
+    )
+    return result.scalars().first()
+from sqlalchemy.orm import selectinload
+
+async def get_machines(db: AsyncSession, skip: int = 0, limit: int = 100):
+    result = await db.execute(
+        select(models.Machine)
+        .options(selectinload(models.Machine.work_orders))
+        .offset(skip)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+async def get_machines_by_property(db: AsyncSession, property_id: int, skip: int = 0, limit: int = 100):
+    result = await db.execute(
+        select(models.Machine)
+        .options(selectinload(models.Machine.work_orders))
+        .filter(models.Machine.property_id == property_id)
+        .offset(skip)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+async def get_machine(db: AsyncSession, machine_id: int):
+    result = await db.execute(
+        select(models.Machine)
+        .options(selectinload(models.Machine.work_orders))
+        .filter(models.Machine.id == machine_id)
+    )
+    return result.scalars().first()

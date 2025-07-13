@@ -1,4 +1,4 @@
-# paste.txt (ENHANCED WITH ALL FILE TYPES)
+
 import asyncio
 import uuid
 import httpx
@@ -148,13 +148,15 @@ async def test_work_order_creation():
                 assigned_to_id=users[0].id,
                 before_image_path=before_image_path,
                 after_image_path=after_image_path,
-                pdf_file_path=pdf_file_path
+                pdf_file_path=pdf_file_path,
+                type="pm"  # ✅ FIXED: Added required type field
             )
             
             print(f"📝 WorkOrderCreate object created successfully!")
             print(f"📝 before_image_path: '{test_data.before_image_path}'")
             print(f"📝 after_image_path:  '{test_data.after_image_path}'")
             print(f"📝 pdf_file_path:     '{test_data.pdf_file_path}'")
+            print(f"📝 type:              '{test_data.type}'")  # Added logging for type
             print(f"📝 Full model dump: {test_data.model_dump()}")
             
             # Save to database
@@ -164,6 +166,7 @@ async def test_work_order_creation():
             print(f"\n✅ Work order created successfully!")
             print(f"   - ID: {result.id}")
             print(f"   - Task: {result.task}")
+            print(f"   - Type: {result.type}")  # Added logging for type
             print(f"   - Before Image: '{result.before_image_path}'")
             print(f"   - After Image:  '{result.after_image_path}'")
             print(f"   - PDF File:     '{result.pdf_file_path}'")
@@ -171,6 +174,7 @@ async def test_work_order_creation():
             # Double-check from database
             fresh_result = await db.get(WorkOrder, result.id)
             print(f"\n🔍 Fresh from DB:")
+            print(f"   - Type: '{fresh_result.type}'")  # Added logging for type
             print(f"   - Before Image: '{fresh_result.before_image_path}'")
             print(f"   - After Image:  '{fresh_result.after_image_path}'")
             print(f"   - PDF File:     '{fresh_result.pdf_file_path}'")
@@ -179,6 +183,5 @@ async def test_work_order_creation():
             print(f"❌ Error: {e}")
             import traceback
             print(f"Full traceback: {traceback.format_exc()}")
-
 if __name__ == "__main__":
     asyncio.run(test_work_order_creation())
