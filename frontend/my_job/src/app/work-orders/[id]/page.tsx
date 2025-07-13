@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { ArrowLeft, Calendar, User, Building, MapPin, Clock, FileText } from 'lucide-react'
+import { ArrowLeft, Calendar, User, Building, MapPin, Clock, FileText, PlayCircle, CheckCircle, XCircle, Eye } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -123,21 +123,21 @@ export default function WorkOrderDetailPage() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'Pending': return 'bg-yellow-100 text-yellow-800'
-      case 'In Progress': return 'bg-blue-100 text-blue-800'
-      case 'Completed': return 'bg-green-100 text-green-800'
-      case 'Cancelled': return 'bg-red-100 text-red-800'
-      default: return 'bg-gray-100 text-gray-800'
+      case 'Pending': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
+      case 'In Progress': return 'bg-blue-100 text-blue-800 border-blue-200'
+      case 'Completed': return 'bg-green-100 text-green-800 border-green-200'
+      case 'Cancelled': return 'bg-red-100 text-red-800 border-red-200'
+      default: return 'bg-gray-100 text-gray-800 border-gray-200'
     }
   }
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'Low': return 'bg-gray-100 text-gray-800'
-      case 'Medium': return 'bg-blue-100 text-blue-800'
-      case 'High': return 'bg-orange-100 text-orange-800'
-      case 'Urgent': return 'bg-red-100 text-red-800'
-      default: return 'bg-gray-100 text-gray-800'
+      case 'Low': return 'bg-gray-100 text-gray-800 border-gray-200'
+      case 'Medium': return 'bg-blue-100 text-blue-800 border-blue-200'
+      case 'High': return 'bg-orange-100 text-orange-800 border-orange-200'
+      case 'Urgent': return 'bg-red-100 text-red-800 border-red-200'
+      default: return 'bg-gray-100 text-gray-800 border-gray-200'
     }
   }
 
@@ -153,12 +153,16 @@ export default function WorkOrderDetailPage() {
 
   if (loading) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-center min-h-[400px]">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-            <p className="mt-2 text-gray-600">Loading work order...</p>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-green-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="relative">
+            <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center mb-4 mx-auto">
+              <span className="text-white font-bold text-lg">PM</span>
+            </div>
+            <div className="absolute inset-0 w-16 h-16 border-4 border-green-200 border-t-green-600 rounded-2xl animate-spin"></div>
           </div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Loading work order...</h2>
+          <p className="text-gray-600">Please wait while we fetch the details</p>
         </div>
       </div>
     )
@@ -166,11 +170,14 @@ export default function WorkOrderDetailPage() {
 
   if (!workOrder) {
     return (
-      <div className="container mx-auto p-6">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-green-50 flex items-center justify-center">
         <div className="text-center">
+          <div className="w-16 h-16 bg-gradient-to-br from-red-500 to-red-600 rounded-2xl flex items-center justify-center mb-4 mx-auto">
+            <XCircle className="w-8 h-8 text-white" />
+          </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Work Order Not Found</h1>
-          <p className="text-gray-600 mb-4">The work order you're looking for doesn't exist.</p>
-          <Button onClick={() => router.push('/work-orders')}>
+          <p className="text-gray-600 mb-6">The work order you're looking for doesn't exist.</p>
+          <Button onClick={() => router.push('/work-orders')} className="bg-green-600 hover:bg-green-700">
             Back to Work Orders
           </Button>
         </div>
@@ -179,238 +186,284 @@ export default function WorkOrderDetailPage() {
   }
 
   return (
-    <div className="container mx-auto p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-4">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => router.push('/work-orders')}
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              Work Order #{workOrder.id}
-            </h1>
-            <p className="text-gray-600">{workOrder.task}</p>
+    <div className="min-h-full bg-gradient-to-br from-gray-50 via-white to-green-50">
+      <div className="max-w-7xl mx-auto px-4 py-8 pb-8">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center space-x-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push('/work-orders')}
+              className="text-gray-600 hover:text-gray-900"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center">
+                <FileText className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  Work Order #{workOrder.id}
+                </h1>
+                <p className="text-gray-600">{workOrder.task}</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex items-center space-x-3">
+            <Badge className={`${getStatusColor(workOrder.status)} border`}>
+              {workOrder.status}
+            </Badge>
+            <Badge className={`${getPriorityColor(workOrder.priority)} border`}>
+              {workOrder.priority}
+            </Badge>
           </div>
         </div>
-        
-        <div className="flex items-center space-x-2">
-          <Badge className={getStatusColor(workOrder.status)}>
-            {workOrder.status}
-          </Badge>
-          <Badge className={getPriorityColor(workOrder.priority)}>
-            {workOrder.priority}
-          </Badge>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Task Details */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <FileText className="h-5 w-5" />
-                <span>Task Details</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-2">Description</h3>
-                <p className="text-gray-700 whitespace-pre-wrap">
-                  {workOrder.description || 'No description provided'}
-                </p>
-              </div>
-              
-              <Separator />
-              
-              <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Main Content */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Task Details */}
+            <Card className="shadow-lg border-0 bg-white/80 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+                  <FileText className="w-5 h-5 text-green-600" />
+                  Task Details
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Created</p>
-                  <p className="text-sm text-gray-900">{formatDate(workOrder.created_at)}</p>
+                  <h3 className="font-semibold text-gray-900 mb-3">Description</h3>
+                  <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">
+                    {workOrder.description || 'No description provided'}
+                  </p>
                 </div>
-                {workOrder.due_date && (
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Due Date</p>
-                    <p className="text-sm text-gray-900">{formatDate(workOrder.due_date)}</p>
+                
+                <Separator />
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-gray-500">Created</p>
+                    <p className="text-sm text-gray-900 font-medium">{formatDate(workOrder.created_at)}</p>
                   </div>
-                )}
-                {workOrder.completed_at && (
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Completed</p>
-                    <p className="text-sm text-gray-900">{formatDate(workOrder.completed_at)}</p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Location Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <MapPin className="h-5 w-5" />
-                <span>Location</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {workOrder.property && (
-                <div className="flex items-center space-x-2">
-                  <Building className="h-4 w-4 text-gray-500" />
-                  <span className="text-sm text-gray-900">{workOrder.property.name}</span>
-                </div>
-              )}
-              {workOrder.room && (
-                <div className="flex items-center space-x-2">
-                  <MapPin className="h-4 w-4 text-gray-500" />
-                  <span className="text-sm text-gray-900">{workOrder.room.name}</span>
-                  {workOrder.room.room_type && (
-                    <span className="ml-2 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
-                      {workOrder.room.room_type}
-                    </span>
-                  )}
-                </div>
-              )}
-              {workOrder.machine && (
-                <div className="flex items-center space-x-2">
-                  <Clock className="h-4 w-4 text-gray-500" />
-                  <span className="text-sm text-gray-900">{workOrder.machine.name}</span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Images */}
-          {(workOrder.before_images?.length || workOrder.after_images?.length) && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Images</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {workOrder.before_images?.length && (
-                    <div>
-                      <h4 className="font-medium text-gray-900 mb-2">Before Photos</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {workOrder.before_images.map((image, index) => (
-                          <img
-                            key={index}
-                            src={`/uploads/${image}`}
-                            alt={`Before ${index + 1}`}
-                            className="w-20 h-20 object-cover rounded border"
-                          />
-                        ))}
-                      </div>
+                  {workOrder.due_date && (
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-gray-500">Due Date</p>
+                      <p className="text-sm text-gray-900 font-medium">{formatDate(workOrder.due_date)}</p>
                     </div>
                   )}
-                  
-                  {workOrder.after_images?.length && (
-                    <div>
-                      <h4 className="font-medium text-gray-900 mb-2">After Photos</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {workOrder.after_images.map((image, index) => (
-                          <img
-                            key={index}
-                            src={`/uploads/${image}`}
-                            alt={`After ${index + 1}`}
-                            className="w-20 h-20 object-cover rounded border"
-                          />
-                        ))}
-                      </div>
+                  {workOrder.completed_at && (
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-gray-500">Completed</p>
+                      <p className="text-sm text-gray-900 font-medium">{formatDate(workOrder.completed_at)}</p>
                     </div>
                   )}
                 </div>
               </CardContent>
             </Card>
-          )}
-        </div>
 
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Status Actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {workOrder.status !== 'In Progress' && (
-                <Button
-                  onClick={() => updateWorkOrderStatus('In Progress')}
-                  disabled={updating}
-                  className="w-full"
-                >
-                  Start Work
-                </Button>
-              )}
-              
-              {workOrder.status === 'In Progress' && (
-                <Button
-                  onClick={() => updateWorkOrderStatus('Completed')}
-                  disabled={updating}
-                  className="w-full"
-                >
-                  Mark Complete
-                </Button>
-              )}
-              
-              {workOrder.status === 'Pending' && (
-                <Button
-                  variant="secondary"
-                  onClick={() => updateWorkOrderStatus('Cancelled')}
-                  disabled={updating}
-                  className="w-full"
-                >
-                  Cancel Work Order
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Assignment */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <User className="h-5 w-5" />
-                <span>Assignment</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {workOrder.assigned_to ? (
-                <div className="flex items-center space-x-2">
-                  <User className="h-4 w-4 text-gray-500" />
-                  <span className="text-sm text-gray-900">{workOrder.assigned_to.username}</span>
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">No one assigned</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* PDF Document */}
-          {workOrder.pdf_file_path && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Documents</CardTitle>
+            {/* Location Information */}
+            <Card className="shadow-lg border-0 bg-white/80 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+                  <MapPin className="w-5 h-5 text-blue-600" />
+                  Location
+                </CardTitle>
               </CardHeader>
-              <CardContent>
-                <a
-                  href={`/uploads/${workOrder.pdf_file_path}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center space-x-2 text-blue-600 hover:text-blue-800"
-                >
-                  <FileText className="h-4 w-4" />
-                  <span className="text-sm">View PDF</span>
-                </a>
+              <CardContent className="space-y-4">
+                {workOrder.property && (
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                    <Building className="h-5 w-5 text-gray-500" />
+                    <div>
+                      <span className="text-sm font-medium text-gray-900">{workOrder.property.name}</span>
+                      <p className="text-xs text-gray-500">Property</p>
+                    </div>
+                  </div>
+                )}
+                {workOrder.room && (
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                    <MapPin className="h-5 w-5 text-gray-500" />
+                    <div className="flex-1">
+                      <span className="text-sm font-medium text-gray-900">{workOrder.room.name}</span>
+                      <p className="text-xs text-gray-500">Room</p>
+                    </div>
+                    {workOrder.room.room_type && (
+                      <Badge variant="secondary" className="text-xs">
+                        {workOrder.room.room_type}
+                      </Badge>
+                    )}
+                  </div>
+                )}
+                {workOrder.machine && (
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                    <Clock className="h-5 w-5 text-gray-500" />
+                    <div>
+                      <span className="text-sm font-medium text-gray-900">{workOrder.machine.name}</span>
+                      <p className="text-xs text-gray-500">Machine</p>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
-          )}
+
+            {/* Images */}
+            {(workOrder.before_images?.length || workOrder.after_images?.length) && (
+              <Card className="shadow-lg border-0 bg-white/80 backdrop-blur-sm">
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+                    <Eye className="w-5 h-5 text-purple-600" />
+                    Photo Documentation
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-6">
+                    {workOrder.before_images?.length && (
+                      <div>
+                        <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+                          <span className="w-2 h-2 bg-yellow-400 rounded-full"></span>
+                          Before Photos
+                        </h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          {workOrder.before_images.map((image, index) => (
+                            <div key={index} className="relative group">
+                              <img
+                                src={`/uploads/${image}`}
+                                alt={`Before ${index + 1}`}
+                                className="w-full h-24 object-cover rounded-lg border-2 border-gray-200 group-hover:border-green-300 transition-colors"
+                              />
+                              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded-lg flex items-center justify-center">
+                                <Eye className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {workOrder.after_images?.length && (
+                      <div>
+                        <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+                          <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+                          After Photos
+                        </h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          {workOrder.after_images.map((image, index) => (
+                            <div key={index} className="relative group">
+                              <img
+                                src={`/uploads/${image}`}
+                                alt={`After ${index + 1}`}
+                                className="w-full h-24 object-cover rounded-lg border-2 border-gray-200 group-hover:border-green-300 transition-colors"
+                              />
+                              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded-lg flex items-center justify-center">
+                                <Eye className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          {/* Sidebar */}
+          <div className="space-y-6">
+            {/* Status Actions */}
+            <Card className="shadow-lg border-0 bg-white/80 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900">Actions</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {workOrder.status !== 'In Progress' && (
+                  <Button
+                    onClick={() => updateWorkOrderStatus('In Progress')}
+                    disabled={updating}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <PlayCircle className="w-4 h-4 mr-2" />
+                    Start Work
+                  </Button>
+                )}
+                
+                {workOrder.status === 'In Progress' && (
+                  <Button
+                    onClick={() => updateWorkOrderStatus('Completed')}
+                    disabled={updating}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Mark Complete
+                  </Button>
+                )}
+                
+                {workOrder.status === 'Pending' && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => updateWorkOrderStatus('Cancelled')}
+                    disabled={updating}
+                    className="w-full border-red-200 text-red-600 hover:bg-red-50"
+                  >
+                    <XCircle className="w-4 h-4 mr-2" />
+                    Cancel Work Order
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Assignment */}
+            <Card className="shadow-lg border-0 bg-white/80 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+                  <User className="w-5 h-5 text-blue-600" />
+                  Assignment
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {workOrder.assigned_to ? (
+                  <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+                    <User className="h-5 w-5 text-blue-500" />
+                    <div>
+                      <span className="text-sm font-medium text-gray-900">{workOrder.assigned_to.username}</span>
+                      <p className="text-xs text-gray-500">Assigned Technician</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-4">
+                    <User className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">No one assigned</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* PDF Document */}
+            {workOrder.pdf_file_path && (
+              <Card className="shadow-lg border-0 bg-white/80 backdrop-blur-sm">
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-lg font-semibold text-gray-900">Documents</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <a
+                    href={`/uploads/${workOrder.pdf_file_path}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    <FileText className="h-5 w-5 text-blue-500" />
+                    <div>
+                      <span className="text-sm font-medium text-gray-900">View PDF</span>
+                      <p className="text-xs text-gray-500">Work order document</p>
+                    </div>
+                  </a>
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </div>
       </div>
     </div>

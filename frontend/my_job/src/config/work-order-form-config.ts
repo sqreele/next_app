@@ -95,6 +95,7 @@ export const workOrderFormSections: FormSection[] = [
     fields: [
       {
         name: 'title',
+        label: 'Work Order Title',
         type: 'text',
         required: true,
         placeholder: 'Enter work order title...',
@@ -105,6 +106,7 @@ export const workOrderFormSections: FormSection[] = [
       },
       {
         name: 'description',
+        label: 'Description',
         type: 'textarea',
         required: true,
         placeholder: 'Describe the work to be done...',

@@ -5,8 +5,11 @@ import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
 import Link from 'next/link'
+import { Eye, EyeOff, Lock, User, ArrowRight, CheckCircle } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -17,6 +20,7 @@ export default function LoginPage() {
     password: ''
   })
   
+  const [showPassword, setShowPassword] = useState(false)
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
 
   // Redirect if already authenticated
@@ -84,82 +88,157 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col justify-center items-center bg-gradient-to-br from-green-100 to-white px-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg p-8 flex flex-col items-center">
-        <div className="mb-6 flex flex-col items-center">
-          <div className="bg-green-500 rounded-full h-16 w-16 flex items-center justify-center mb-2">
-            <span className="text-2xl font-bold text-white">PMCS</span>
+    <div className="min-h-screen flex flex-col justify-center items-center bg-gradient-to-br from-green-50 via-white to-blue-50 px-4">
+      <div className="w-full max-w-md">
+        {/* Logo and Header */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl mb-4">
+            <span className="text-2xl font-bold text-white">PM</span>
           </div>
-          <h1 className="text-2xl font-semibold text-green-900">Sign in to PMCS</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome back</h1>
+          <p className="text-gray-600">Sign in to your PMCS account</p>
         </div>
-        
-        <form onSubmit={handleSubmit} className="w-full flex flex-col gap-4">
-          <div>
-            <Input
-              type="text"
-              placeholder="Username"
-              value={formData.username}
-              onChange={(e) => handleInputChange('username', e.target.value)}
-              className={validationErrors.username ? 'border-red-500' : ''}
-              disabled={loading}
-            />
-            {validationErrors.username && (
-              <p className="mt-1 text-sm text-red-600">{validationErrors.username}</p>
-            )}
-          </div>
-          
-          <div>
-            <Input
-              type="password"
-              placeholder="Password"
-              value={formData.password}
-              onChange={(e) => handleInputChange('password', e.target.value)}
-              className={validationErrors.password ? 'border-red-500' : ''}
-              disabled={loading}
-            />
-            {validationErrors.password && (
-              <p className="mt-1 text-sm text-red-600">{validationErrors.password}</p>
-            )}
-          </div>
-          
-          {error && (
-            <div className="text-sm text-red-600 text-center">
-              {typeof error === 'string'
-                ? error
-                : typeof error === 'object' && error !== null && 'msg' in error
-                  ? (error as any).msg
-                  : JSON.stringify(error)}
-            </div>
-          )}
-          
-          <Button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-green-500 text-white font-semibold py-2 rounded-lg mt-2 hover:bg-green-600 transition"
-          >
-            {loading ? (
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Signing in...
+
+        {/* Login Card */}
+        <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+          <CardHeader className="pb-6">
+            <CardTitle className="text-xl font-semibold text-center text-gray-900">
+              Sign in to PMCS
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Username Field */}
+              <div className="space-y-2">
+                <Label htmlFor="username" className="text-sm font-medium text-gray-700">
+                  Username
+                </Label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <User className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <Input
+                    id="username"
+                    type="text"
+                    placeholder="Enter your username"
+                    value={formData.username}
+                    onChange={(e) => handleInputChange('username', e.target.value)}
+                    className={`pl-10 h-12 ${validationErrors.username ? 'border-red-500 focus:border-red-500' : 'border-gray-300 focus:border-green-500'}`}
+                    disabled={loading}
+                  />
+                </div>
+                {validationErrors.username && (
+                  <p className="text-sm text-red-600 flex items-center">
+                    <span className="w-1 h-1 bg-red-500 rounded-full mr-2"></span>
+                    {validationErrors.username}
+                  </p>
+                )}
               </div>
-            ) : (
-              'Login'
-            )}
-          </Button>
-        </form>
-        
-        <div className="mt-4 text-sm text-gray-500 space-y-2">
-          <div className="text-center">
-            Forgot your password?{' '}
-            <Link href="/forgot-password" className="text-green-600 hover:text-green-500 font-medium">
-              Reset it
-            </Link>
+              
+              {/* Password Field */}
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-sm font-medium text-gray-700">
+                  Password
+                </Label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Lock className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Enter your password"
+                    value={formData.password}
+                    onChange={(e) => handleInputChange('password', e.target.value)}
+                    className={`pl-10 pr-10 h-12 ${validationErrors.password ? 'border-red-500 focus:border-red-500' : 'border-gray-300 focus:border-green-500'}`}
+                    disabled={loading}
+                  />
+                  <button
+                    type="button"
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                    ) : (
+                      <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                    )}
+                  </button>
+                </div>
+                {validationErrors.password && (
+                  <p className="text-sm text-red-600 flex items-center">
+                    <span className="w-1 h-1 bg-red-500 rounded-full mr-2"></span>
+                    {validationErrors.password}
+                  </p>
+                )}
+              </div>
+              
+              {/* Error Display */}
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <div className="flex items-center">
+                    <span className="w-2 h-2 bg-red-500 rounded-full mr-3"></span>
+                    <p className="text-sm text-red-700">
+                      {typeof error === 'string'
+                        ? error
+                        : typeof error === 'object' && error !== null && 'msg' in error
+                          ? (error as any).msg
+                          : JSON.stringify(error)}
+                    </p>
+                  </div>
+                </div>
+              )}
+              
+              {/* Submit Button */}
+              <Button
+                type="submit"
+                disabled={loading}
+                className="w-full h-12 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold rounded-lg transition-all duration-200 transform hover:scale-[1.02]"
+              >
+                {loading ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Signing in...
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    Sign in
+                    <ArrowRight className="w-4 h-4" />
+                  </div>
+                )}
+              </Button>
+            </form>
+            
+            {/* Links */}
+            <div className="mt-6 space-y-4 text-center">
+              <div className="text-sm text-gray-600">
+                <Link href="/forgot-password" className="text-green-600 hover:text-green-700 font-medium transition-colors">
+                  Forgot your password?
+                </Link>
+              </div>
+              <div className="text-sm text-gray-600">
+                Don't have an account?{' '}
+                <Link href="/register" className="text-green-600 hover:text-green-700 font-medium transition-colors">
+                  Sign up
+                </Link>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Features */}
+        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+          <div className="flex items-center justify-center space-x-2 text-sm text-gray-600">
+            <CheckCircle className="w-4 h-4 text-green-500" />
+            <span>Secure login</span>
           </div>
-          <div className="text-center">
-            Don't have an account?{' '}
-            <Link href="/register" className="text-green-600 hover:text-green-500 font-medium">
-              Sign up
-            </Link>
+          <div className="flex items-center justify-center space-x-2 text-sm text-gray-600">
+            <CheckCircle className="w-4 h-4 text-green-500" />
+            <span>24/7 support</span>
+          </div>
+          <div className="flex items-center justify-center space-x-2 text-sm text-gray-600">
+            <CheckCircle className="w-4 h-4 text-green-500" />
+            <span>Real-time updates</span>
           </div>
         </div>
       </div>

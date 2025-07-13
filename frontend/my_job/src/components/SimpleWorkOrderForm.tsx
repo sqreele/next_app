@@ -8,6 +8,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ImageUpload } from '@/components/ui/image-upload'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
+import { 
+  ClipboardDocumentListIcon, 
+  MapPinIcon, 
+  UserGroupIcon, 
+  CameraIcon,
+  ArrowLeftIcon,
+  CheckCircleIcon,
+  ExclamationTriangleIcon
+} from '@heroicons/react/24/outline'
 
 interface ImageFile {
   file: File
@@ -231,69 +240,162 @@ export function SimpleWorkOrderForm({ onSubmit, onCancel }: SimpleWorkOrderFormP
     }
   }
 
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'low': return 'text-gray-600 bg-gray-100'
+      case 'medium': return 'text-blue-600 bg-blue-100'
+      case 'high': return 'text-orange-600 bg-orange-100'
+      case 'urgent': return 'text-red-600 bg-red-100'
+      default: return 'text-gray-600 bg-gray-100'
+    }
+  }
+
   return (
-    <div className="max-w-2xl mx-auto p-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-2xl font-bold text-center">
-            Create New Work Order
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Basic Information */}
-            <div className="space-y-4">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-green-50 py-8">
+      <div className="max-w-4xl mx-auto px-4">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center gap-4 mb-4">
+            {onCancel && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onCancel}
+                className="text-gray-600 hover:text-gray-900"
+              >
+                <ArrowLeftIcon className="w-4 h-4 mr-2" />
+                Back
+              </Button>
+            )}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center">
+                <ClipboardDocumentListIcon className="w-6 h-6 text-white" />
+              </div>
               <div>
-                <Label htmlFor="title" className="font-bold">Work Order Title*</Label>
-                <Input
-                  id="title"
-                  value={formData.title}
-                  onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                  placeholder="Enter work order title"
-                  required
-                  minLength={5}
-                  maxLength={100}
-                />
+                <h1 className="text-2xl font-bold text-gray-900">Create New Work Order</h1>
+                <p className="text-gray-600">Fill in the details below to create a new work order</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-8">
+          {/* Basic Information Card */}
+          <Card className="shadow-lg border-0 bg-white/80 backdrop-blur-sm">
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+                <ClipboardDocumentListIcon className="w-5 h-5 text-green-600" />
+                Basic Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="title" className="text-sm font-medium text-gray-700">
+                    Work Order Title *
+                  </Label>
+                  <Input
+                    id="title"
+                    value={formData.title}
+                    onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                    placeholder="Enter work order title"
+                    required
+                    minLength={5}
+                    maxLength={100}
+                    className="h-11"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="assigned_to" className="text-sm font-medium text-gray-700">
+                    Assign To
+                  </Label>
+                  <Select
+                    value={formData.assigned_to.toString()}
+                    onValueChange={(value: string) => setFormData(prev => ({ ...prev, assigned_to: parseInt(value) }))}
+                  >
+                    <SelectTrigger className="h-11">
+                      <SelectValue placeholder="Select a user" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {users.map((user) => (
+                        <SelectItem key={user.id} value={user.id.toString()}>
+                          <div className="flex items-center gap-2">
+                            <UserGroupIcon className="w-4 h-4 text-gray-400" />
+                            {user.username} ({user.profile?.role || 'User'})
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              <div>
-                <Label htmlFor="description">Description *</Label>
+              <div className="space-y-2">
+                <Label htmlFor="description" className="text-sm font-medium text-gray-700">
+                  Description *
+                </Label>
                 <Textarea
                   id="description"
                   value={formData.description}
                   onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="Describe the work to be done"
+                  placeholder="Describe the work to be done..."
                   rows={4}
                   required
+                  className="resize-none"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="priority">Priority</Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="priority" className="text-sm font-medium text-gray-700">
+                    Priority
+                  </Label>
                   <Select
                     value={formData.priority}
                     onValueChange={(value: any) => setFormData(prev => ({ ...prev, priority: value }))}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-11">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="urgent">Urgent</SelectItem>
+                      <SelectItem value="low">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 bg-gray-400 rounded-full"></span>
+                          Low Priority
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="medium">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 bg-blue-400 rounded-full"></span>
+                          Medium Priority
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="high">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 bg-orange-400 rounded-full"></span>
+                          High Priority
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="urgent">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 bg-red-400 rounded-full"></span>
+                          Urgent
+                        </div>
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
-                <div>
-                  <Label htmlFor="status">Status</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="status" className="text-sm font-medium text-gray-700">
+                    Status
+                  </Label>
                   <Select
                     value={formData.status}
                     onValueChange={(value: any) => setFormData(prev => ({ ...prev, status: value }))}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-11">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -305,19 +407,27 @@ export function SimpleWorkOrderForm({ onSubmit, onCancel }: SimpleWorkOrderFormP
                   </Select>
                 </div>
               </div>
-            </div>
+            </CardContent>
+          </Card>
 
-            {/* Location Information */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Location</h3>
-              
-              <div>
-                <Label htmlFor="property">Property *</Label>
+          {/* Location Information Card */}
+          <Card className="shadow-lg border-0 bg-white/80 backdrop-blur-sm">
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+                <MapPinIcon className="w-5 h-5 text-blue-600" />
+                Location Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="property" className="text-sm font-medium text-gray-700">
+                  Property *
+                </Label>
                 <Select
                   value={formData.property_id.toString()}
                   onValueChange={handlePropertyChange}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="h-11">
                     <SelectValue placeholder="Select a property" />
                   </SelectTrigger>
                   <SelectContent>
@@ -331,13 +441,15 @@ export function SimpleWorkOrderForm({ onSubmit, onCancel }: SimpleWorkOrderFormP
               </div>
 
               {formData.property_id > 0 && (
-                <div>
-                  <Label htmlFor="room">Room</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="room" className="text-sm font-medium text-gray-700">
+                    Room
+                  </Label>
                   <Select
                     value={formData.room_id.toString()}
                     onValueChange={handleRoomChange}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-11">
                       <SelectValue placeholder="Select a room" />
                     </SelectTrigger>
                     <SelectContent>
@@ -352,13 +464,15 @@ export function SimpleWorkOrderForm({ onSubmit, onCancel }: SimpleWorkOrderFormP
               )}
 
               {formData.room_id > 0 && (
-                <div>
-                  <Label htmlFor="machine">Machine</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="machine" className="text-sm font-medium text-gray-700">
+                    Machine
+                  </Label>
                   <Select
                     value={formData.machine_id.toString()}
                     onValueChange={(value: string) => setFormData(prev => ({ ...prev, machine_id: parseInt(value) }))}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-11">
                       <SelectValue placeholder="Select a machine" />
                     </SelectTrigger>
                     <SelectContent>
@@ -371,89 +485,92 @@ export function SimpleWorkOrderForm({ onSubmit, onCancel }: SimpleWorkOrderFormP
                   </Select>
                 </div>
               )}
-            </div>
+            </CardContent>
+          </Card>
 
-            {/* Assignment */}
-            <div>
-              <Label htmlFor="assigned_to">Assign To</Label>
-              <Select
-                value={formData.assigned_to.toString()}
-                                  onValueChange={(value: string) => setFormData(prev => ({ ...prev, assigned_to: parseInt(value) }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a user" />
-                </SelectTrigger>
-                <SelectContent>
-                  {users.map((user) => (
-                    <SelectItem key={user.id} value={user.id.toString()}>
-                      {user.username} ({user.profile?.role || 'User'})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          {/* Images Card */}
+          <Card className="shadow-lg border-0 bg-white/80 backdrop-blur-sm">
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+                <CameraIcon className="w-5 h-5 text-purple-600" />
+                Photo Documentation
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700">
+                    Before Photos
+                  </Label>
+                  <ImageUpload
+                    value={formData.beforePhotos}
+                    onChange={(value: ImageFile[] | ((current: ImageFile[]) => ImageFile[])) => {
+                      if (typeof value === 'function') {
+                        setFormData(prev => ({ ...prev, beforePhotos: value(prev.beforePhotos) }))
+                      } else {
+                        setFormData(prev => ({ ...prev, beforePhotos: value }))
+                      }
+                    }}
+                    label="Before Photos"
+                    uploadType="before"
+                  />
+                </div>
 
-            {/* Images */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Images</h3>
-              
-              <div>
-                <Label>Before Photos</Label>
-                <ImageUpload
-                  value={formData.beforePhotos}
-                  onChange={(value: ImageFile[] | ((current: ImageFile[]) => ImageFile[])) => {
-                    if (typeof value === 'function') {
-                      setFormData(prev => ({ ...prev, beforePhotos: value(prev.beforePhotos) }))
-                    } else {
-                      setFormData(prev => ({ ...prev, beforePhotos: value }))
-                    }
-                  }}
-                  label="Before Photos"
-                  uploadType="before"
-                />
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700">
+                    After Photos
+                  </Label>
+                  <ImageUpload
+                    value={formData.afterPhotos}
+                    onChange={(value: ImageFile[] | ((current: ImageFile[]) => ImageFile[])) => {
+                      if (typeof value === 'function') {
+                        setFormData(prev => ({ ...prev, afterPhotos: value(prev.afterPhotos) }))
+                      } else {
+                        setFormData(prev => ({ ...prev, afterPhotos: value }))
+                      }
+                    }}
+                    label="After Photos"
+                    uploadType="after"
+                  />
+                </div>
               </div>
+            </CardContent>
+          </Card>
 
-              <div>
-                <Label>After Photos</Label>
-                <ImageUpload
-                  value={formData.afterPhotos}
-                  onChange={(value: ImageFile[] | ((current: ImageFile[]) => ImageFile[])) => {
-                    if (typeof value === 'function') {
-                      setFormData(prev => ({ ...prev, afterPhotos: value(prev.afterPhotos) }))
-                    } else {
-                      setFormData(prev => ({ ...prev, afterPhotos: value }))
-                    }
-                  }}
-                  label="After Photos"
-                  uploadType="after"
-                />
-              </div>
-            </div>
-
-            {/* Submit Buttons */}
-            <div className="flex gap-4 pt-4">
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-                className="flex-1"
-              >
-                {isSubmitting ? 'Creating...' : 'Create Work Order'}
-              </Button>
-              
-              {onCancel && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={onCancel}
-                  disabled={isSubmitting}
-                >
-                  Cancel
-                </Button>
+          {/* Submit Buttons */}
+          <div className="flex flex-col sm:flex-row gap-4 pt-6">
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              className="flex-1 h-12 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold rounded-lg transition-all duration-200 transform hover:scale-[1.02]"
+            >
+              {isSubmitting ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Creating Work Order...
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <CheckCircleIcon className="w-4 h-4" />
+                  Create Work Order
+                </div>
               )}
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+            </Button>
+            
+            {onCancel && (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={onCancel}
+                disabled={isSubmitting}
+                className="h-12"
+              >
+                Cancel
+              </Button>
+            )}
+          </div>
+        </form>
+      </div>
     </div>
   )
 } 

@@ -29,12 +29,14 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-white`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-white flex flex-col`}
       >
         <ThemeProvider>
           <AuthProvider>
             <SimpleNavigation />
-            {children}
+            <main className="flex-1 overflow-auto">
+              {children}
+            </main>
             <Toaster />
           </AuthProvider>
         </ThemeProvider>
