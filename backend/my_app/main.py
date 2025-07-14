@@ -47,7 +47,10 @@ except PermissionError:
 
 # Mount the static file directories with the correct paths
 app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
-app.mount("/static", StaticFiles(directory="Server/static"), name="static")
+def setup_static_files():
+    static_path = Path("Server/static")
+    static_path.mkdir(parents=True, exist_ok=True)
+    app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 # ------------------------------
 
 # Add Session middleware for OAuth
