@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
+from pathlib import Path  # ← ADD THIS IMPORT
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
@@ -47,10 +48,19 @@ except PermissionError:
 
 # Mount the static file directories with the correct paths
 app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
+
+# ← FIXED: Call the function and add proper error handling
 def setup_static_files():
     static_path = Path("Server/static")
-    static_path.mkdir(parents=True, exist_ok=True)
-    app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+    try:
+        static_path.mkdir(parents=True, exist_ok=True)
+        app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+        print(f"Static files mounted at: {static_path}")
+    except Exception as e:
+        print(f"Warning: Could not setup static files: {e}")
+
+# Call the function
+setup_static_files()
 # ------------------------------
 
 # Add Session middleware for OAuth
