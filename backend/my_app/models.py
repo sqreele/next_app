@@ -101,9 +101,20 @@ class Machine(Base):
     property = relationship("Property", back_populates="machines")
     room = relationship("Room", back_populates="machines")
     work_orders = relationship("WorkOrder", back_populates="machine")
+    procedures = relationship("Procedure", back_populates="machine", cascade="all, delete-orphan")
     
     def __str__(self):
         return self.name
+
+class Topic(Base):
+    __tablename__ = 'topics'
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(200), nullable=False)
+    
+    work_orders = relationship("WorkOrder", back_populates="topic")
+    
+    def __str__(self):
+        return self.title
 
 class WorkOrder(Base):
     __tablename__ = 'workorders'
@@ -124,12 +135,14 @@ class WorkOrder(Base):
     machine_id = Column(Integer, ForeignKey('machines.id'), nullable=True)
     room_id = Column(Integer, ForeignKey('rooms.id'), nullable=True)
     assigned_to_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    topic_id = Column(Integer, ForeignKey('topics.id'), nullable=True)
     
     property = relationship("Property", back_populates="work_orders")
     machine = relationship("Machine", back_populates="work_orders")
     room = relationship("Room", back_populates="work_orders")
     assigned_to = relationship("User", back_populates="work_orders_assigned")
     files = relationship("WorkOrderFile", back_populates="work_order", cascade="all, delete-orphan")
+    topic = relationship("Topic", back_populates="work_orders")
     
     before_image_path = Column(String(500), nullable=True)
     after_image_path = Column(String(500), nullable=True)
@@ -155,3 +168,14 @@ class WorkOrderFile(Base):
     
     def __str__(self):
         return f"File: {self.file_path}"
+
+class Procedure(Base):
+    __tablename__ = 'procedures'
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(200), nullable=False)
+    remark = Column(String(500), nullable=True)
+    machine_id = Column(Integer, ForeignKey('machines.id'), nullable=False)
+    machine = relationship("Machine", back_populates="procedures")
+
+    def __str__(self):
+        return self.title

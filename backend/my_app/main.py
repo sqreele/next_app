@@ -13,7 +13,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from sqladmin import Admin
 from sqlalchemy import create_engine
 from my_app.database import engine as async_engine, Base, SQLALCHEMY_DATABASE_URL
-from my_app.routers import users, properties, rooms, machines, work_orders, auth
+from my_app.routers import users, properties, rooms, machines, work_orders, auth, topic, procedure
 from my_app.connection_manager import manager
 from my_app.admin import (
     UserAdmin,
@@ -109,6 +109,8 @@ app.include_router(rooms.router, prefix="/api/v1", tags=["rooms"])
 app.include_router(machines.router, prefix="/api/v1", tags=["machines"])
 app.include_router(work_orders.router, prefix="/api/v1", tags=["work_orders"])
 app.include_router(auth.router)
+app.include_router(topic.router, prefix="/api/v1", tags=["topics"])
+app.include_router(procedure.router, prefix="/api/v1", tags=["procedures"])
 
 @app.get("/")
 async def root():

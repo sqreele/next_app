@@ -130,6 +130,19 @@ class Room(RoomBase):
     
     model_config = ConfigDict(from_attributes=True)
 
+# --- Procedure Schemas ---
+class ProcedureBase(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    remark: Optional[str] = Field(None, max_length=500)
+
+class ProcedureCreate(ProcedureBase):
+    machine_id: int
+
+class Procedure(ProcedureBase):
+    id: int
+    machine_id: int
+    model_config = ConfigDict(from_attributes=True)
+
 # --- Machine Schemas ---
 class MachineBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
@@ -147,7 +160,19 @@ class MachineUpdate(BaseModel):
 class Machine(MachineBase):
     id: int
     property_id: int
+    procedures: Optional[List[Procedure]] = Field(default_factory=list)
     
+    model_config = ConfigDict(from_attributes=True)
+
+# --- Topic Schemas ---
+class TopicBase(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+
+class TopicCreate(TopicBase):
+    pass
+
+class Topic(TopicBase):
+    id: int
     model_config = ConfigDict(from_attributes=True)
 
 # --- WorkOrder Schemas ---
@@ -168,6 +193,7 @@ class WorkOrderCreate(BaseModel):
     after_images: Optional[List[str]] = Field(default_factory=list)
     pdf_file_path: Optional[str] = Field(None, max_length=500)
     type: Literal['pm', 'issue'] = Field(...)
+    topic_id: Optional[int] = None  # <-- Added
 
     @field_validator('due_date', mode='before')
     @classmethod
@@ -261,6 +287,7 @@ class WorkOrder(BaseModel):
     after_images: Optional[List[str]] = Field(default_factory=list)
     pdf_file_path: Optional[str] = None
     type: Literal['pm', 'issue']
+    topic_id: Optional[int] = None  # <-- Added
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -271,6 +298,7 @@ class WorkOrderWithRelations(WorkOrder):
     room: Optional[Room] = None
     machine: Optional[Machine] = None
     assigned_to: Optional[UserSimple] = None
+    topic: Optional[Topic] = None  # <-- Added
 
 # --- WorkOrderFile Schemas ---
 class WorkOrderFileBase(BaseModel):

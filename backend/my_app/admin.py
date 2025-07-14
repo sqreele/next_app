@@ -1,5 +1,5 @@
 from sqladmin import ModelView
-from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile
+from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile, Topic, Procedure
 from markupsafe import Markup
 from sqlalchemy.orm import selectinload
 
@@ -171,6 +171,15 @@ class RoomAdmin(ModelView, model=Room):
     name_plural = "Rooms"
     icon = "fa-solid fa-door-open"
 
+class ProcedureAdmin(ModelView, model=Procedure):
+    column_list = [Procedure.id, Procedure.title, Procedure.remark, Procedure.machine_id]
+    form_columns = [Procedure.title, Procedure.remark, Procedure.machine_id]
+    column_searchable_list = [Procedure.title, Procedure.remark]
+    column_sortable_list = [Procedure.id, Procedure.title, Procedure.machine_id]
+    name = "Procedure"
+    name_plural = "Procedures"
+    icon = "fa-solid fa-list"
+
 class MachineAdmin(ModelView, model=Machine):
     column_list = [
         Machine.id, 
@@ -179,17 +188,18 @@ class MachineAdmin(ModelView, model=Machine):
         "property.name", 
         "room.name",
         "has_pm",
-        "has_issue"
+        "has_issue",
+        "procedures"
     ]
     form_columns = [
         Machine.property,
         Machine.name,
         Machine.status,
         Machine.room,
+        Machine.procedures
     ]
     column_searchable_list = [Machine.name, Machine.status]
     column_sortable_list = [Machine.id, Machine.name, Machine.status]
-
     form_args = {
         'property': {
             'label': 'Property (Required)',
@@ -207,15 +217,18 @@ class MachineAdmin(ModelView, model=Machine):
             'label': 'Room (Optional)',
             'description': 'Select a room if the machine is located in a specific room'
         },
+        'procedures': {
+            'label': 'Procedures',
+            'description': 'Procedures related to this machine'
+        },
     }
-
     name = "Machine"
     name_plural = "Machines"
     icon = "fa-solid fa-robot"
-
     column_labels = {
         "has_pm": "Has PM",
         "has_issue": "Has Issue",
+        "procedures": "Procedures"
     }
 
     def get_query(self, request):
@@ -235,6 +248,7 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         'before_images',
         'after_images',
         WorkOrder.pdf_file_path,
+        WorkOrder.topic_id,
     ]
     
     # Add custom CSS for better image display
@@ -277,6 +291,7 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         WorkOrder.room_id,
         WorkOrder.assigned_to_id,
         WorkOrder.pdf_file_path,
+        WorkOrder.topic_id,
     ]
     
     column_searchable_list = [
@@ -433,3 +448,12 @@ class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
     name = "Work Order File"
     name_plural = "Work Order Files"
     icon = "fa-solid fa-file"
+
+class TopicAdmin(ModelView, model=Topic):
+    column_list = [Topic.id, Topic.title]
+    form_columns = [Topic.title]
+    column_searchable_list = [Topic.title]
+    column_sortable_list = [Topic.id, Topic.title]
+    name = "Topic"
+    name_plural = "Topics"
+    icon = "fa-solid fa-tag"
