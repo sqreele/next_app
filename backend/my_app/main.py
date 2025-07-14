@@ -22,7 +22,9 @@ from my_app.admin import (
     RoomAdmin,
     MachineAdmin,
     WorkOrderAdmin,
-    WorkOrderFileAdmin
+    WorkOrderFileAdmin,
+    TopicAdmin,
+    ProcedureAdmin
 )
 from fastapi.staticfiles import StaticFiles
 
@@ -93,6 +95,8 @@ admin.add_view(RoomAdmin)
 admin.add_view(MachineAdmin)
 admin.add_view(WorkOrderAdmin)
 admin.add_view(WorkOrderFileAdmin)
+admin.add_view(TopicAdmin)
+admin.add_view(ProcedureAdmin)
 
 async def create_db_and_tables():
     async with async_engine.begin() as conn:
