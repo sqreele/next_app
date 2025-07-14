@@ -27,14 +27,14 @@ const initialFormData = {
   location: '',
   assignedTo: '',
   priority: '',
-  status: '',
-  has_pm: false,        // Add this
-  has_issue: false,     // Add this
+  "type": "pm",
   recurring: false,
   recurringFrequency: '',
   beforePhotos: [],
   afterPhotos: [],
   attachments: [],
+  topic_id: '',         // Add topic_id
+    // Add procedure_id
 }
 
 export function CreateWorkOrderForm() {
@@ -336,6 +336,7 @@ export function CreateWorkOrderForm() {
         property_id: numericPropertyId!,
         has_pm: formData.has_pm || false,           
         has_issue: formData.has_issue || false, 
+        topic_id: formData.topic_id ? Number(formData.topic_id) : undefined, // Add topic_id
       }
 
       console.log('📋 === ACTUAL REQUEST DATA ===')
