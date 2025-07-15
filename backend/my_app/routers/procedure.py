@@ -140,3 +140,165 @@ async def get_available_machines(db: AsyncSession = Depends(dependencies.get_db)
     result = await db.execute(select(models.Machine))
     machines = result.scalars().all()
     return machines
+# In backend/my_app/routers/procedure.py - Add this endpoint
+
+@router.post("/executions/{execution_id}/upload_image")
+async def upload_procedure_execution_image(
+    execution_id: int,
+    file: UploadFile = File(...),
+    upload_type: str = Form("before"),  # "before" or "after"
+    db: AsyncSession = Depends(dependencies.get_db)
+):
+    """Upload image for procedure execution"""
+    
+    # Verify execution exists
+    execution = await db.get(models.ProcedureExecution, execution_id)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Procedure execution not found")
+    
+    try:
+        # Validate file type
+        if not file.content_type or not file.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        
+        # Save and resize the uploaded file
+        from ..utils.image_utils import save_uploaded_file, get_image_url
+        relative_path = await save_uploaded_file(file, f"procedure_execution/{upload_type}")
+        
+        # Get full URL
+        full_url = await get_image_url(relative_path)
+        
+        # Update the execution with the new image path
+        if upload_type == "before":
+            if not execution.before_images:
+                execution.before_images = []
+            execution.before_images.append(relative_path)
+        else:  # after
+            if not execution.after_images:
+                execution.after_images = []
+            execution.after_images.append(relative_path)
+        
+        # Mark as modified for SQLAlchemy
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(execution, 'before_images' if upload_type == "before" else 'after_images')
+        
+        await db.commit()
+        await db.refresh(execution)
+        
+        return {
+            "file_path": relative_path,
+            "url": full_url,
+            "message": f"{upload_type.title()} image uploaded successfully",
+            "execution_id": execution_id,
+            "total_images": len(execution.before_images if upload_type == "before" else execution.after_images)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+# In backend/my_app/routers/procedure.py
+
+@router.post("/executions/{execution_id}/upload_images")
+async def upload_multiple_procedure_execution_images(
+    execution_id: int,
+    files: List[UploadFile] = File(...),
+    upload_type: str = Form("before"),  # "before" or "after"
+    db: AsyncSession = Depends(dependencies.get_db)
+):
+    """Upload multiple images for procedure execution"""
+    
+    # Verify execution exists
+    execution = await db.get(models.ProcedureExecution, execution_id)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Procedure execution not found")
+    
+    uploaded_files = []
+    errors = []
+    
+    for file in files:
+        try:
+            # Validate file type
+            if not file.content_type or not file.content_type.startswith('image/'):
+                errors.append(f"{file.filename}: Not an image file")
+                continue
+            
+            # Save and resize the uploaded file
+            from ..utils.image_utils import save_uploaded_file, get_image_url
+            relative_path = await save_uploaded_file(file, f"procedure_execution/{upload_type}")
+            full_url = await get_image_url(relative_path)
+            
+            uploaded_files.append({
+                "filename": file.filename,
+                "file_path": relative_path,
+                "url": full_url
+            })
+            
+            # Update the execution with the new image path
+            if upload_type == "before":
+                if not execution.before_images:
+                    execution.before_images = []
+                execution.before_images.append(relative_path)
+            else:  # after
+                if not execution.after_images:
+                    execution.after_images = []
+                execution.after_images.append(relative_path)
+                
+        except Exception as e:
+            errors.append(f"{file.filename}: {str(e)}")
+    
+    if uploaded_files:
+        # Mark as modified for SQLAlchemy
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(execution, 'before_images' if upload_type == "before" else 'after_images')
+        
+        await db.commit()
+        await db.refresh(execution)
+    
+    return {
+        "uploaded_files": uploaded_files,
+        "errors": errors,
+        "total_uploaded": len(uploaded_files),
+        "execution_id": execution_id,
+        "total_images": len(execution.before_images if upload_type == "before" else execution.after_images)
+    }
+ # In backend/my_app/routers/procedure.py
+
+@router.delete("/executions/{execution_id}/images")
+async def delete_procedure_execution_image(
+    execution_id: int,
+    image_path: str,
+    upload_type: str,  # "before" or "after"
+    db: AsyncSession = Depends(dependencies.get_db)
+):
+    """Delete an image from procedure execution"""
+    
+    execution = await db.get(models.ProcedureExecution, execution_id)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Procedure execution not found")
+    
+    try:
+        if upload_type == "before":
+            if execution.before_images and image_path in execution.before_images:
+                execution.before_images.remove(image_path)
+                flag_modified(execution, 'before_images')
+            else:
+                raise HTTPException(status_code=404, detail="Image not found in before images")
+        else:  # after
+            if execution.after_images and image_path in execution.after_images:
+                execution.after_images.remove(image_path)
+                flag_modified(execution, 'after_images')
+            else:
+                raise HTTPException(status_code=404, detail="Image not found in after images")
+        
+        await db.commit()
+        
+        # Optionally delete the physical file
+        import os
+        file_path = f"/app/uploads/{image_path}"
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        
+        return {"message": "Image deleted successfully"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)}")       
+    

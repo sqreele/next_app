@@ -187,3 +187,55 @@ def calculate_next_due_date(last_date: date, frequency: str) -> Optional[date]:
     elif frequency == "Yearly":
         return last_date.replace(year=last_date.year + 1)
     return None
+# In backend/my_app/routers/calendar.py - Update the existing endpoint
+
+@router.put("/procedure-executions/{execution_id}", response_model=schemas.ProcedureExecutionWithDetails)
+async def update_procedure_execution(
+    execution_id: int,
+    execution_update: schemas.ProcedureExecutionUpdate,
+    db: AsyncSession = Depends(dependencies.get_db)
+):
+    """Update procedure execution (mark as completed, add images, etc.)"""
+    db_execution = await db.get(models.ProcedureExecution, execution_id)
+    if not db_execution:
+        raise HTTPException(status_code=404, detail="Procedure execution not found")
+    
+    update_data = execution_update.model_dump(exclude_unset=True)
+    
+    # Handle image arrays properly
+    for field, value in update_data.items():
+        if field in ['before_images', 'after_images'] and value is not None:
+            # Ensure we're working with a list
+            if not isinstance(value, list):
+                value = [value] if value else []
+            setattr(db_execution, field, value)
+            # Mark as modified for SQLAlchemy JSONB
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(db_execution, field)
+        else:
+            setattr(db_execution, field, value)
+    
+    # If marking as completed, update procedure's last_completed_date
+    if execution_update.status == 'Completed' and execution_update.completed_date:
+        procedure = await db.get(models.Procedure, db_execution.procedure_id)
+        if procedure:
+            procedure.last_completed_date = execution_update.completed_date
+            # Calculate next due date based on frequency
+            if procedure.frequency and execution_update.completed_date:
+                next_due = calculate_next_due_date(execution_update.completed_date, procedure.frequency)
+                procedure.next_due_date = next_due
+    
+    await db.commit()
+    await db.refresh(db_execution)
+    
+    # Load with relationships
+    result = await db.execute(
+        select(models.ProcedureExecution)
+        .options(
+            selectinload(models.ProcedureExecution.procedure).selectinload(models.Procedure.machine),
+            selectinload(models.ProcedureExecution.assigned_to),
+            selectinload(models.ProcedureExecution.completed_by)
+        )
+        .filter(models.ProcedureExecution.id == execution_id)
+    )
+    return result.scalars().first()
