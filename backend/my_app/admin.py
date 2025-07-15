@@ -77,50 +77,43 @@ class MachineAdmin(ModelView, model=Machine):
 
 # *** ULTRA-SIMPLE PROCEDURE ADMIN ***
 class ProcedureAdmin(ModelView, model=Procedure):
-    column_list = [Procedure.id, Procedure.title, Procedure.remark, "machine.name"]
-    form_columns = [Procedure.machine_id, Procedure.title, Procedure.remark]
-    column_searchable_list = [Procedure.title, Procedure.remark]
-    column_sortable_list = [Procedure.id, Procedure.title, Procedure.machine_id]
+    column_list = [Procedure.id, Procedure.title, Procedure.remark, Procedure.frequency, "machine_name"]
+    form_columns = ["machine", "title", "remark", "frequency"]
+    column_searchable_list = [Procedure.title, Procedure.remark, Procedure.frequency]
+    column_sortable_list = [Procedure.id, Procedure.title, Procedure.machine_id, Procedure.frequency]
+    
+    # Add formatters to control display
+    column_formatters = {
+        'title': lambda m, a: (m.title[:50] + '...') if m.title and len(m.title) > 50 else m.title,
+        'remark': lambda m, a: (m.remark[:30] + '...') if m.remark and len(m.remark) > 30 else m.remark,
+    }
+    
+    column_labels = {
+        'id': 'ID',
+        'title': 'Title',
+        'remark': 'Remark', 
+        'frequency': 'Frequency',
+        'machine_name': 'Machine Name',
+        'machine': 'Machine'
+    }
     
     def get_query(self, request):
         return super().get_query(request).options(selectinload(Procedure.machine))
     
-    # *** SIMPLE OVERRIDE WITH DEBUGGING ***
-    async def insert_model(self, request, data):
-        print(f"\n🔍 === PROCEDURE ADMIN DEBUG ===")
-        print(f"🔍 Data received: {data}")
-        print(f"🔍 Data type: {type(data)}")
-        
-        if hasattr(data, 'items'):
-            for key, value in data.items():
-                print(f"🔍 {key}: {repr(value)} (type: {type(value)})")
-        
-        # Check if machine_id is None or empty
-        machine_id = data.get('machine_id')
-        print(f"🔍 machine_id value: {repr(machine_id)}")
-        
-        if machine_id is None or machine_id == '' or str(machine_id).lower() == 'none':
-            print(f"❌ Machine ID is invalid: {machine_id}")
-            raise ValueError("Machine is required. Please select a machine from the dropdown.")
-        
-        print(f"✅ Calling parent insert_model with data: {data}")
-        return await super().insert_model(request, data)
-    
     name = "Procedure"
     name_plural = "Procedures"
     icon = "fa-solid fa-list"
-
 class WorkOrderAdmin(ModelView, model=WorkOrder):
     column_list = [WorkOrder.id, WorkOrder.task, WorkOrder.status, WorkOrder.priority, WorkOrder.due_date, 
                    WorkOrder.property_id, WorkOrder.machine_id, WorkOrder.room_id, WorkOrder.assigned_to,
-                   'before_images', 'after_images', WorkOrder.pdf_file_path, WorkOrder.topic_id]
+                   'before_images', 'after_images', WorkOrder.pdf_file_path, WorkOrder.topic_id, WorkOrder.frequency]
     
     form_columns = [WorkOrder.property_id, WorkOrder.task, WorkOrder.description, WorkOrder.status, 
                     WorkOrder.priority, WorkOrder.due_date, WorkOrder.machine_id, WorkOrder.room_id, 
-                    WorkOrder.assigned_to_id, WorkOrder.pdf_file_path, WorkOrder.topic_id]
+                    WorkOrder.assigned_to_id, WorkOrder.pdf_file_path, WorkOrder.topic_id, WorkOrder.frequency]
     
-    column_searchable_list = [WorkOrder.task, WorkOrder.description, WorkOrder.status, WorkOrder.priority]
-    column_sortable_list = [WorkOrder.id, WorkOrder.task, WorkOrder.status, WorkOrder.priority, WorkOrder.due_date, WorkOrder.created_at]
+    column_searchable_list = [WorkOrder.task, WorkOrder.description, WorkOrder.status, WorkOrder.priority, WorkOrder.frequency]
+    column_sortable_list = [WorkOrder.id, WorkOrder.task, WorkOrder.status, WorkOrder.priority, WorkOrder.due_date, WorkOrder.created_at, WorkOrder.frequency]
     
     column_formatters = {
         'before_images': lambda m, a: format_image_array(m, 'before_images'),

@@ -134,16 +134,17 @@ class Room(RoomBase):
 class ProcedureBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     remark: Optional[str] = Field(None, max_length=500)
+    frequency: Optional[str] = Field(None, max_length=50)
 
 class ProcedureCreate(ProcedureBase):
-    machine_id: int = Field(..., gt=0, description="Machine ID is required")
+    machine_id: Optional[int] = Field(None, gt=0, description="Machine ID (optional)")
     
-    @field_validator('machine_id')
+    @field_validator('machine_id', mode='before')
     @classmethod
     def validate_machine_id(cls, v):
-        if v is None:
-            raise ValueError('machine_id is required')
-        if v <= 0:
+        if v in (None, '', 0):
+            return None
+        if v is not None and v <= 0:
             raise ValueError('machine_id must be greater than 0')
         return v
 
@@ -151,10 +152,20 @@ class ProcedureUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=200)
     remark: Optional[str] = Field(None, max_length=500)
     machine_id: Optional[int] = Field(None, gt=0)
+    frequency: Optional[str] = Field(None, max_length=50)
+
+    @field_validator('machine_id', mode='before')
+    @classmethod
+    def validate_machine_id(cls, v):
+        if v in (None, '', 0):
+            return None
+        if v is not None and v <= 0:
+            raise ValueError('machine_id must be greater than 0')
+        return v
 
 class Procedure(ProcedureBase):
     id: int
-    machine_id: int
+    machine_id: Optional[int] = None
     model_config = ConfigDict(from_attributes=True)
 
 # Forward declaration for Machine
@@ -226,6 +237,7 @@ class WorkOrderCreate(BaseModel):
     pdf_file_path: Optional[str] = Field(None, max_length=500)
     type: Literal['pm', 'issue'] = Field(...)
     topic_id: Optional[int] = None
+    frequency: Optional[str] = Field(None, max_length=50)
 
     @field_validator('due_date', mode='before')
     @classmethod
@@ -270,6 +282,7 @@ class WorkOrderUpdate(BaseModel):
     after_images: Optional[List[str]] = Field(default_factory=list)
     pdf_file_path: Optional[str] = Field(None, max_length=500)
     type: Optional[Literal['pm', 'issue']] = None
+    frequency: Optional[str] = Field(None, max_length=50)
 
     @field_validator('due_date', mode='before')
     @classmethod
@@ -317,6 +330,7 @@ class WorkOrder(BaseModel):
     pdf_file_path: Optional[str] = None
     type: Literal['pm', 'issue']
     topic_id: Optional[int] = None
+    frequency: Optional[str] = Field(None, max_length=50)
     
     model_config = ConfigDict(from_attributes=True)
 

@@ -171,11 +171,19 @@ class Procedure(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(200), nullable=False)
     remark = Column(String(500), nullable=True)
-    machine_id = Column(Integer, ForeignKey('machines.id'), nullable=False)
+    machine_id = Column(Integer, ForeignKey('machines.id'), nullable=True)
     frequency = Column(String(50), nullable=True, index=True)
     
     # Add the back relationship
     machine = relationship("Machine", back_populates="procedures")
 
+    @property
+    def machine_name(self):
+        try:
+            return self.machine.name if self.machine else "No machine"
+        except Exception:
+            return "No machine"
+
     def __str__(self):
-        return f"{self.title} (Machine: {self.machine.name if self.machine else 'Unknown'})"
+        # Use the machine_name property instead of accessing the relationship directly
+        return f"{self.title} (Machine ID: {self.machine_id}, Machine: {self.machine_name})"

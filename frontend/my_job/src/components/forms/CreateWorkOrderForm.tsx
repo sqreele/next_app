@@ -7,6 +7,7 @@ import { useMachineStore } from '@/stores/machines-store'
 import { useRoomStore } from '@/stores/rooms-store'
 import { useTechnicianStore } from '@/stores/technicians-store'
 import { useAuthStore } from '@/stores/auth-store'
+import { useTopicsStore } from '@/stores/topics-store'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -45,6 +46,13 @@ export function CreateWorkOrderForm() {
   const { getActiveRooms } = useRoomStore()
   const { getAvailableTechnicians } = useTechnicianStore()
   const { user } = useAuthStore.getState()
+  const { topics, fetchTopics, loading: topicsLoading, error: topicsError } = useTopicsStore()
+
+  useEffect(() => {
+    if (topics.length === 0 && !topicsLoading) {
+      fetchTopics()
+    }
+  }, [topics.length, topicsLoading, fetchTopics])
 
   const {
     formData,
@@ -434,13 +442,15 @@ export function CreateWorkOrderForm() {
         }))
         
       case 'topic_id':
+        if (topicsLoading) {
+          return [{ value: '', label: 'Loading topics...' }]
+        }
+        if (topicsError) {
+          return [{ value: '', label: 'Failed to load topics' }]
+        }
         return [
           { value: '', label: 'No Topic Selected' },
-          { value: '1', label: 'HVAC System' },
-          { value: '2', label: 'Electrical' },
-          { value: '3', label: 'Plumbing' },
-          { value: '4', label: 'Safety Equipment' },
-          { value: '5', label: 'General Maintenance' },
+          ...topics.map(topic => ({ value: topic.id.toString(), label: topic.title }))
         ]
       default:
         return []
