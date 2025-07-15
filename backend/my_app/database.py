@@ -1,11 +1,12 @@
 # ==============================================================================
-# File: backend/my_app/database.py (Corrected)
-# Description: Configures the asynchronous database connection and Base model.
+# File: backend/my_app/database.py (Updated with sync engine for SQLAdmin)
+# Description: Configures both async and sync database connections.
 # ==============================================================================
 import os
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import create_engine
 
 # Load environment variables
 load_dotenv()
@@ -20,12 +21,19 @@ DB_PORT = os.getenv('DB_PORT', '5432')
 DB_NAME = os.getenv('DB_NAME', 'fullstack_db')
 
 SQLALCHEMY_DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+SQLALCHEMY_SYNC_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-# Use create_async_engine for async support
+# Async engine for FastAPI
 engine = create_async_engine(
     SQLALCHEMY_DATABASE_URL, 
     echo=True,
     future=True
+)
+
+# Sync engine for SQLAdmin
+sync_engine = create_engine(
+    SQLALCHEMY_SYNC_DATABASE_URL,
+    echo=True
 )
 
 # Use AsyncSession for the sessionmaker
