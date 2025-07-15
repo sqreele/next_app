@@ -2,13 +2,13 @@
 # File: backend/my_app/routers/procedure.py (Complete procedure-machine API)
 # Description: Full CRUD operations for procedures with machine relationships
 # ==============================================================================
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from .. import schemas, models, dependencies, crud
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-
+import os 
 router = APIRouter(prefix="/procedures", tags=["procedures"])
 
 @router.get("/", response_model=List[schemas.ProcedureWithMachine])
@@ -276,6 +276,8 @@ async def delete_procedure_execution_image(
         raise HTTPException(status_code=404, detail="Procedure execution not found")
     
     try:
+        from sqlalchemy.orm.attributes import flag_modified
+        
         if upload_type == "before":
             if execution.before_images and image_path in execution.before_images:
                 execution.before_images.remove(image_path)
@@ -292,7 +294,6 @@ async def delete_procedure_execution_image(
         await db.commit()
         
         # Optionally delete the physical file
-        import os
         file_path = f"/app/uploads/{image_path}"
         if os.path.exists(file_path):
             os.remove(file_path)
@@ -300,5 +301,5 @@ async def delete_procedure_execution_image(
         return {"message": "Image deleted successfully"}
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)}")       
+        raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)}")   
     

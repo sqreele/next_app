@@ -18,7 +18,14 @@ async def save_uploaded_file(
     file_extension = file.filename.split('.')[-1].lower() if file.filename else 'jpg'
     random_name = f"{uuid.uuid4()}.{file_extension}"
     
-    upload_dir = Path("uploads") / upload_type
+    # Handle procedure execution uploads
+    if upload_type.startswith("procedure_execution/"):
+        # Split path like "procedure_execution/before" into ["procedure_execution", "before"]
+        path_parts = upload_type.split("/")
+        upload_dir = Path("uploads") / path_parts[0] / path_parts[1]
+    else:
+        upload_dir = Path("uploads") / upload_type
+        
     upload_dir.mkdir(parents=True, exist_ok=True)
     file_path = upload_dir / random_name
     
@@ -42,7 +49,12 @@ async def save_uploaded_file(
         raise e
     
     # Return relative path for database storage
-    relative_path = f"{upload_type}/{random_name}"
+    if upload_type.startswith("procedure_execution/"):
+        path_parts = upload_type.split("/")
+        relative_path = f"{path_parts[0]}/{path_parts[1]}/{random_name}"
+    else:
+        relative_path = f"{upload_type}/{random_name}"
+    
     return relative_path
 
 def _resize_image(image_bytes: bytes, max_size: Tuple[int, int], quality: int) -> bytes:
