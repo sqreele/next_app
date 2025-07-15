@@ -1,5 +1,5 @@
 # ==============================================================================
-# File: backend/my_app/crud.py (Fixed with proper async loading)
+# File: backend/my_app/crud.py (Updated with procedure CRUD operations)
 # Description: Fully asynchronous CRUD operations with proper relationship loading.
 # ==============================================================================
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,9 +58,8 @@ async def create_user(db: AsyncSession, user: schemas.UserCreate):
         hashed_password=hashed_password
     )
     db.add(db_user)
-    await db.flush()  # Get db_user.id before commit
+    await db.flush()
 
-    # Create profile if provided
     if user.profile:
         db_profile = models.UserProfile(
             user_id=db_user.id,
@@ -68,9 +67,8 @@ async def create_user(db: AsyncSession, user: schemas.UserCreate):
             position=user.profile.position
         )
         db.add(db_profile)
-        await db.flush()  # Get profile ID
+        await db.flush()
 
-        # Add properties if provided
         if user.profile.property_ids:
             properties = await db.execute(
                 select(models.Property).where(models.Property.id.in_(user.profile.property_ids))
@@ -80,7 +78,6 @@ async def create_user(db: AsyncSession, user: schemas.UserCreate):
 
     await db.commit()
     
-    # Reload user with all relationships
     result = await db.execute(
         select(models.User)
         .options(
@@ -128,7 +125,12 @@ async def create_room(db: AsyncSession, room: schemas.RoomCreate, property_id: i
 
 # --- Machine CRUD ---
 async def get_machines(db: AsyncSession, skip: int = 0, limit: int = 100):
-    result = await db.execute(select(models.Machine).offset(skip).limit(limit))
+    result = await db.execute(
+        select(models.Machine)
+        .options(selectinload(models.Machine.work_orders))
+        .offset(skip)
+        .limit(limit)
+    )
     return result.scalars().all()
 
 async def create_machine(db: AsyncSession, machine: schemas.MachineCreate, property_id: int):
@@ -137,6 +139,130 @@ async def create_machine(db: AsyncSession, machine: schemas.MachineCreate, prope
     await db.commit()
     await db.refresh(db_machine)
     return db_machine
+
+async def get_machines_by_property(db: AsyncSession, property_id: int, skip: int = 0, limit: int = 100):
+    result = await db.execute(
+        select(models.Machine)
+        .options(selectinload(models.Machine.work_orders))
+        .filter(models.Machine.property_id == property_id)
+        .offset(skip)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+async def get_machine(db: AsyncSession, machine_id: int):
+    result = await db.execute(
+        select(models.Machine)
+        .options(selectinload(models.Machine.work_orders))
+        .filter(models.Machine.id == machine_id)
+    )
+    return result.scalars().first()
+
+async def get_machine_with_procedures(db: AsyncSession, machine_id: int):
+    """Get machine with all its procedures"""
+    result = await db.execute(
+        select(models.Machine)
+        .options(selectinload(models.Machine.procedures))
+        .filter(models.Machine.id == machine_id)
+    )
+    return result.scalars().first()
+
+# --- Procedure CRUD ---
+async def get_procedures(db: AsyncSession, skip: int = 0, limit: int = 100):
+    """Get all procedures"""
+    result = await db.execute(
+        select(models.Procedure)
+        .offset(skip)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+async def get_procedures_with_machines(db: AsyncSession, skip: int = 0, limit: int = 100):
+    """Get all procedures with their machine details"""
+    result = await db.execute(
+        select(models.Procedure)
+        .options(selectinload(models.Procedure.machine))
+        .offset(skip)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+async def get_procedure(db: AsyncSession, procedure_id: int):
+    """Get a single procedure by ID"""
+    result = await db.execute(
+        select(models.Procedure)
+        .options(selectinload(models.Procedure.machine))
+        .filter(models.Procedure.id == procedure_id)
+    )
+    return result.scalars().first()
+
+async def get_procedures_by_machine(db: AsyncSession, machine_id: int):
+    """Get all procedures for a specific machine"""
+    result = await db.execute(
+        select(models.Procedure)
+        .options(selectinload(models.Procedure.machine))
+        .filter(models.Procedure.machine_id == machine_id)
+    )
+    return result.scalars().all()
+
+async def create_procedure_for_machine(db: AsyncSession, procedure: schemas.ProcedureCreate):
+    """Create a procedure and link it to a machine"""
+    # Verify the machine exists
+    machine = await db.get(models.Machine, procedure.machine_id)
+    if not machine:
+        return None
+    
+    db_procedure = models.Procedure(
+        title=procedure.title,
+        remark=procedure.remark,
+        machine_id=procedure.machine_id
+    )
+    db.add(db_procedure)
+    await db.commit()
+    await db.refresh(db_procedure)
+    
+    # Reload with machine relationship
+    result = await db.execute(
+        select(models.Procedure)
+        .options(selectinload(models.Procedure.machine))
+        .filter(models.Procedure.id == db_procedure.id)
+    )
+    return result.scalars().first()
+
+async def update_procedure(db: AsyncSession, procedure_id: int, procedure: schemas.ProcedureCreate):
+    """Update a procedure"""
+    # Verify the machine exists
+    machine = await db.get(models.Machine, procedure.machine_id)
+    if not machine:
+        return None
+    
+    db_procedure = await db.get(models.Procedure, procedure_id)
+    if not db_procedure:
+        return None
+    
+    db_procedure.title = procedure.title
+    db_procedure.remark = procedure.remark
+    db_procedure.machine_id = procedure.machine_id
+    await db.commit()
+    await db.refresh(db_procedure)
+    
+    # Reload with machine relationship
+    result = await db.execute(
+        select(models.Procedure)
+        .options(selectinload(models.Procedure.machine))
+        .filter(models.Procedure.id == procedure_id)
+    )
+    return result.scalars().first()
+
+async def delete_procedure(db: AsyncSession, procedure_id: int):
+    """Delete a procedure"""
+    db_procedure = await db.get(models.Procedure, procedure_id)
+    if not db_procedure:
+        return None
+    
+    await db.delete(db_procedure)
+    await db.commit()
+    return db_procedure
 
 # --- WorkOrder CRUD ---
 async def get_work_orders(db: AsyncSession, skip: int = 0, limit: int = 100):
@@ -175,10 +301,8 @@ async def create_work_order(db: AsyncSession, work_order: schemas.WorkOrderCreat
     print(f"   - After images array: {work_order.after_images}")
     print(f"   - PDF file path: '{work_order.pdf_file_path}'")
     
-    # Convert to dict and handle None values properly
     work_order_data = work_order.model_dump()
     
-    # Ensure image paths are handled correctly
     if work_order_data.get('before_image_path') == "":
         work_order_data['before_image_path'] = None
     if work_order_data.get('after_image_path') == "":
@@ -202,7 +326,6 @@ async def create_work_order(db: AsyncSession, work_order: schemas.WorkOrderCreat
     print(f"   - After image path: '{db_work_order.after_image_path}'")
     print(f"   - PDF file path: '{db_work_order.pdf_file_path}'")
     
-    # Reload with all relationships
     result = await db.execute(
         select(models.WorkOrder)
         .options(
@@ -224,7 +347,6 @@ async def update_work_order(db: AsyncSession, work_order_id: int, work_order: sc
         await db.commit()
         await db.refresh(db_work_order)
         
-        # Reload with all relationships
         result = await db.execute(
             select(models.WorkOrder)
             .options(
@@ -243,14 +365,12 @@ async def patch_work_order(db: AsyncSession, work_order_id: int, work_order_upda
     result = await db.execute(select(models.WorkOrder).filter(models.WorkOrder.id == work_order_id))
     db_work_order = result.scalars().first()
     if db_work_order:
-        # Only update fields that are provided (not None)
         update_data = work_order_update.model_dump(exclude_unset=True)
         for key, value in update_data.items():
             setattr(db_work_order, key, value)
         await db.commit()
         await db.refresh(db_work_order)
         
-        # Reload with all relationships
         result = await db.execute(
             select(models.WorkOrder)
             .options(
@@ -272,15 +392,6 @@ async def delete_work_order(db: AsyncSession, work_order_id: int):
         await db.commit()
     return db_work_order
 
-async def get_machines_by_property(db: AsyncSession, property_id: int, skip: int = 0, limit: int = 100):
-    result = await db.execute(
-        select(models.Machine)
-        .filter(models.Machine.property_id == property_id)
-        .offset(skip)
-        .limit(limit)
-    )
-    return result.scalars().all()
-
 async def create_work_order_file(db: AsyncSession, file: schemas.WorkOrderFileCreate):
     db_file = models.WorkOrderFile(**file.dict())
     db.add(db_file)
@@ -293,36 +404,3 @@ async def update_user_password(db: AsyncSession, user: models.User, new_password
     user.hashed_password = get_password_hash(new_password)
     await db.commit()
     return user
-async def get_machine(db: AsyncSession, machine_id: int):
-    result = await db.execute(
-        select(models.Machine).filter(models.Machine.id == machine_id)
-    )
-    return result.scalars().first()
-from sqlalchemy.orm import selectinload
-
-async def get_machines(db: AsyncSession, skip: int = 0, limit: int = 100):
-    result = await db.execute(
-        select(models.Machine)
-        .options(selectinload(models.Machine.work_orders))
-        .offset(skip)
-        .limit(limit)
-    )
-    return result.scalars().all()
-
-async def get_machines_by_property(db: AsyncSession, property_id: int, skip: int = 0, limit: int = 100):
-    result = await db.execute(
-        select(models.Machine)
-        .options(selectinload(models.Machine.work_orders))
-        .filter(models.Machine.property_id == property_id)
-        .offset(skip)
-        .limit(limit)
-    )
-    return result.scalars().all()
-
-async def get_machine(db: AsyncSession, machine_id: int):
-    result = await db.execute(
-        select(models.Machine)
-        .options(selectinload(models.Machine.work_orders))
-        .filter(models.Machine.id == machine_id)
-    )
-    return result.scalars().first()
