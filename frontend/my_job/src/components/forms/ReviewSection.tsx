@@ -10,12 +10,14 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   WrenchScrewdriverIcon,
+  DocumentIcon,
 } from '@heroicons/react/24/outline'
 
 interface ReviewSectionProps {
   formData: any
   activeRooms: any[]
   availableTechnicians: any[]
+  operationalMachines: any[]
   getUploadedImageUrls: (fieldName: string) => string[]
   uploadStatus: {
     total: number
@@ -30,31 +32,57 @@ export function ReviewSection({
   formData, 
   activeRooms, 
   availableTechnicians,
+  operationalMachines,
   getUploadedImageUrls,
   uploadStatus
 }: ReviewSectionProps) {
-  const selectedRoom = activeRooms.find(room => room.number === formData.location)
-  const selectedTechnician = availableTechnicians.find(tech => tech.username === formData.assignedTo)
+  const selectedRoom = activeRooms.find(room => room.id === Number(formData.room_id))
+  const selectedTechnician = availableTechnicians.find(tech => tech.id === Number(formData.assigned_to_id))
+  const selectedMachine = operationalMachines.find(machine => machine.id === Number(formData.machine_id))
   const beforeImageUrls = getUploadedImageUrls('beforePhotos')
   const afterImageUrls = getUploadedImageUrls('afterPhotos')
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'low': return 'bg-gray-100 text-gray-800'
-      case 'medium': return 'bg-blue-100 text-blue-800'
-      case 'high': return 'bg-orange-100 text-orange-800'
-      case 'urgent': return 'bg-red-100 text-red-800'
+      case 'Low': return 'bg-gray-100 text-gray-800'
+      case 'Medium': return 'bg-blue-100 text-blue-800'
+      case 'High': return 'bg-orange-100 text-orange-800'
+      case 'Urgent': return 'bg-red-100 text-red-800'
       default: return 'bg-gray-100 text-gray-800'
     }
   }
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800'
-      case 'scheduled': return 'bg-blue-100 text-blue-800'
-      case 'in-progress': return 'bg-green-100 text-green-800'
-      case 'on-hold': return 'bg-gray-100 text-gray-800'
+      case 'Pending': return 'bg-yellow-100 text-yellow-800'
+      case 'In Progress': return 'bg-blue-100 text-blue-800'
+      case 'Completed': return 'bg-green-100 text-green-800'
+      case 'Cancelled': return 'bg-gray-100 text-gray-800'
       default: return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  const getTypeColor = (type: string) => {
+    switch (type) {
+      case 'pm': return 'bg-green-100 text-green-800'
+      case 'cm': return 'bg-orange-100 text-orange-800'
+      case 'inspection': return 'bg-blue-100 text-blue-800'
+      case 'repair': return 'bg-red-100 text-red-800'
+      case 'emergency': return 'bg-red-200 text-red-900'
+      default: return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  const getTypeLabel = (type: string) => {
+    switch (type) {
+      case 'pm': return 'Preventive Maintenance'
+      case 'cm': return 'Corrective Maintenance'
+      case 'inspection': return 'Inspection'
+      case 'repair': return 'Repair'
+      case 'emergency': return 'Emergency'
+      case 'upgrade': return 'Upgrade'
+      case 'other': return 'Other'
+      default: return type
     }
   }
 
@@ -94,13 +122,25 @@ export function ReviewSection({
         </CardHeader>
         <CardContent className="space-y-3">
           <div>
-            <span className="text-sm font-medium text-gray-600">Title:</span>
-            <p className="text-gray-900">{formData.title || 'Not specified'}</p>
+            <span className="text-sm font-medium text-gray-600">Task:</span>
+            <p className="text-gray-900">{formData.task || 'Not specified'}</p>
           </div>
           <div>
             <span className="text-sm font-medium text-gray-600">Description:</span>
             <p className="text-gray-900">{formData.description || 'Not specified'}</p>
           </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-600">Type:</span>
+            <Badge className={getTypeColor(formData.type)}>
+              {getTypeLabel(formData.type) || 'Not specified'}
+            </Badge>
+          </div>
+          {formData.topic_id && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-600">Topic:</span>
+              <span className="text-gray-900">Topic #{formData.topic_id}</span>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -116,7 +156,7 @@ export function ReviewSection({
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-gray-600">Due Date:</span>
             <span className="text-gray-900">
-              {formData.scheduledDate ? new Date(formData.scheduledDate).toLocaleDateString() : 'Not specified'}
+              {formData.due_date ? new Date(formData.due_date).toLocaleDateString() : 'Not specified'}
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -131,12 +171,6 @@ export function ReviewSection({
               {formData.status || 'Not specified'}
             </Badge>
           </div>
-          {formData.recurring && (
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-600">Recurring:</span>
-              <span className="text-gray-900">{formData.recurringFrequency || 'Yes'}</span>
-            </div>
-          )}
         </CardContent>
       </Card>
 
@@ -150,19 +184,55 @@ export function ReviewSection({
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-600">Location:</span>
+            <span className="text-sm font-medium text-gray-600">Room:</span>
             <span className="text-gray-900">
-              {selectedRoom ? `${selectedRoom.name} (${selectedRoom.number})` : formData.location || 'Not specified'}
+              {selectedRoom ? `${selectedRoom.name} (${selectedRoom.number})` : 'Not specified'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-600">Machine:</span>
+            <span className="text-gray-900">
+              {selectedMachine ? selectedMachine.name : 'No machine selected'}
             </span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-gray-600">Assigned To:</span>
             <span className="text-gray-900">
-              {selectedTechnician ? selectedTechnician.username : formData.assignedTo || 'Not specified'}
+              {selectedTechnician ? selectedTechnician.username : 'Not specified'}
             </span>
           </div>
         </CardContent>
       </Card>
+
+      {/* Machine Details */}
+      {selectedMachine && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <WrenchScrewdriverIcon className="h-5 w-5" />
+              Machine Details
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-600">Machine Name:</span>
+              <span className="text-gray-900">{selectedMachine.name}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-600">Has Preventive Maintenance:</span>
+              <Badge className={selectedMachine.has_pm ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                {selectedMachine.has_pm ? 'Yes' : 'No'}
+              </Badge>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-600">Has Issue/Problem:</span>
+              <Badge className={selectedMachine.has_issue ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}>
+                {selectedMachine.has_issue ? 'Yes' : 'No'}
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Images & Documentation */}
       <Card>
@@ -195,50 +265,20 @@ export function ReviewSection({
               )}
             </div>
           </div>
-          {formData.attachments && formData.attachments.length > 0 && (
+          {formData.pdf_file_path && (
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-600">Documents:</span>
-              <Badge className="bg-purple-100 text-purple-800">
-                {formData.attachments.length} file(s)
-              </Badge>
+              <span className="text-sm font-medium text-gray-600">PDF Document:</span>
+              <div className="flex items-center gap-2">
+                <DocumentIcon className="h-4 w-4 text-blue-500" />
+                <Badge className="bg-purple-100 text-purple-800">
+                  PDF attached
+                </Badge>
+              </div>
             </div>
           )}
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <WrenchScrewdriverIcon className="h-5 w-5" />
-            Maintenance Details
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-600">Has Preventive Maintenance:</span>
-            <Badge className={formData.has_pm ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
-              {formData.has_pm ? 'Yes' : 'No'}
-            </Badge>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-600">Has Issue/Problem:</span>
-            <Badge className={formData.has_issue ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}>
-              {formData.has_issue ? 'Yes' : 'No'}
-            </Badge>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-600">Priority:</span>
-            <Badge className={getPriorityColor(formData.priority)}>
-              {formData.priority || 'Not specified'}
-            </Badge>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-600">Status:</span>
-            <Badge className={getStatusColor(formData.status)}>
-              {formData.status || 'Not specified'}
-            </Badge>
-          </div>
-        </CardContent>
-      </Card>
+
       {/* Summary Status */}
       <div className={`border rounded-lg p-4 ${
         uploadStatus.uploading > 0 || uploadStatus.failed > 0 
