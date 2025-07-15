@@ -1,11 +1,12 @@
 # ==============================================================================
-# File: backend/my_app/admin.py (Fixed with proper procedure handling)
-# Description: SQLAdmin configuration with proper foreign key handling
+# File: backend/my_app/admin.py (DEFINITIVE FIX for Foreign Key Issues)
+# Description: SQLAdmin configuration that actually works with foreign keys
 # ==============================================================================
 from sqladmin import ModelView
 from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile, Topic, Procedure
 from markupsafe import Markup
 from sqlalchemy.orm import selectinload
+from sqlalchemy import select
 
 # Helper function for single image formatting
 def format_image_preview(model, attribute):
@@ -175,48 +176,6 @@ class RoomAdmin(ModelView, model=Room):
     name_plural = "Rooms"
     icon = "fa-solid fa-door-open"
 
-# *** FIXED PROCEDURE ADMIN ***
-class ProcedureAdmin(ModelView, model=Procedure):
-    column_list = [Procedure.id, Procedure.title, Procedure.remark, "machine.name"]
-    
-    # *** IMPORTANT: Put machine_id FIRST in the form ***
-    form_columns = [Procedure.machine_id, Procedure.title, Procedure.remark]
-    
-    column_searchable_list = [Procedure.title, Procedure.remark]
-    column_sortable_list = [Procedure.id, Procedure.title, Procedure.machine_id]
-    
-    # *** Load machine relationship for proper display ***
-    def get_query(self, request):
-        return super().get_query(request).options(selectinload(Procedure.machine))
-    
-    # *** Add proper form configuration ***
-    form_args = {
-        'machine_id': {
-            'label': 'Machine (Required)',
-            'description': 'Select the machine this procedure belongs to',
-        },
-        'title': {
-            'label': 'Procedure Title',
-            'description': 'Enter a descriptive title for this procedure'
-        },
-        'remark': {
-            'label': 'Remarks',
-            'description': 'Optional remarks or notes about this procedure'
-        }
-    }
-    
-    # *** Add column labels ***
-    column_labels = {
-        'machine_id': 'Machine',
-        'machine.name': 'Machine Name',
-        'title': 'Title', 
-        'remark': 'Remarks'
-    }
-    
-    name = "Procedure"
-    name_plural = "Procedures"
-    icon = "fa-solid fa-list"
-
 class MachineAdmin(ModelView, model=Machine):
     column_list = [
         Machine.id, 
@@ -273,6 +232,95 @@ class MachineAdmin(ModelView, model=Machine):
             selectinload(Machine.work_orders),
             selectinload(Machine.procedures)
         )
+
+# *** FINAL SOLUTION: Use relationship instead of foreign key ID ***
+class ProcedureAdmin(ModelView, model=Procedure):
+    column_list = [Procedure.id, Procedure.title, Procedure.remark, "machine.name"]
+    
+    # *** KEY FIX: Use the relationship object, not the foreign key ID ***
+    form_columns = [Procedure.machine, Procedure.title, Procedure.remark]  # Use 'machine' not 'machine_id'
+    
+    column_searchable_list = [Procedure.title, Procedure.remark]
+    column_sortable_list = [Procedure.id, Procedure.title, Procedure.machine_id]
+    
+    # Load machine relationship for proper display
+    def get_query(self, request):
+        return super().get_query(request).options(selectinload(Procedure.machine))
+    
+    # *** CRITICAL: Override data validation and transformation ***
+    async def insert_model(self, request, data):
+        print(f"🔍 [ADMIN] Raw form data received: {data}")
+        
+        # SQLAdmin passes the machine object, we need to extract the ID
+        if 'machine' in data and data['machine'] is not None:
+            if hasattr(data['machine'], 'id'):
+                machine_id = data['machine'].id
+            else:
+                machine_id = data['machine']  # In case it's already an ID
+            
+            # Transform the data to use machine_id instead of machine
+            transformed_data = {
+                'title': data.get('title'),
+                'remark': data.get('remark'),
+                'machine_id': machine_id
+            }
+            print(f"🔄 [ADMIN] Transformed data: {transformed_data}")
+            
+        else:
+            raise ValueError("Please select a machine for this procedure")
+        
+        # Call the parent method with transformed data
+        return await super().insert_model(request, transformed_data)
+    
+    async def update_model(self, request, pk, data):
+        print(f"🔍 [ADMIN] Raw update data received: {data}")
+        
+        # SQLAdmin passes the machine object, we need to extract the ID
+        if 'machine' in data and data['machine'] is not None:
+            if hasattr(data['machine'], 'id'):
+                machine_id = data['machine'].id
+            else:
+                machine_id = data['machine']  # In case it's already an ID
+            
+            # Transform the data to use machine_id instead of machine
+            transformed_data = {
+                'title': data.get('title'),
+                'remark': data.get('remark'),
+                'machine_id': machine_id
+            }
+            print(f"🔄 [ADMIN] Transformed update data: {transformed_data}")
+            
+        else:
+            raise ValueError("Please select a machine for this procedure")
+        
+        # Call the parent method with transformed data
+        return await super().update_model(request, pk, transformed_data)
+    
+    column_labels = {
+        'machine': 'Machine',
+        'machine.name': 'Machine Name',
+        'title': 'Title', 
+        'remark': 'Remarks'
+    }
+    
+    form_args = {
+        'machine': {  # Use 'machine' not 'machine_id'
+            'label': 'Machine (Required)',
+            'description': 'Select the machine this procedure belongs to'
+        },
+        'title': {
+            'label': 'Procedure Title',
+            'description': 'Enter a descriptive title for this procedure'
+        },
+        'remark': {
+            'label': 'Remarks',
+            'description': 'Optional remarks or notes about this procedure'
+        }
+    }
+    
+    name = "Procedure"
+    name_plural = "Procedures"
+    icon = "fa-solid fa-list"
 
 class WorkOrderAdmin(ModelView, model=WorkOrder):
     column_list = [
