@@ -1,75 +1,34 @@
-# ==============================================================================
-# File: backend/my_app/main.py (Fixed syntax)
-# ==============================================================================
 from dotenv import load_dotenv
 load_dotenv()
 
 import os
-from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from sqladmin import Admin
+from fastapi.staticfiles import StaticFiles
+
+# Import after loading env
 from my_app.database import engine as async_engine, sync_engine, Base
 from my_app.routers import users, properties, rooms, machines, work_orders, auth, topic, procedure
 from my_app.connection_manager import manager
-from my_app.admin import (
-    UserAdmin,
-    UserProfileAdmin,
-    PropertyAdmin,
-    RoomAdmin,
-    MachineAdmin,
-    WorkOrderAdmin,
-    WorkOrderFileAdmin,
-    TopicAdmin,
-    ProcedureAdmin
-)
-from fastapi.staticfiles import StaticFiles
 
 # Create FastAPI app
-app = FastAPI(
-    title="Property Management API",
-    version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc"
-)
-
-# Setup uploads directory
-UPLOADS_DIR = "/app/uploads"
-try:
-    os.makedirs(UPLOADS_DIR, exist_ok=True)
-except PermissionError:
-    print(f"Warning: Could not create uploads directory: {UPLOADS_DIR}")
-    UPLOADS_DIR = "."
-
-app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
-
-def setup_static_files():
-    static_path = Path("Server/static")
-    try:
-        static_path.mkdir(parents=True, exist_ok=True)
-        app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
-        print(f"Static files mounted at: {static_path}")
-    except Exception as e:
-        print(f"Warning: Could not setup static files: {e}")
-
-setup_static_files()
+app = FastAPI(title="Property Management API", version="1.0.0")
 
 # Add middlewares
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=os.getenv("SECRET_KEY", "your-secret-key-here-change-in-production")
-)
+app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY", "secret"))
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Setup static files
+UPLOADS_DIR = "/app/uploads"
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 
-# Setup Admin
+# Setup Admin - AFTER imports
+from my_app.admin import (UserAdmin, UserProfileAdmin, PropertyAdmin, RoomAdmin, 
+                          MachineAdmin, WorkOrderAdmin, WorkOrderFileAdmin, TopicAdmin, ProcedureAdmin)
+
 admin = Admin(app, sync_engine)
 admin.add_view(UserAdmin)
 admin.add_view(UserProfileAdmin)
@@ -81,6 +40,7 @@ admin.add_view(WorkOrderAdmin)
 admin.add_view(WorkOrderFileAdmin)
 admin.add_view(TopicAdmin)
 
+# Database setup
 async def create_db_and_tables():
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -89,7 +49,7 @@ async def create_db_and_tables():
 async def on_startup():
     await create_db_and_tables()
 
-# Include API routers
+# Include routers
 app.include_router(users.router, prefix="/api/v1", tags=["users"])
 app.include_router(properties.router, prefix="/api/v1", tags=["properties"])
 app.include_router(rooms.router, prefix="/api/v1", tags=["rooms"])
