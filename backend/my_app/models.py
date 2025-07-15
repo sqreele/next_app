@@ -1,7 +1,3 @@
-# ==============================================================================
-# File: backend/my_app/models.py (Updated with proper relationships)
-# Description: Defines the database schema using the imported Base.
-# ==============================================================================
 from sqlalchemy import (
     Column, Integer, String, ForeignKey, DateTime, Date,
     Boolean, Table, Text
@@ -56,7 +52,7 @@ class UserProfile(Base):
     role = Column(String(50), default='Technician')
     position = Column(String(100), nullable=True)
     user = relationship("User", back_populates="profile")
-    properties = relationship("Property", secondary=user_property_association, back_populates="user_profiles")
+    properties = relationship("Property", secondary=user_property_association, back_populates="properties")
     
     def __str__(self):
         return f"Profile {self.id} - {self.role}"
@@ -150,7 +146,6 @@ class WorkOrder(Base):
     after_image_path = Column(String(500), nullable=True)
     pdf_file_path = Column(String(500), nullable=True)
     
-    # Add this line:
     type = Column(String(50), nullable=False, default='pm')
     
     def __str__(self):
@@ -177,6 +172,7 @@ class Procedure(Base):
     title = Column(String(200), nullable=False)
     remark = Column(String(500), nullable=True)
     machine_id = Column(Integer, ForeignKey('machines.id'), nullable=False)
+    frequency = Column(String(50), nullable=True, index=True)
     
     # Add the back relationship
     machine = relationship("Machine", back_populates="procedures")
