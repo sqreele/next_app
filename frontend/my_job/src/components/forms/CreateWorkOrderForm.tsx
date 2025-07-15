@@ -31,6 +31,8 @@ const initialFormData = {
   status: 'Pending',
   type: 'pm',
   topic_id: '',
+  has_pm: false,
+  has_issue: false,
   beforePhotos: [],
   afterPhotos: [],
   pdf_file_path: null,
@@ -77,16 +79,26 @@ export function CreateWorkOrderForm() {
   const selectedTechnician = availableTechnicians.find(tech => tech.id === Number(formData.assigned_to_id))
   const selectedMachine = operationalMachines.find(machine => machine.id === Number(formData.machine_id))
   
-  // Debug technician loading
+  // PM-capable machines for filtering
+  const pmCapableMachines = operationalMachines.filter(machine => machine.has_pm)
+
+  // Debug logs
   useEffect(() => {
     console.log('🔍 [TechnicianDebug] Available technicians count:', availableTechnicians.length)
     console.log('🔍 [TechnicianDebug] Form assigned_to_id:', formData.assigned_to_id)
     console.log('🔍 [TechnicianDebug] Selected technician:', selectedTechnician)
-    if (formData.assigned_to_id && !selectedTechnician) {
-      console.warn('⚠️ [TechnicianDebug] assigned_to_id is set but technician not found!')
-      console.warn('⚠️ [TechnicianDebug] Available technicians:', availableTechnicians.map(t => ({ id: t.id, username: t.username })))
-    }
-  }, [availableTechnicians, formData.assigned_to_id, selectedTechnician])
+    console.log('🔍 [MachineDebug] Total machines:', operationalMachines.length)
+    console.log('🔍 [MachineDebug] PM-capable machines:', pmCapableMachines.length)
+    console.log('🔍 [MachineDebug] Selected machine:', selectedMachine)
+  }, [availableTechnicians, formData.assigned_to_id, selectedTechnician, operationalMachines, pmCapableMachines, selectedMachine])
+
+  // Debug form data
+  useEffect(() => {
+    console.log('🔍 Form data changed:', formData)
+    console.log('🔍 Type:', formData.type)
+    console.log('🔍 Has PM:', formData.has_pm)
+    console.log('🔍 Has Issue:', formData.has_issue)
+  }, [formData])
 
   const allFields = workOrderFormSections.flatMap(section => section.fields)
   const currentSection = workOrderFormSections[currentStep]
@@ -95,17 +107,23 @@ export function CreateWorkOrderForm() {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        console.log('🔄 Starting to fetch data...')
+        
         const { fetchMachines } = useMachineStore.getState()
         const { fetchRooms } = useRoomStore.getState()
         const { fetchTechnicians } = useTechnicianStore.getState()
 
+        console.log('🔄 Fetching machines, rooms, and technicians...')
         await Promise.all([
           fetchMachines(),
           fetchRooms(),
           fetchTechnicians()
         ])
+        
+        console.log('✅ Data fetching completed')
+        
       } catch (error) {
-        console.error('Error fetching data:', error)
+        console.error('❌ Error fetching data:', error)
         toast.error('Failed to load required data')
       }
     }
@@ -113,51 +131,83 @@ export function CreateWorkOrderForm() {
     fetchData()
   }, [])
 
-  // Set assigned_to_id to current user when available
+  // Auto-set has_pm when type is "pm"
   useEffect(() => {
-    if (user?.id && !formData.assigned_to_id) {
-      console.log(`🔍 Setting assigned_to_id to current user: ${user.id}`)
-      setValue('assigned_to_id', user.id.toString())
+    if (formData.type === 'pm' && !formData.has_pm) {
+      console.log('🔧 Auto-setting has_pm to true because type is pm')
+      setValue('has_pm', true)
     }
-  }, [user, setValue, formData.assigned_to_id])
+    // Optionally auto-unset has_pm when type is not pm
+    else if (formData.type !== 'pm' && formData.has_pm && formData.type !== '') {
+      console.log('🔧 Auto-unsetting has_pm because type is not pm')
+      setValue('has_pm', false)
+    }
+  }, [formData.type, formData.has_pm, setValue])
+
+  // Handle type changes and machine validation
+  useEffect(() => {
+    // When type changes to PM, check if selected machine supports PM
+    if (formData.type === 'pm' && selectedMachine && !selectedMachine.has_pm) {
+      console.log('🔧 Type changed to PM, clearing machine selection because it does not have PM capability')
+      setValue('machine_id', '')
+      toast.warning('Machine cleared because it does not support Preventive Maintenance')
+    }
+    
+    // When type changes from PM, the machine restriction is lifted automatically
+    if (formData.type !== 'pm' && formData.type !== '') {
+      console.log('🔧 Type changed from PM, machine restrictions lifted')
+    }
+  }, [formData.type, selectedMachine, setValue])
+
+  // Smart defaults for PM work orders
+  useEffect(() => {
+    // When user selects PM type, provide smart suggestions
+    if (formData.type === 'pm' && !formData.machine_id && operationalMachines.length > 0) {
+      const pmMachines = operationalMachines.filter(machine => machine.has_pm)
+      
+      if (pmMachines.length === 1) {
+        // Auto-select if only one PM machine available
+        console.log('🤖 Auto-selecting the only available PM machine')
+        setValue('machine_id', pmMachines[0].id.toString())
+        toast.info(`Auto-selected ${pmMachines[0].name} (only PM machine available)`)
+      } else if (pmMachines.length > 1) {
+        // Show helpful message if multiple PM machines available
+        toast.info(`${pmMachines.length} machines support PM - please select one`)
+      } else if (pmMachines.length === 0) {
+        // Warn if no PM machines available
+        toast.warning('No machines with PM capability found')
+      }
+    }
+  }, [formData.type, formData.machine_id, operationalMachines, setValue])
+
+  // Set assigned_to_id to current user when available and technicians are loaded
+  useEffect(() => {
+    if (user?.id && !formData.assigned_to_id && availableTechnicians.length > 0) {
+      const currentUserAsTechnician = availableTechnicians.find(tech => tech.id === user.id)
+      
+      if (currentUserAsTechnician) {
+        console.log(`✅ Setting assigned_to_id to current user: ${user.id}`)
+        setValue('assigned_to_id', user.id.toString())
+      }
+    }
+  }, [user, setValue, formData.assigned_to_id, availableTechnicians])
 
   // Fetch user data if not already loaded
   useEffect(() => {
     if (!user) {
       const fetchUser = async () => {
         try {
+          console.log('🔄 Fetching current user...')
           await useAuthStore.getState().getCurrentUser()
+          console.log('✅ User fetched successfully')
         } catch (error) {
-          console.error('Failed to fetch user:', error)
+          console.error('❌ Failed to fetch user:', error)
           toast.error('Failed to authenticate user')
         }
       }
       fetchUser()
     }
   }, [user])
-
-  // Debug form data changes
-  useEffect(() => {
-    console.log('🔍 Form data changed:', formData)
-    console.log('🔍 Before photos:', formData.beforePhotos?.length || 0)
-    console.log('🔍 After photos:', formData.afterPhotos?.length || 0)
-    if (formData.beforePhotos?.length > 0) {
-      console.log('🔍 Before photos details:', formData.beforePhotos.map((img: any) => ({
-        id: img.id,
-        fileName: img.file?.name,
-        uploadStatus: img.uploadStatus,
-        uploadedUrl: img.uploadedUrl
-      })))
-    }
-    if (formData.afterPhotos?.length > 0) {
-      console.log('🔍 After photos details:', formData.afterPhotos.map((img: any) => ({
-        id: img.id,
-        fileName: img.file?.name,
-        uploadStatus: img.uploadStatus,
-        uploadedUrl: img.uploadedUrl
-      })))
-    }
-  }, [formData])
 
   const handleNext = () => {
     const sectionFields = currentSection.fields
@@ -167,6 +217,17 @@ export function CreateWorkOrderForm() {
       if (field.conditional && !formData[field.conditional]) return true
       
       const value = formData[field.name]
+      
+      // Custom validation for fields
+      if (field.validation?.custom) {
+        const customResult = field.validation.custom(value, formData)
+        if (typeof customResult === 'string') {
+          return false // Has error
+        }
+        if (customResult === false) {
+          return false // Has error
+        }
+      }
       
       if (field.type === 'image-upload') {
         if (!field.required) return true
@@ -206,6 +267,16 @@ export function CreateWorkOrderForm() {
     if (!formData.description?.trim()) issues.push('Description is required')
     if (!selectedRoom) issues.push('Room must be selected')
     if (!selectedTechnician) issues.push('Technician must be assigned')
+    
+    // Require machine for PM work orders
+    if (formData.type === 'pm' && !selectedMachine) {
+      issues.push('Machine selection is required for Preventive Maintenance work orders')
+    }
+    
+    // Validate that selected machine supports PM if type is PM
+    if (formData.type === 'pm' && selectedMachine && !selectedMachine.has_pm) {
+      issues.push('Selected machine does not support Preventive Maintenance')
+    }
     
     if (issues.length > 0) {
       toast.error(`Validation failed: ${issues.join(', ')}`)
@@ -254,11 +325,6 @@ export function CreateWorkOrderForm() {
       
       const beforeImageUrls = getUploadedImageUrls('beforePhotos')
       const afterImageUrls = getUploadedImageUrls('afterPhotos')
-      
-      console.log('👷 Selected Technician:', selectedTechnician)
-      console.log('👷 Selected Room:', selectedRoom)
-      console.log('👷 Selected Machine:', selectedMachine)
-      console.log('👤 User data:', user)
 
       const submitData = {
         task: formData.task,
@@ -277,26 +343,19 @@ export function CreateWorkOrderForm() {
         property_id: numericPropertyId!,
         type: formData.type,
         topic_id: formData.topic_id ? Number(formData.topic_id) : null,
+        has_pm: formData.has_pm || false,
+        has_issue: formData.has_issue || false,
       }
 
-      console.log('📋 === ACTUAL REQUEST DATA ===')
+      console.log('📋 === FINAL SUBMIT DATA ===')
       console.log('Task:', submitData.task)
-      console.log('Description:', submitData.description)
-      console.log('Status:', submitData.status)
-      console.log('Priority:', submitData.priority)
-      console.log('Due Date:', submitData.due_date)
-      console.log('Room ID:', submitData.room_id)
-      console.log('Machine ID:', submitData.machine_id)
-      console.log('Assigned To ID:', submitData.assigned_to_id)
-      console.log('Property ID:', submitData.property_id)
       console.log('Type:', submitData.type)
-      console.log('Topic ID:', submitData.topic_id)
-      console.log('Before Image Path:', submitData.before_image_path)
-      console.log('After Image Path:', submitData.after_image_path)
-      console.log('Before Images Array:', submitData.before_images)
-      console.log('After Images Array:', submitData.after_images)
-      console.log('PDF File Path:', submitData.pdf_file_path)
-      console.log('🔍 === END REQUEST DATA ===')
+      console.log('Has PM:', submitData.has_pm)
+      console.log('Has Issue:', submitData.has_issue)
+      console.log('Machine ID:', submitData.machine_id)
+      console.log('Room ID:', submitData.room_id)
+      console.log('Assigned To ID:', submitData.assigned_to_id)
+      console.log('🔍 === END SUBMIT DATA ===')
 
       const newWorkOrder = await createWorkOrder(submitData)
       
@@ -330,28 +389,51 @@ export function CreateWorkOrderForm() {
   const getSelectOptions = (fieldName: string) => {
     switch (fieldName) {
       case 'assigned_to_id':
-        console.log(`🔍 [getSelectOptions] Available technicians:`, availableTechnicians.map(t => ({ id: t.id, username: t.username })))
         const techOptions = availableTechnicians.map(tech => ({
           value: tech.id.toString(),
           label: `${tech.username} - ${tech.profile?.position || 'Technician'}`
         }))
-        console.log(`🔍 [getSelectOptions] Generated tech options:`, techOptions)
         return techOptions
+        
       case 'machine_id':
-        return [
-          { value: '', label: 'No Machine Selected' },
-          ...operationalMachines.map(machine => ({
-            value: machine.id.toString(),
-            label: machine.name
-          }))
-        ]
+        let machineOptions = []
+        
+        // If work order type is PM, only show machines that have PM
+        if (formData.type === 'pm') {
+          const pmMachines = operationalMachines.filter(machine => machine.has_pm)
+          machineOptions = [
+            { 
+              value: '', 
+              label: pmMachines.length > 0 
+                ? 'Select PM-Capable Machine' 
+                : 'No PM-Capable Machines Available' 
+            },
+            ...pmMachines.map(machine => ({
+              value: machine.id.toString(),
+              label: `${machine.name} (PM Available)`
+            }))
+          ]
+        } else {
+          // For other types, show all operational machines
+          machineOptions = [
+            { value: '', label: 'No Machine Selected (Optional)' },
+            ...operationalMachines.map(machine => ({
+              value: machine.id.toString(),
+              label: machine.name
+            }))
+          ]
+        }
+        
+        console.log(`🔍 Machine options for type "${formData.type}":`, machineOptions.length, 'options')
+        return machineOptions
+        
       case 'room_id':
         return activeRooms.map(room => ({
           value: room.id.toString(),
           label: `${room.name} (${room.number})`
         }))
+        
       case 'topic_id':
-        // TODO: Implement topic fetching from API
         return [
           { value: '', label: 'No Topic Selected' },
           { value: '1', label: 'HVAC System' },
@@ -366,11 +448,6 @@ export function CreateWorkOrderForm() {
   }
 
   const uploadStatus = getUploadStatus()
-  const propertyId = user?.profile?.properties?.[0]?.id
-  const numericPropertyId = propertyId ? Number(propertyId) : null
-
-  console.log(`🔍 Current step: ${currentStep} (${currentSection?.id})`)
-  console.log(`🔍 Current section fields:`, currentSection?.fields?.map(f => ({ name: f.name, type: f.type })))
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -467,36 +544,80 @@ export function CreateWorkOrderForm() {
                 transition={{ duration: 0.3 }}
               >
                 {currentSection.fields.map((field) => (
-                  <div key={field.name} className="mb-6">
-                    <DynamicFormRenderer
-                      field={field}
-                      value={formData[field.name]}
-                      error={errors[field.name]}
-                      onChange={(value) => setValue(field.name, value)}
-                      selectOptions={getSelectOptions(field.name)}
-                    />
-                    {errors[field.name] && (
-                      <p className="mt-1 text-sm text-red-600">{errors[field.name]}</p>
-                    )}
-                    {/* Show Machine details below machine select */}
-                    {field.name === 'machine_id' && selectedMachine && (
-                      <div className="flex gap-4 mt-2">
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-gray-500">Has PM:</span>
-                          <Badge className={
-                            selectedMachine.has_pm ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                          }>
-                            {selectedMachine.has_pm ? 'Yes' : 'No'}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-gray-500">Has Issue:</span>
-                          <Badge className={
-                            selectedMachine.has_issue ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
-                          }>
-                            {selectedMachine.has_issue ? 'Yes' : 'No'}
-                          </Badge>
-                        </div>
+                  <div key={field.name}>
+                    {/* Enhanced Machine selection with PM info */}
+                    {field.name === 'machine_id' ? (
+                      <div className="mb-6">
+                        <DynamicFormRenderer
+                          field={field}
+                          value={formData[field.name]}
+                          error={errors[field.name]}
+                          onChange={(value) => setValue(field.name, value)}
+                          selectOptions={getSelectOptions(field.name)}
+                        />
+                        
+                        {/* Show PM-specific warnings/info */}
+                        {formData.type === 'pm' && (
+                          <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                            <div className="flex items-start gap-2">
+                              <div className="text-blue-600 mt-0.5">ℹ️</div>
+                              <div>
+                                <p className="text-sm font-medium text-blue-800">Preventive Maintenance</p>
+                                <p className="text-sm text-blue-700">
+                                  Only machines with PM capability are shown. 
+                                  {pmCapableMachines.length} of {operationalMachines.length} machines support PM.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Show selected machine details */}
+                        {selectedMachine && (
+                          <div className="flex gap-4 mt-2">
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-gray-500">Has PM:</span>
+                              <Badge className={
+                                selectedMachine.has_pm ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                              }>
+                                {selectedMachine.has_pm ? 'Yes' : 'No'}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-gray-500">Has Issue:</span>
+                              <Badge className={
+                                selectedMachine.has_issue ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
+                              }>
+                                {selectedMachine.has_issue ? 'Yes' : 'No'}
+                              </Badge>
+                            </div>
+                            
+                            {/* Warning if PM type but machine doesn't support PM */}
+                            {formData.type === 'pm' && !selectedMachine.has_pm && (
+                              <Badge className="bg-yellow-100 text-yellow-800">
+                                ⚠️ No PM Support
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                        
+                        {errors[field.name] && (
+                          <p className="mt-1 text-sm text-red-600">{errors[field.name]}</p>
+                        )}
+                      </div>
+                    ) : (
+                      // Regular field rendering
+                      <div className="mb-6">
+                        <DynamicFormRenderer
+                          field={field}
+                          value={formData[field.name]}
+                          error={errors[field.name]}
+                          onChange={(value) => setValue(field.name, value)}
+                          selectOptions={getSelectOptions(field.name)}
+                        />
+                        {errors[field.name] && (
+                          <p className="mt-1 text-sm text-red-600">{errors[field.name]}</p>
+                        )}
                       </div>
                     )}
                   </div>
