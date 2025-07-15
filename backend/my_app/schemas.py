@@ -1,4 +1,4 @@
-# File: backend/my_app/schemas.py
+# File: backend/my_app/schemas.py (Updated with procedure relationships)
 from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict
 from typing import List, Optional, Literal
 from datetime import date, datetime
@@ -136,7 +136,7 @@ class ProcedureBase(BaseModel):
     remark: Optional[str] = Field(None, max_length=500)
 
 class ProcedureCreate(ProcedureBase):
-    machine_id: int = Field(..., gt=0, description="Machine ID is required and must be greater than 0")
+    machine_id: int = Field(..., gt=0, description="Machine ID is required")
     
     @field_validator('machine_id')
     @classmethod
@@ -147,16 +147,37 @@ class ProcedureCreate(ProcedureBase):
             raise ValueError('machine_id must be greater than 0')
         return v
 
+class ProcedureUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    remark: Optional[str] = Field(None, max_length=500)
+    machine_id: Optional[int] = Field(None, gt=0)
+
 class Procedure(ProcedureBase):
     id: int
     machine_id: int
+    model_config = ConfigDict(from_attributes=True)
+
+# Forward declaration for Machine
+class Machine(BaseModel):
+    id: int
+    name: str
+    status: str
+    property_id: int
+    room_id: Optional[int] = None
+    model_config = ConfigDict(from_attributes=True)
+
+# Procedure with machine details
+class ProcedureWithMachine(ProcedureBase):
+    id: int
+    machine_id: int
+    machine: Optional[Machine] = None
     model_config = ConfigDict(from_attributes=True)
 
 # --- Machine Schemas ---
 class MachineBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     status: MachineStatus = Field(MachineStatus.OPERATIONAL)
-    room_id: Optional[int] = None  # Removed gt=0 validation for optional field
+    room_id: Optional[int] = None
 
 class MachineCreate(MachineBase):
     pass
@@ -164,14 +185,17 @@ class MachineCreate(MachineBase):
 class MachineUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     status: Optional[MachineStatus] = None
-    room_id: Optional[int] = None  # Removed gt=0 validation for optional field
+    room_id: Optional[int] = None
 
-class Machine(MachineBase):
+# Machine with procedures
+class MachineWithProcedures(MachineBase):
     id: int
     property_id: int
-    procedures: Optional[List[Procedure]] = Field(default_factory=list)
-    
+    procedures: List[Procedure] = Field(default_factory=list)
     model_config = ConfigDict(from_attributes=True)
+
+# Update the basic Machine schema to include procedures
+Machine.model_rebuild()
 
 # --- Topic Schemas ---
 class TopicBase(BaseModel):
@@ -185,16 +209,15 @@ class Topic(TopicBase):
     model_config = ConfigDict(from_attributes=True)
 
 # --- WorkOrder Schemas ---
-# File: backend/my_app/schemas.py
 class WorkOrderCreate(BaseModel):
     task: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = Field(None, max_length=2000)
     status: WorkOrderStatus = Field(default=WorkOrderStatus.PENDING)
     priority: WorkOrderPriority = Field(default=WorkOrderPriority.MEDIUM)
-    due_date: Optional[date] = None  # Changed from str to date
-    machine_id: Optional[int] = None  # Removed gt=0 validation for optional field
-    room_id: Optional[int] = None     # Removed gt=0 validation for optional field
-    assigned_to_id: Optional[int] = None  # Removed gt=0 validation for optional field
+    due_date: Optional[date] = None
+    machine_id: Optional[int] = None
+    room_id: Optional[int] = None
+    assigned_to_id: Optional[int] = None
     property_id: int = Field(..., gt=0)
     before_image_path: Optional[str] = Field(None, max_length=500)
     after_image_path: Optional[str] = Field(None, max_length=500)
@@ -202,7 +225,7 @@ class WorkOrderCreate(BaseModel):
     after_images: Optional[List[str]] = Field(default_factory=list)
     pdf_file_path: Optional[str] = Field(None, max_length=500)
     type: Literal['pm', 'issue'] = Field(...)
-    topic_id: Optional[int] = None  # <-- Added
+    topic_id: Optional[int] = None
 
     @field_validator('due_date', mode='before')
     @classmethod
@@ -214,9 +237,6 @@ class WorkOrderCreate(BaseModel):
         if isinstance(v, str):
             try:
                 parsed_date = datetime.strptime(v, '%Y-%m-%d').date()
-                # Optional: validate not in past (commented out for testing)
-                # if parsed_date < date.today():
-                #     raise ValueError('Due date cannot be in the past')
                 return parsed_date
             except ValueError as e:
                 if 'time data' in str(e):
@@ -231,8 +251,8 @@ class WorkOrderCreate(BaseModel):
             return []
         if not isinstance(v, list):
             return []
-        return [img for img in v if img and isinstance(img, str)]  # Fixed: Added missing ]
-# Add the missing WorkOrder response class
+        return [img for img in v if img and isinstance(img, str)]
+
 class WorkOrderUpdate(BaseModel):
     """Schema for partial updates to work orders (PATCH method)"""
     task: Optional[str] = Field(None, min_length=1, max_length=200)
@@ -283,7 +303,7 @@ class WorkOrder(BaseModel):
     description: Optional[str] = None
     status: WorkOrderStatus
     priority: WorkOrderPriority
-    due_date: Optional[date] = None  # Changed from str to date
+    due_date: Optional[date] = None
     machine_id: Optional[int] = None
     room_id: Optional[int] = None
     assigned_to_id: Optional[int] = None
@@ -296,18 +316,17 @@ class WorkOrder(BaseModel):
     after_images: Optional[List[str]] = Field(default_factory=list)
     pdf_file_path: Optional[str] = None
     type: Literal['pm', 'issue']
-    topic_id: Optional[int] = None  # <-- Added
+    topic_id: Optional[int] = None
     
     model_config = ConfigDict(from_attributes=True)
 
 class WorkOrderWithRelations(WorkOrder):
     """WorkOrder schema with nested relationships loaded"""
-    # Nested relationships
     property: Optional[Property] = None
     room: Optional[Room] = None
     machine: Optional[Machine] = None
     assigned_to: Optional[UserSimple] = None
-    topic: Optional[Topic] = None  # <-- Added
+    topic: Optional[Topic] = None
 
 # --- WorkOrderFile Schemas ---
 class WorkOrderFileBase(BaseModel):
