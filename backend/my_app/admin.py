@@ -2,6 +2,7 @@ from sqladmin import ModelView
 from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile, Topic, Procedure
 from markupsafe import Markup
 from sqlalchemy.orm import selectinload
+from sqlalchemy import select
 
 # Helper function for single image formatting
 def format_image_preview(model, attribute):
@@ -171,20 +172,26 @@ class RoomAdmin(ModelView, model=Room):
     name_plural = "Rooms"
     icon = "fa-solid fa-door-open"
 
+# *** FIXED PROCEDURE ADMIN - This is the key fix ***
 class ProcedureAdmin(ModelView, model=Procedure):
     column_list = [Procedure.id, Procedure.title, Procedure.remark, "machine.name"]
+    
+    # *** IMPORTANT: Put machine_id FIRST in the form ***
     form_columns = [Procedure.machine_id, Procedure.title, Procedure.remark]
+    
     column_searchable_list = [Procedure.title, Procedure.remark]
     column_sortable_list = [Procedure.id, Procedure.title, Procedure.machine_id]
     
-    # Load machine relationship for display
+    # *** Load machine relationship for proper display ***
     def get_query(self, request):
         return super().get_query(request).options(selectinload(Procedure.machine))
     
+    # *** Add proper form configuration ***
     form_args = {
         'machine_id': {
             'label': 'Machine (Required)',
-            'description': 'Select the machine this procedure belongs to'
+            'description': 'Select the machine this procedure belongs to',
+            'render_field': True,  # Force rendering of the field
         },
         'title': {
             'label': 'Procedure Title',
@@ -196,12 +203,19 @@ class ProcedureAdmin(ModelView, model=Procedure):
         }
     }
     
+    # *** Add column labels ***
     column_labels = {
         'machine_id': 'Machine',
         'machine.name': 'Machine Name',
         'title': 'Title', 
         'remark': 'Remarks'
     }
+    
+    # *** Override form validation to ensure machine_id is provided ***
+    async def insert_model(self, request, data):
+        if not data.get('machine_id'):
+            raise ValueError("Machine is required for creating a procedure")
+        return await super().insert_model(request, data)
     
     name = "Procedure"
     name_plural = "Procedures"
@@ -260,6 +274,8 @@ class MachineAdmin(ModelView, model=Machine):
 
     def get_query(self, request):
         return super().get_query(request).options(selectinload(Machine.work_orders))
+
+# ... rest of your admin classes remain the same ...
 
 class WorkOrderAdmin(ModelView, model=WorkOrder):
     column_list = [
