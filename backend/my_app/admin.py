@@ -143,3 +143,36 @@ class TopicAdmin(ModelView, model=Topic):
     name_plural = "Topics"
     icon = "fa-solid fa-tag"
 # Remove or comment out ProcedureExecutionAdmin if ProcedureExecution is not defined
+class ProcedureExecutionAdmin(ModelView, model=ProcedureExecution):
+    column_list = [ProcedureExecution.id, "procedure.title", "procedure.machine.name", 
+                   ProcedureExecution.scheduled_date, ProcedureExecution.status,
+                   ProcedureExecution.completed_date, "assigned_to.username"]
+    
+    form_columns = ["procedure", "scheduled_date", "status", "assigned_to", 
+                    "execution_notes", "completed_date", "completed_by"]
+    
+    column_searchable_list = ["procedure.title", "execution_notes"]
+    column_sortable_list = [ProcedureExecution.scheduled_date, ProcedureExecution.status]
+    
+    column_labels = {
+        'procedure.title': 'Procedure',
+        'procedure.machine.name': 'Machine',
+        'assigned_to.username': 'Assigned To',
+        'completed_by.username': 'Completed By'
+    }
+    
+    column_formatters = {
+        'before_images': lambda m, a: format_image_array(m, 'before_images'),
+        'after_images': lambda m, a: format_image_array(m, 'after_images'),
+    }
+    
+    def get_query(self, request):
+        return super().get_query(request).options(
+            selectinload(ProcedureExecution.procedure).selectinload(Procedure.machine),
+            selectinload(ProcedureExecution.assigned_to),
+            selectinload(ProcedureExecution.completed_by)
+        )
+    
+    name = "Procedure Execution"
+    name_plural = "Procedure Executions" 
+    icon = "fa-solid fa-calendar-check"
