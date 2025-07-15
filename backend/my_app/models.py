@@ -1,5 +1,5 @@
 # ==============================================================================
-# File: backend/my_app/models.py (Temporarily without new columns)
+# File: backend/my_app/models.py (Updated with proper relationships)
 # Description: Defines the database schema using the imported Base.
 # ==============================================================================
 from sqlalchemy import (
@@ -98,6 +98,8 @@ class Machine(Base):
     status = Column(String(50), default='Operational')
     property_id = Column(Integer, ForeignKey('properties.id'), nullable=False)
     room_id = Column(Integer, ForeignKey('rooms.id'), nullable=True)
+    
+    # Relationships
     property = relationship("Property", back_populates="machines")
     room = relationship("Room", back_populates="machines")
     work_orders = relationship("WorkOrder", back_populates="machine")
@@ -175,7 +177,9 @@ class Procedure(Base):
     title = Column(String(200), nullable=False)
     remark = Column(String(500), nullable=True)
     machine_id = Column(Integer, ForeignKey('machines.id'), nullable=False)
+    
+    # Add the back relationship
     machine = relationship("Machine", back_populates="procedures")
 
     def __str__(self):
-        return self.title
+        return f"{self.title} (Machine: {self.machine.name if self.machine else 'Unknown'})"
