@@ -1,6 +1,6 @@
 # ==============================================================================
-# File: backend/my_app/routers/machines.py (Improved)
-# Description: Async machine routes.
+# File: backend/my_app/routers/machines.py (Enhanced with procedures)
+# Description: Async machine routes with procedure relationships.
 # ==============================================================================
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -69,3 +69,28 @@ async def read_machine(
     m_dict['has_pm'] = has_pm
     m_dict['has_issue'] = has_issue
     return m_dict
+
+# New endpoints for procedure management
+@router.get("/{machine_id}/procedures", response_model=List[schemas.Procedure])
+async def get_machine_procedures(
+    machine_id: int,
+    db: AsyncSession = Depends(dependencies.get_db),
+):
+    """Get all procedures for a specific machine"""
+    machine = await crud.get_machine(db, machine_id=machine_id)
+    if machine is None:
+        raise HTTPException(status_code=404, detail="Machine not found")
+    
+    procedures = await crud.get_procedures_by_machine(db, machine_id)
+    return procedures
+
+@router.get("/{machine_id}/with-procedures", response_model=schemas.MachineWithProcedures)
+async def get_machine_with_procedures(
+    machine_id: int,
+    db: AsyncSession = Depends(dependencies.get_db),
+):
+    """Get machine with all its procedures"""
+    machine = await crud.get_machine_with_procedures(db, machine_id)
+    if machine is None:
+        raise HTTPException(status_code=404, detail="Machine not found")
+    return machine
