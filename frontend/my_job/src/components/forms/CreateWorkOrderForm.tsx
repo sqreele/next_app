@@ -21,20 +21,19 @@ import { ProgressBar } from '@/components/ui/progress-bar'
 import { motion, AnimatePresence } from 'framer-motion'
 
 const initialFormData = {
-  title: '',
+  task: '',
   description: '',
-  scheduledDate: '',
-  location: '',
-  assignedTo: '',
+  due_date: '',
+  room_id: '',
+  machine_id: '',
+  assigned_to_id: '',
   priority: '',
-  "type": "pm",
-  recurring: false,
-  recurringFrequency: '',
+  status: 'Pending',
+  type: 'pm',
+  topic_id: '',
   beforePhotos: [],
   afterPhotos: [],
-  attachments: [],
-  topic_id: '',         // Add topic_id
-    // Add procedure_id
+  pdf_file_path: null,
 }
 
 export function CreateWorkOrderForm() {
@@ -68,42 +67,26 @@ export function CreateWorkOrderForm() {
     getCompletionPercentage,
   } = useFormProgress(workOrderFormSections, formData, errors)
 
-  // Status and priority mappings
-  const statusMap: Record<string, 'Pending' | 'In Progress' | 'Completed' | 'Cancelled'> = {
-    'pending': 'Pending',
-    'scheduled': 'In Progress',
-    'in-progress': 'In Progress',
-    'on-hold': 'Pending',
-    'completed': 'Completed',
-    'cancelled': 'Cancelled',
-  }
-
-  const priorityMap: Record<string, 'Low' | 'Medium' | 'High' | 'Urgent'> = {
-    'low': 'Low',
-    'medium': 'Medium', 
-    'high': 'High',
-    'urgent': 'Urgent',
-  }
-
   // Data from stores
   const operationalMachines = getOperationalMachines()
   const activeRooms = getActiveRooms()
   const availableTechnicians = getAvailableTechnicians()
 
   // Derived variables
-  const selectedRoom = activeRooms.find(room => room.number === formData.location)
-  const selectedTechnician = availableTechnicians.find(tech => tech.username === formData.assignedTo)
+  const selectedRoom = activeRooms.find(room => room.id === Number(formData.room_id))
+  const selectedTechnician = availableTechnicians.find(tech => tech.id === Number(formData.assigned_to_id))
+  const selectedMachine = operationalMachines.find(machine => machine.id === Number(formData.machine_id))
   
   // Debug technician loading
   useEffect(() => {
     console.log('🔍 [TechnicianDebug] Available technicians count:', availableTechnicians.length)
-    console.log('🔍 [TechnicianDebug] Form assignedTo:', formData.assignedTo)
+    console.log('🔍 [TechnicianDebug] Form assigned_to_id:', formData.assigned_to_id)
     console.log('🔍 [TechnicianDebug] Selected technician:', selectedTechnician)
-    if (formData.assignedTo && !selectedTechnician) {
-      console.warn('⚠️ [TechnicianDebug] AssignedTo is set but technician not found!')
-      console.warn('⚠️ [TechnicianDebug] Available technicians:', availableTechnicians.map(t => t.username))
+    if (formData.assigned_to_id && !selectedTechnician) {
+      console.warn('⚠️ [TechnicianDebug] assigned_to_id is set but technician not found!')
+      console.warn('⚠️ [TechnicianDebug] Available technicians:', availableTechnicians.map(t => ({ id: t.id, username: t.username })))
     }
-  }, [availableTechnicians, formData.assignedTo, selectedTechnician])
+  }, [availableTechnicians, formData.assigned_to_id, selectedTechnician])
 
   const allFields = workOrderFormSections.flatMap(section => section.fields)
   const currentSection = workOrderFormSections[currentStep]
@@ -130,13 +113,13 @@ export function CreateWorkOrderForm() {
     fetchData()
   }, [])
 
-  // Set assignedTo to current user when available
+  // Set assigned_to_id to current user when available
   useEffect(() => {
-    if (user?.username && !formData.assignedTo) {
-      console.log(`🔍 Setting assignedTo to current user: ${user.username}`)
-      setValue('assignedTo', user.username)
+    if (user?.id && !formData.assigned_to_id) {
+      console.log(`🔍 Setting assigned_to_id to current user: ${user.id}`)
+      setValue('assigned_to_id', user.id.toString())
     }
-  }, [user, setValue, formData.assignedTo])
+  }, [user, setValue, formData.assigned_to_id])
 
   // Fetch user data if not already loaded
   useEffect(() => {
@@ -153,22 +136,11 @@ export function CreateWorkOrderForm() {
     }
   }, [user])
 
-  // Debug user data
-  useEffect(() => {
-    console.log('🔍 User data changed:', user)
-    if (user) {
-      console.log('🔍 User profile:', user.profile)
-      console.log('🔍 User properties:', user.profile?.properties)
-    }
-  }, [user])
-
   // Debug form data changes
   useEffect(() => {
     console.log('🔍 Form data changed:', formData)
     console.log('🔍 Before photos:', formData.beforePhotos?.length || 0)
     console.log('🔍 After photos:', formData.afterPhotos?.length || 0)
-    console.log('🔍 Has PM:', formData.has_pm)
-    console.log('🔍 Has Issue:', formData.has_issue)
     if (formData.beforePhotos?.length > 0) {
       console.log('🔍 Before photos details:', formData.beforePhotos.map((img: any) => ({
         id: img.id,
@@ -185,27 +157,7 @@ export function CreateWorkOrderForm() {
         uploadedUrl: img.uploadedUrl
       })))
     }
-    if (formData.assignedTo) {
-      console.log('🔍 Selected technician:', selectedTechnician)
-      console.log('🔍 Available technicians:', availableTechnicians.map(t => ({ 
-        username: t.username, 
-        id: t.id,
-        profile: t.profile,
-        is_active: t.is_active
-      })))
-      console.log('🔍 Looking for technician with username:', formData.assignedTo)
-      console.log('🔍 Technician found:', availableTechnicians.find(tech => tech.username === formData.assignedTo))
-      console.log('🔍 Technician ID if found:', selectedTechnician?.id)
-      console.log('🔍 Technician profile if found:', selectedTechnician?.profile)
-    }
-    if (formData.location) {
-      console.log('🔍 Selected room:', selectedRoom)
-    }
-  }, [formData, selectedTechnician, selectedRoom, availableTechnicians])
-
-  const handleRoomSelect = (room: any) => {
-    setValue('location', room.number)
-  }
+  }, [formData])
 
   const handleNext = () => {
     const sectionFields = currentSection.fields
@@ -250,9 +202,9 @@ export function CreateWorkOrderForm() {
   const validateSubmissionData = () => {
     const issues = []
     
-    if (!formData.title?.trim()) issues.push('Title is required')
+    if (!formData.task?.trim()) issues.push('Task is required')
     if (!formData.description?.trim()) issues.push('Description is required')
-    if (!selectedRoom) issues.push('Location/Room must be selected')
+    if (!selectedRoom) issues.push('Room must be selected')
     if (!selectedTechnician) issues.push('Technician must be assigned')
     
     if (issues.length > 0) {
@@ -278,7 +230,6 @@ export function CreateWorkOrderForm() {
       return
     }
 
-    // Ensure propertyId is a number
     if (isNaN(numericPropertyId!)) {
       toast.error('Invalid property ID. Please contact support.')
       return
@@ -299,44 +250,33 @@ export function CreateWorkOrderForm() {
     }
 
     try {
-      // Upload local images first
-      console.log('📤 Starting to upload local images...')
+      console.log('📤 Starting form submission...')
       
-      // Get uploaded image URLs
       const beforeImageUrls = getUploadedImageUrls('beforePhotos')
       const afterImageUrls = getUploadedImageUrls('afterPhotos')
       
-      console.log('📤 Local images will be uploaded during form submission')
-
-      // Debug logging
       console.log('👷 Selected Technician:', selectedTechnician)
-      console.log('👷 Technician ID:', selectedTechnician?.id)
-      console.log('👷 Technician Profile User ID:', selectedTechnician?.profile?.user_id)
-      console.log('👷 Technician Profile:', selectedTechnician?.profile)
-      console.log('👷 Available Technicians:', availableTechnicians)
-      console.log('👷 Form Data Assigned To:', formData.assignedTo)
+      console.log('👷 Selected Room:', selectedRoom)
+      console.log('👷 Selected Machine:', selectedMachine)
       console.log('👤 User data:', user)
-      console.log('🏢 User profile properties:', user?.profile?.properties)
 
       const submitData = {
-        task: formData.title,
+        task: formData.task,
         description: formData.description,
-        status: statusMap[formData.status] || 'Pending',
-        priority: priorityMap[formData.priority] || 'Medium',
-        due_date: formData.scheduledDate ? formData.scheduledDate.split('T')[0] : undefined,
-        room_id: selectedRoom?.id ? Number(selectedRoom.id) : undefined,
-        machine_id: undefined, // Set to undefined if no machine selected
-        assigned_to_id: selectedTechnician?.id ? Number(selectedTechnician.id) : 
-                       selectedTechnician?.profile?.user_id ? Number(selectedTechnician.profile.user_id) : undefined,
+        status: formData.status,
+        priority: formData.priority,
+        due_date: formData.due_date ? formData.due_date.split('T')[0] : undefined,
+        room_id: formData.room_id ? Number(formData.room_id) : undefined,
+        machine_id: formData.machine_id ? Number(formData.machine_id) : null,
+        assigned_to_id: formData.assigned_to_id ? Number(formData.assigned_to_id) : undefined,
         before_image_path: beforeImageUrls.length > 0 ? beforeImageUrls[0] : null,
         after_image_path: afterImageUrls.length > 0 ? afterImageUrls[0] : null,
         before_images: beforeImageUrls,
         after_images: afterImageUrls,
-        pdf_file_path: null,
+        pdf_file_path: formData.pdf_file_path,
         property_id: numericPropertyId!,
-        has_pm: formData.has_pm || false,           
-        has_issue: formData.has_issue || false, 
-        topic_id: formData.topic_id ? Number(formData.topic_id) : undefined, // Add topic_id
+        type: formData.type,
+        topic_id: formData.topic_id ? Number(formData.topic_id) : null,
       }
 
       console.log('📋 === ACTUAL REQUEST DATA ===')
@@ -346,10 +286,11 @@ export function CreateWorkOrderForm() {
       console.log('Priority:', submitData.priority)
       console.log('Due Date:', submitData.due_date)
       console.log('Room ID:', submitData.room_id)
+      console.log('Machine ID:', submitData.machine_id)
       console.log('Assigned To ID:', submitData.assigned_to_id)
       console.log('Property ID:', submitData.property_id)
-      console.log('Has PM:', submitData.has_pm)           // Add debug logs
-      console.log('Has Issue:', submitData.has_issue)     // Add debug logs
+      console.log('Type:', submitData.type)
+      console.log('Topic ID:', submitData.topic_id)
       console.log('Before Image Path:', submitData.before_image_path)
       console.log('After Image Path:', submitData.after_image_path)
       console.log('Before Images Array:', submitData.before_images)
@@ -388,19 +329,37 @@ export function CreateWorkOrderForm() {
 
   const getSelectOptions = (fieldName: string) => {
     switch (fieldName) {
-      case 'assignedTo':
-        console.log(`🔍 [getSelectOptions] Available technicians:`, availableTechnicians.map(t => ({ username: t.username, id: t.id })))
-        const options = availableTechnicians.map(tech => ({
-          value: tech.username,
+      case 'assigned_to_id':
+        console.log(`🔍 [getSelectOptions] Available technicians:`, availableTechnicians.map(t => ({ id: t.id, username: t.username })))
+        const techOptions = availableTechnicians.map(tech => ({
+          value: tech.id.toString(),
           label: `${tech.username} - ${tech.profile?.position || 'Technician'}`
         }))
-        console.log(`🔍 [getSelectOptions] Generated options:`, options)
-        return options
+        console.log(`🔍 [getSelectOptions] Generated tech options:`, techOptions)
+        return techOptions
       case 'machine_id':
-        return operationalMachines.map(machine => ({
-          value: machine.id,
-          label: machine.name
+        return [
+          { value: '', label: 'No Machine Selected' },
+          ...operationalMachines.map(machine => ({
+            value: machine.id.toString(),
+            label: machine.name
+          }))
+        ]
+      case 'room_id':
+        return activeRooms.map(room => ({
+          value: room.id.toString(),
+          label: `${room.name} (${room.number})`
         }))
+      case 'topic_id':
+        // TODO: Implement topic fetching from API
+        return [
+          { value: '', label: 'No Topic Selected' },
+          { value: '1', label: 'HVAC System' },
+          { value: '2', label: 'Electrical' },
+          { value: '3', label: 'Plumbing' },
+          { value: '4', label: 'Safety Equipment' },
+          { value: '5', label: 'General Maintenance' },
+        ]
       default:
         return []
     }
@@ -425,7 +384,7 @@ export function CreateWorkOrderForm() {
             <ChevronLeftIcon className="h-5 w-5" />
           </button>
           <h1 className="text-lg font-semibold text-gray-900">Create Work Order</h1>
-          <div className="w-10"></div> {/* Spacer for centering */}
+          <div className="w-10"></div>
         </div>
       </div>
 
@@ -509,58 +468,36 @@ export function CreateWorkOrderForm() {
               >
                 {currentSection.fields.map((field) => (
                   <div key={field.name} className="mb-6">
-                    {/* Only show label for non-enhanced-checkbox fields */}
-                    {field.type !== 'enhanced-checkbox' && (
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        {field.label}
-                        {field.required && <span className="text-red-500 ml-1">*</span>}
-                      </label>
-                    )}
                     <DynamicFormRenderer
                       field={field}
                       value={formData[field.name]}
                       error={errors[field.name]}
                       onChange={(value) => setValue(field.name, value)}
                       selectOptions={getSelectOptions(field.name)}
-                      autocompleteItems={field.name === 'location' ? activeRooms : []}
-                      onAutocompleteSelect={field.name === 'location' ? handleRoomSelect : undefined}
                     />
                     {errors[field.name] && (
                       <p className="mt-1 text-sm text-red-600">{errors[field.name]}</p>
                     )}
-                    {/* Show Has PM / Has Issue badges below the machine select */}
-                    {field.name === 'machine_id' && (
-                      (() => {
-                        const selectedMachine = operationalMachines.find(m => m.id === Number(formData.machine_id))
-                        return (
-                          <div className="flex gap-4 mt-2">
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs text-gray-500">Has PM:</span>
-                              <Badge className={
-                                selectedMachine
-                                  ? (selectedMachine.has_pm ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800')
-                                  : 'bg-gray-100 text-gray-800'
-                              }>
-                                {selectedMachine
-                                  ? (selectedMachine.has_pm ? 'Yes' : 'No')
-                                  : 'N/A'}
-                              </Badge>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs text-gray-500">Has Issue:</span>
-                              <Badge className={
-                                selectedMachine
-                                  ? (selectedMachine.has_issue ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800')
-                                  : 'bg-gray-100 text-gray-800'
-                              }>
-                                {selectedMachine
-                                  ? (selectedMachine.has_issue ? 'Yes' : 'No')
-                                  : 'N/A'}
-                              </Badge>
-                            </div>
-                          </div>
-                        )
-                      })()
+                    {/* Show Machine details below machine select */}
+                    {field.name === 'machine_id' && selectedMachine && (
+                      <div className="flex gap-4 mt-2">
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-gray-500">Has PM:</span>
+                          <Badge className={
+                            selectedMachine.has_pm ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                          }>
+                            {selectedMachine.has_pm ? 'Yes' : 'No'}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-gray-500">Has Issue:</span>
+                          <Badge className={
+                            selectedMachine.has_issue ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
+                          }>
+                            {selectedMachine.has_issue ? 'Yes' : 'No'}
+                          </Badge>
+                        </div>
+                      </div>
                     )}
                   </div>
                 ))}
@@ -618,6 +555,7 @@ export function CreateWorkOrderForm() {
               formData={formData}
               activeRooms={activeRooms}
               availableTechnicians={availableTechnicians}
+              operationalMachines={operationalMachines}
               getUploadedImageUrls={getUploadedImageUrls}
               uploadStatus={getUploadStatus()}
             />
