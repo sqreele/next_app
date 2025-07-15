@@ -9,7 +9,6 @@ interface ImageFile {
   uploadProgress?: number
   uploadedUrl?: string
   error?: string
-  // Local storage for pending uploads
   isLocal?: boolean
   localUrl?: string
 }
@@ -19,63 +18,51 @@ export function useWorkOrderForm(initialData: any) {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [imagePreviews, setImagePreviews] = useState<Record<string, string | null>>({})
 
-  // In src/hooks/use-work-order-form.ts, update the setValue function:
-
-const setValue = useCallback((name: string, value: any) => {
-  console.log(`🔧 setValue called: ${name}`, value)
-  
-  if (name === 'beforePhotos' || name === 'afterPhotos') {
-    console.log(`📸 [setValue] Image field ${name}:`, {
-      isArray: Array.isArray(value),
-      isFunction: typeof value === 'function',
-      length: Array.isArray(value) ? value.length : 'not array',
-      uploadStatuses: Array.isArray(value) ? value.map((img: any) => img.uploadStatus) : 'not array',
-      ids: Array.isArray(value) ? value.map((img: any) => img.id) : 'not array'
-    })
+  const setValue = useCallback((name: string, value: any) => {
+    console.log(`🔧 setValue called: ${name}`, value)
     
-    // Add stack trace to see where this is being called from
-    if (Array.isArray(value) && value.length === 0) {
-      console.log(`⚠️ [setValue] Empty array passed for ${name}. Stack trace:`, new Error().stack)
-      console.log(`⚠️ [setValue] Empty array call stack:`, new Error().stack?.split('\n').slice(0, 10).join('\n'))
-      console.log(`⚠️ [setValue] Previous value for ${name}:`, formData[name])
+    if (name === 'beforePhotos' || name === 'afterPhotos') {
+      console.log(`📸 [setValue] Image field ${name}:`, {
+        isArray: Array.isArray(value),
+        isFunction: typeof value === 'function',
+        length: Array.isArray(value) ? value.length : 'not array',
+        uploadStatuses: Array.isArray(value) ? value.map((img: any) => img.uploadStatus) : 'not array',
+        ids: Array.isArray(value) ? value.map((img: any) => img.id) : 'not array'
+      })
+      
+      if (Array.isArray(value) && value.length === 0) {
+        console.log(`⚠️ [setValue] Empty array passed for ${name}. Stack trace:`, new Error().stack)
+        console.log(`⚠️ [setValue] Previous value for ${name}:`, formData[name])
+      }
     }
-  }
-  
-  // Use functional update for image fields to prevent race conditions
-  if (name === 'beforePhotos' || name === 'afterPhotos') {
-    setFormData((prev: any) => {
-      // Handle functional updates for image fields
-      const newValue = typeof value === 'function' ? value(prev[name] || []) : value
-      
-      // Safeguard: Don't set empty arrays for image fields unless explicitly intended
-      if (Array.isArray(newValue) && newValue.length === 0 && Array.isArray(prev[name]) && prev[name].length > 0) {
-        console.warn(`⚠️ [setValue] Attempting to set empty array for ${name} when previous value had ${prev[name].length} items`)
-        console.warn(`⚠️ [setValue] This might be a race condition. Preserving previous value.`)
-        console.warn(`⚠️ [setValue] Stack trace:`, new Error().stack?.split('\n').slice(0, 5).join('\n'))
-        return prev
-      }
-      
-      // Additional safeguard: Log when setting empty arrays for image fields
-      if (Array.isArray(newValue) && newValue.length === 0) {
-        console.warn(`⚠️ [setValue] Setting empty array for ${name}`)
-        console.warn(`⚠️ [setValue] Previous value:`, prev[name])
-        console.warn(`⚠️ [setValue] Stack trace:`, new Error().stack?.split('\n').slice(0, 5).join('\n'))
-      }
-      
-      const newData = { ...prev, [name]: newValue }
-      console.log(`📝 New form data for ${name}:`, newData[name])
-      console.log(`📝 Previous value for ${name}:`, prev[name])
-      console.log(`📝 New value for ${name}:`, newValue)
-      return newData
-    })
-  } else {
-    setFormData((prev: any) => ({ ...prev, [name]: value }))
-  }
-  
-  if (errors[name]) {
-    setErrors(prev => ({ ...prev, [name]: '' }))
-  }
-}, [errors])
+    
+    if (name === 'beforePhotos' || name === 'afterPhotos') {
+      setFormData((prev: any) => {
+        const newValue = typeof value === 'function' ? value(prev[name] || []) : value
+        
+        if (Array.isArray(newValue) && newValue.length === 0 && Array.isArray(prev[name]) && prev[name].length > 0) {
+          console.warn(`⚠️ [setValue] Attempting to set empty array for ${name} when previous value had ${prev[name].length} items`)
+          console.warn(`⚠️ [setValue] This might be a race condition. Preserving previous value.`)
+          return prev
+        }
+        
+        if (Array.isArray(newValue) && newValue.length === 0) {
+          console.warn(`⚠️ [setValue] Setting empty array for ${name}`)
+          console.warn(`⚠️ [setValue] Previous value:`, prev[name])
+        }
+        
+        const newData = { ...prev, [name]: newValue }
+        console.log(`📝 New form data for ${name}:`, newData[name])
+        return newData
+      })
+    } else {
+      setFormData((prev: any) => ({ ...prev, [name]: value }))
+    }
+    
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }))
+    }
+  }, [errors, formData])
 
   const setImagePreview = useCallback((name: string, preview: string | null) => {
     setImagePreviews(prev => ({ ...prev, [name]: preview }))
@@ -144,7 +131,6 @@ const setValue = useCallback((name: string, value: any) => {
       return []
     }
     
-    // Get only successfully uploaded images
     const successfulUploads = value.filter((item: ImageFile) => {
       const isSuccess = item.uploadStatus === 'success'
       const hasUrl = item.uploadedUrl && typeof item.uploadedUrl === 'string' && item.uploadedUrl.trim() !== ''
@@ -176,7 +162,6 @@ const setValue = useCallback((name: string, value: any) => {
       return true
     }
     
-    // Check if all images are successfully uploaded
     const allReady = allImages.every((img: ImageFile) => 
       img.uploadStatus === 'success'
     )
@@ -211,7 +196,6 @@ const setValue = useCallback((name: string, value: any) => {
     return status
   }, [formData])
 
-  // Upload all local images (called during form submission)
   const uploadAllLocalImages = useCallback(async (): Promise<{ beforePhotos: string[], afterPhotos: string[] }> => {
     const beforePhotos = formData.beforePhotos || []
     const afterPhotos = formData.afterPhotos || []
@@ -225,13 +209,10 @@ const setValue = useCallback((name: string, value: any) => {
     
     console.log(`📤 Uploading ${allLocalImages.length} local images`)
     
-    // This would need to be implemented in the ImageUpload component
-    // For now, we'll return empty arrays and handle uploads in the form submission
     return { beforePhotos: [], afterPhotos: [] }
   }, [formData])
 
   const reset = useCallback(() => {
-    // Clean up object URLs to prevent memory leaks
     Object.values(formData).forEach((value: any) => {
       if (Array.isArray(value)) {
         value.forEach((item: any) => {
