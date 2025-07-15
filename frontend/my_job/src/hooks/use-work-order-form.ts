@@ -22,33 +22,12 @@ export function useWorkOrderForm(initialData: any) {
     console.log(`🔧 setValue called: ${name}`, value)
     
     if (name === 'beforePhotos' || name === 'afterPhotos') {
-      console.log(`📸 [setValue] Image field ${name}:`, {
-        isArray: Array.isArray(value),
-        isFunction: typeof value === 'function',
-        length: Array.isArray(value) ? value.length : 'not array',
-        uploadStatuses: Array.isArray(value) ? value.map((img: any) => img.uploadStatus) : 'not array',
-        ids: Array.isArray(value) ? value.map((img: any) => img.id) : 'not array'
-      })
-      
-      if (Array.isArray(value) && value.length === 0) {
-        console.log(`⚠️ [setValue] Empty array passed for ${name}. Stack trace:`, new Error().stack)
-        console.log(`⚠️ [setValue] Previous value for ${name}:`, formData[name])
-      }
-    }
-    
-    if (name === 'beforePhotos' || name === 'afterPhotos') {
       setFormData((prev: any) => {
         const newValue = typeof value === 'function' ? value(prev[name] || []) : value
         
         if (Array.isArray(newValue) && newValue.length === 0 && Array.isArray(prev[name]) && prev[name].length > 0) {
           console.warn(`⚠️ [setValue] Attempting to set empty array for ${name} when previous value had ${prev[name].length} items`)
-          console.warn(`⚠️ [setValue] This might be a race condition. Preserving previous value.`)
           return prev
-        }
-        
-        if (Array.isArray(newValue) && newValue.length === 0) {
-          console.warn(`⚠️ [setValue] Setting empty array for ${name}`)
-          console.warn(`⚠️ [setValue] Previous value:`, prev[name])
         }
         
         const newData = { ...prev, [name]: newValue }
@@ -62,7 +41,7 @@ export function useWorkOrderForm(initialData: any) {
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }))
     }
-  }, [errors, formData])
+  }, [errors])
 
   const setImagePreview = useCallback((name: string, preview: string | null) => {
     setImagePreviews(prev => ({ ...prev, [name]: preview }))
@@ -72,11 +51,24 @@ export function useWorkOrderForm(initialData: any) {
     const newErrors: Record<string, string> = {}
     
     fields.forEach(field => {
+      const value = formData[field.name]
+      
+      // Custom validation
+      if (field.validation?.custom) {
+        const customResult = field.validation.custom(value, formData)
+        if (typeof customResult === 'string') {
+          newErrors[field.name] = customResult
+          return
+        }
+        if (customResult === false) {
+          newErrors[field.name] = `${field.label} is invalid`
+          return
+        }
+      }
+      
+      // Required field validation
       if (field.required) {
-        const value = formData[field.name]
-        
         if (field.type === 'image-upload') {
-          console.log(`🔍 Validating image field ${field.name}:`, value)
           if (!value || !Array.isArray(value) || value.length === 0) {
             newErrors[field.name] = `${field.label} is required`
           } else {
@@ -107,11 +99,9 @@ export function useWorkOrderForm(initialData: any) {
 
   const getImageFiles = useCallback((fieldName: string): File[] => {
     const value = formData[fieldName]
-    console.log(`📁 Getting image files for ${fieldName}:`, value)
     
     if (Array.isArray(value)) {
       const files = value.map((item: ImageFile) => item.file)
-      console.log(`📁 Extracted files:`, files)
       return files
     }
     return []
@@ -119,29 +109,18 @@ export function useWorkOrderForm(initialData: any) {
 
   const getUploadedImageUrls = useCallback((fieldName: string): string[] => {
     const value = formData[fieldName]
-    console.log(`🔗 [getUploadedImageUrls] Getting URLs for ${fieldName}:`, value)
     
     if (!Array.isArray(value)) {
-      console.warn(`⚠️ [getUploadedImageUrls] ${fieldName} is not an array:`, typeof value, value)
       return []
     }
     
     if (value.length === 0) {
-      console.log(`📝 [getUploadedImageUrls] ${fieldName} array is empty`)
       return []
     }
     
     const successfulUploads = value.filter((item: ImageFile) => {
       const isSuccess = item.uploadStatus === 'success'
       const hasUrl = item.uploadedUrl && typeof item.uploadedUrl === 'string' && item.uploadedUrl.trim() !== ''
-      
-      console.log(`🔍 [getUploadedImageUrls] Item ${item.id}:`, {
-        status: item.uploadStatus,
-        hasUrl: !!hasUrl,
-        url: item.uploadedUrl,
-        fileName: item.file?.name
-      })
-      
       return isSuccess && hasUrl
     })
     
@@ -158,7 +137,6 @@ export function useWorkOrderForm(initialData: any) {
     const allImages = [...beforePhotos, ...afterPhotos]
     
     if (allImages.length === 0) {
-      console.log('✅ No images to upload')
       return true
     }
     
@@ -192,7 +170,6 @@ export function useWorkOrderForm(initialData: any) {
       local: allImages.filter((img: ImageFile) => img.isLocal).length,
     }
     
-    console.log('📊 Upload status:', status)
     return status
   }, [formData])
 
@@ -203,12 +180,10 @@ export function useWorkOrderForm(initialData: any) {
     const allLocalImages = [...beforePhotos, ...afterPhotos].filter(img => img.isLocal && img.uploadStatus === 'pending')
     
     if (allLocalImages.length === 0) {
-      console.log('📝 No local images to upload')
       return { beforePhotos: [], afterPhotos: [] }
     }
     
     console.log(`📤 Uploading ${allLocalImages.length} local images`)
-    
     return { beforePhotos: [], afterPhotos: [] }
   }, [formData])
 
