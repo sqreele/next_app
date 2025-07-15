@@ -19,8 +19,10 @@ export interface WorkOrder {
   before_images: string[]
   after_images: string[]
   pdf_file_path: string | null
-  type: string
+  type: 'pm' | 'cm' | 'inspection' | 'repair' | 'emergency' | 'upgrade' | 'other'
   topic_id: number | null
+  has_pm?: boolean
+  has_issue?: boolean
 }
 
 export interface CreateWorkOrderData {
@@ -38,8 +40,10 @@ export interface CreateWorkOrderData {
   before_images: string[]
   after_images: string[]
   pdf_file_path?: string | null
-  type: string
+  type: 'pm' | 'cm' | 'inspection' | 'repair' | 'emergency' | 'upgrade' | 'other'
   topic_id?: number | null
+  has_pm?: boolean
+  has_issue?: boolean
 }
 
 export interface UpdateWorkOrderData extends Partial<CreateWorkOrderData> {}
@@ -47,13 +51,13 @@ export interface UpdateWorkOrderData extends Partial<CreateWorkOrderData> {}
 export interface WorkOrderFilters {
   status?: WorkOrder['status']
   priority?: WorkOrder['priority']
+  type?: WorkOrder['type']
   assigned_to_id?: number
   machine_id?: number
   room_id?: number
   property_id?: number
   due_date_from?: string
   due_date_to?: string
-  type?: string
   topic_id?: number
   search?: string
   page?: number
@@ -82,9 +86,6 @@ export interface ApiError {
 class WorkOrdersAPI {
   private readonly endpoint = '/api/v1/work_orders'
 
-  /**
-   * Get all work orders with optional filters
-   */
   async getWorkOrders(filters?: WorkOrderFilters): Promise<WorkOrder[]> {
     try {
       const params = new URLSearchParams()
@@ -108,9 +109,6 @@ class WorkOrdersAPI {
     }
   }
 
-  /**
-   * Get a single work order by ID
-   */
   async getWorkOrder(id: number): Promise<WorkOrder> {
     try {
       const response: AxiosResponse<WorkOrder> = await apiClient.get(`${this.endpoint}/${id}`)
@@ -121,9 +119,6 @@ class WorkOrdersAPI {
     }
   }
 
-  /**
-   * Create a new work order
-   */
   async createWorkOrder(data: CreateWorkOrderData): Promise<WorkOrder> {
     try {
       const response: AxiosResponse<WorkOrder> = await apiClient.post(this.endpoint, data)
@@ -134,9 +129,6 @@ class WorkOrdersAPI {
     }
   }
 
-  /**
-   * Update an existing work order
-   */
   async updateWorkOrder(id: number, data: UpdateWorkOrderData): Promise<WorkOrder> {
     try {
       const response: AxiosResponse<WorkOrder> = await apiClient.patch(`${this.endpoint}/${id}`, data)
@@ -147,9 +139,6 @@ class WorkOrdersAPI {
     }
   }
 
-  /**
-   * Delete a work order
-   */
   async deleteWorkOrder(id: number): Promise<void> {
     try {
       await apiClient.delete(`${this.endpoint}/${id}`)
@@ -159,17 +148,9 @@ class WorkOrdersAPI {
     }
   }
 
-  /**
-   * Update work order status
-   */
   async updateWorkOrderStatus(id: number, status: WorkOrder['status']): Promise<WorkOrder> {
     try {
       const updateData: UpdateWorkOrderData = { status }
-      
-      if (status === 'Completed') {
-        // Note: completed_at should be handled by the backend
-      }
-      
       return await this.updateWorkOrder(id, updateData)
     } catch (error) {
       console.error('Error in updateWorkOrderStatus:', error)
@@ -177,9 +158,6 @@ class WorkOrdersAPI {
     }
   }
 
-  /**
-   * Get work orders by status
-   */
   async getWorkOrdersByStatus(status: WorkOrder['status']): Promise<WorkOrder[]> {
     try {
       return await this.getWorkOrders({ status })
@@ -189,9 +167,6 @@ class WorkOrdersAPI {
     }
   }
 
-  /**
-   * Get work orders by priority
-   */
   async getWorkOrdersByPriority(priority: WorkOrder['priority']): Promise<WorkOrder[]> {
     try {
       return await this.getWorkOrders({ priority })
@@ -201,9 +176,6 @@ class WorkOrdersAPI {
     }
   }
 
-  /**
-   * Get work orders assigned to a technician
-   */
   async getWorkOrdersByTechnician(assigned_to_id: number): Promise<WorkOrder[]> {
     try {
       return await this.getWorkOrders({ assigned_to_id })
@@ -213,9 +185,6 @@ class WorkOrdersAPI {
     }
   }
 
-  /**
-   * Get work orders for a specific machine
-   */
   async getWorkOrdersByMachine(machine_id: number): Promise<WorkOrder[]> {
     try {
       return await this.getWorkOrders({ machine_id })
@@ -225,9 +194,6 @@ class WorkOrdersAPI {
     }
   }
 
-  /**
-   * Get work orders for a specific room
-   */
   async getWorkOrdersByRoom(room_id: number): Promise<WorkOrder[]> {
     try {
       return await this.getWorkOrders({ room_id })
@@ -237,9 +203,6 @@ class WorkOrdersAPI {
     }
   }
 
-  /**
-   * Get work orders for a specific property
-   */
   async getWorkOrdersByProperty(property_id: number): Promise<WorkOrder[]> {
     try {
       return await this.getWorkOrders({ property_id })
@@ -249,9 +212,6 @@ class WorkOrdersAPI {
     }
   }
 
-  /**
-   * Search work orders
-   */
   async searchWorkOrders(query: string): Promise<WorkOrder[]> {
     try {
       return await this.getWorkOrders({ search: query })
@@ -261,9 +221,6 @@ class WorkOrdersAPI {
     }
   }
 
-  /**
-   * Get overdue work orders
-   */
   async getOverdueWorkOrders(): Promise<WorkOrder[]> {
     try {
       const today = new Date().toISOString().split('T')[0]
@@ -277,9 +234,6 @@ class WorkOrdersAPI {
     }
   }
 
-  /**
-   * Get work orders due within a date range
-   */
   async getWorkOrdersByDateRange(from: string, to: string): Promise<WorkOrder[]> {
     try {
       return await this.getWorkOrders({ 
@@ -293,10 +247,8 @@ class WorkOrdersAPI {
   }
 }
 
-// Export singleton instance
 export const workOrdersAPI = new WorkOrdersAPI()
 
-// Export error handling utilities
 export const isApiError = (error: any): error is AxiosError<ApiError> => {
   return error?.response?.data?.error !== undefined
 }
