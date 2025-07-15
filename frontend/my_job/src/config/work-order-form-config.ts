@@ -47,7 +47,7 @@ export interface FormField {
     min?: number
     max?: number
     pattern?: RegExp
-    custom?: (value: any) => boolean | string
+    custom?: (value: any, formData?: any) => boolean | string
   }
 }
 
@@ -143,7 +143,6 @@ export const workOrderFormSections: FormSection[] = [
         label: 'Topic Category (Optional)',
         type: 'select',
         required: false,
-        // Options will be populated dynamically from topics API
       },
     ],
   },
@@ -151,6 +150,20 @@ export const workOrderFormSections: FormSection[] = [
     id: 'maintenance',
     title: 'Maintenance Details',
     fields: [
+      {
+        name: 'has_pm',
+        label: 'Has Preventive Maintenance',
+        type: 'checkbox',
+        description: 'This work order includes preventive maintenance tasks',
+        required: false,
+      },
+      {
+        name: 'has_issue',
+        label: 'Has Issue/Problem', 
+        type: 'checkbox',
+        description: 'This work order addresses a specific issue or problem',
+        required: false,
+      },
       {
         name: 'priority',
         label: 'Priority',
@@ -208,9 +221,18 @@ export const workOrderFormSections: FormSection[] = [
       },
       {
         name: 'machine_id',
-        label: 'Machine (Optional)',
+        label: 'Machine',
         type: 'select',
-        required: false,
+        required: false, // Will be conditionally required in validation
+        validation: {
+          custom: (value: any, formData?: any) => {
+            // Make machine required for PM work orders
+            if (formData?.type === 'pm' && (!value || value === '')) {
+              return 'Machine selection is required for Preventive Maintenance work orders'
+            }
+            return true
+          }
+        }
       },
       {
         name: 'assigned_to_id',
