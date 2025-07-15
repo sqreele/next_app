@@ -8,12 +8,19 @@ export interface WorkOrder {
   status: 'Pending' | 'In Progress' | 'Completed' | 'Cancelled'
   priority: 'Low' | 'Medium' | 'High' | 'Urgent'
   due_date: string
-  machine_id: number
+  machine_id: number | null
   room_id: number
   assigned_to_id: number
   property_id: number
   created_at: string
   completed_at: string | null
+  before_image_path: string | null
+  after_image_path: string | null
+  before_images: string[]
+  after_images: string[]
+  pdf_file_path: string | null
+  type: string
+  topic_id: number | null
 }
 
 export interface CreateWorkOrderData {
@@ -22,16 +29,17 @@ export interface CreateWorkOrderData {
   status: 'Pending' | 'In Progress' | 'Completed' | 'Cancelled'
   priority: 'Low' | 'Medium' | 'High' | 'Urgent'
   due_date?: string
-  machine_id?: number
+  machine_id?: number | null
   room_id?: number
   assigned_to_id?: number
-  property_id: number // Required field
+  property_id: number
   before_image_path?: string | null
   after_image_path?: string | null
   before_images: string[]
   after_images: string[]
-  has_pm?: boolean        // Add this
-  has_issue?: boolean    
+  pdf_file_path?: string | null
+  type: string
+  topic_id?: number | null
 }
 
 export interface UpdateWorkOrderData extends Partial<CreateWorkOrderData> {}
@@ -45,6 +53,8 @@ export interface WorkOrderFilters {
   property_id?: number
   due_date_from?: string
   due_date_to?: string
+  type?: string
+  topic_id?: number
   search?: string
   page?: number
   limit?: number
@@ -156,10 +166,8 @@ class WorkOrdersAPI {
     try {
       const updateData: UpdateWorkOrderData = { status }
       
-      // If marking as completed, set completed_at timestamp
       if (status === 'Completed') {
         // Note: completed_at should be handled by the backend
-        // but we can send it for immediate UI update
       }
       
       return await this.updateWorkOrder(id, updateData)
@@ -261,7 +269,7 @@ class WorkOrdersAPI {
       const today = new Date().toISOString().split('T')[0]
       return await this.getWorkOrders({ 
         due_date_to: today,
-        status: 'Pending' // Only get pending and in-progress orders
+        status: 'Pending'
       })
     } catch (error) {
       console.error('Error in getOverdueWorkOrders:', error)
