@@ -136,7 +136,16 @@ class ProcedureBase(BaseModel):
     remark: Optional[str] = Field(None, max_length=500)
 
 class ProcedureCreate(ProcedureBase):
-    machine_id: int
+    machine_id: int = Field(..., gt=0, description="Machine ID is required and must be greater than 0")
+    
+    @field_validator('machine_id')
+    @classmethod
+    def validate_machine_id(cls, v):
+        if v is None:
+            raise ValueError('machine_id is required')
+        if v <= 0:
+            raise ValueError('machine_id must be greater than 0')
+        return v
 
 class Procedure(ProcedureBase):
     id: int
