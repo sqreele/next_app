@@ -46,3 +46,10 @@ async def delete_procedure(procedure_id: int, db: AsyncSession = Depends(depende
     await db.delete(db_procedure)
     await db.commit()
     return {"message": "Procedure deleted"} 
+# Add this to your procedure.py router
+@router.get("/machines/available", response_model=List[dict])
+async def get_available_machines(db: AsyncSession = Depends(dependencies.get_db)):
+    """Get all available machines for procedure creation"""
+    result = await db.execute(select(models.Machine))
+    machines = result.scalars().all()
+    return [{"id": m.id, "name": m.name, "status": m.status} for m in machines]
