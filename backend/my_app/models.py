@@ -52,7 +52,7 @@ class UserProfile(Base):
     role = Column(String(50), default='Technician')
     position = Column(String(100), nullable=True)
     user = relationship("User", back_populates="profile")
-    properties = relationship("Property", secondary=user_property_association, back_populates="user_profiles")  # Fixed back_populates
+    properties = relationship("Property", secondary=user_property_association, back_populates="user_profiles")
     
     def __str__(self):
         return f"Profile {self.id} - {self.role}"
