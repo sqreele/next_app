@@ -128,7 +128,7 @@ class WorkOrder(Base):
     due_date = Column(Date, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
-    
+    frequency = Column(String(50), nullable=True, index=True)
     # New columns
     before_images = Column(JSONB, nullable=True, server_default='[]')
     after_images = Column(JSONB, nullable=True, server_default='[]')
