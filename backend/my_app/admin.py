@@ -172,10 +172,37 @@ class RoomAdmin(ModelView, model=Room):
     icon = "fa-solid fa-door-open"
 
 class ProcedureAdmin(ModelView, model=Procedure):
-    column_list = [Procedure.id, Procedure.title, Procedure.remark, Procedure.machine_id]
-    form_columns = [Procedure.title, Procedure.remark, Procedure.machine_id]
+    column_list = [Procedure.id, Procedure.title, Procedure.remark, "machine.name"]
+    form_columns = [Procedure.machine_id, Procedure.title, Procedure.remark]
     column_searchable_list = [Procedure.title, Procedure.remark]
     column_sortable_list = [Procedure.id, Procedure.title, Procedure.machine_id]
+    
+    # Load machine relationship for display
+    def get_query(self, request):
+        return super().get_query(request).options(selectinload(Procedure.machine))
+    
+    form_args = {
+        'machine_id': {
+            'label': 'Machine (Required)',
+            'description': 'Select the machine this procedure belongs to'
+        },
+        'title': {
+            'label': 'Procedure Title',
+            'description': 'Enter a descriptive title for this procedure'
+        },
+        'remark': {
+            'label': 'Remarks',
+            'description': 'Optional remarks or notes about this procedure'
+        }
+    }
+    
+    column_labels = {
+        'machine_id': 'Machine',
+        'machine.name': 'Machine Name',
+        'title': 'Title', 
+        'remark': 'Remarks'
+    }
+    
     name = "Procedure"
     name_plural = "Procedures"
     icon = "fa-solid fa-list"
