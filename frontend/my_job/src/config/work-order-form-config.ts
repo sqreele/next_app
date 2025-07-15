@@ -1,5 +1,3 @@
-// src/config/work-order-form-config.ts
-
 import {
   ClipboardDocumentListIcon,
   CalendarIcon,
@@ -8,7 +6,7 @@ import {
   PhotoIcon,
   DocumentIcon,
   CheckCircleIcon,
-  WrenchScrewdriverIcon, // Add this import
+  WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline'
 
 export interface ProgressStep {
@@ -25,11 +23,11 @@ export interface FormFieldOption {
 
 export interface FormField {
   name: string
-  label?: string // Made optional to allow fields without a label
+  label?: string
   type: 'text' | 'email' | 'password' | 'textarea' | 'select' | 'checkbox' | 'enhanced-checkbox' | 'date' | 'datetime-local' | 'image-upload' | 'file' | 'autocomplete' | 'number' | 'tel' | 'url'
   required?: boolean
   placeholder?: string
-  description?: string // Add description field for enhanced checkboxes
+  description?: string
   options?: FormFieldOption[]
   accept?: string
   multiple?: boolean
@@ -63,31 +61,31 @@ export const progressSteps: ProgressStep[] = [
   {
     id: 'basic',
     label: 'Basic Info',
-    description: 'Work order title and description',
+    description: 'Work order details and type',
     icon: ClipboardDocumentListIcon,
   },
   {
     id: 'maintenance',
     label: 'Maintenance',
-    description: 'Maintenance type and priority',
+    description: 'Priority and status settings',
     icon: WrenchScrewdriverIcon,
   },
   {
     id: 'scheduling',
     label: 'Scheduling',
-    description: 'Due date and assignment',
+    description: 'Due date settings',
     icon: CalendarIcon,
   },
   {
     id: 'assignment',
     label: 'Assignment',
-    description: 'Location and technician',
+    description: 'Location, machine, and technician',
     icon: UsersIcon,
   },
   {
     id: 'images',
-    label: 'Images',
-    description: 'Upload before and after photos',
+    label: 'Documentation',
+    description: 'Upload photos and documents',
     icon: PhotoIcon,
   },
   {
@@ -104,7 +102,7 @@ export const workOrderFormSections: FormSection[] = [
     title: 'Basic Information',
     fields: [
       {
-        name: 'title',
+        name: 'task',
         label: 'Work Order Title',
         type: 'text',
         required: true,
@@ -125,6 +123,28 @@ export const workOrderFormSections: FormSection[] = [
           maxLength: 1000,
         },
       },
+      {
+        name: 'type',
+        label: 'Work Order Type',
+        type: 'select',
+        required: true,
+        options: [
+          { value: 'pm', label: 'Preventive Maintenance' },
+          { value: 'cm', label: 'Corrective Maintenance' },
+          { value: 'inspection', label: 'Inspection' },
+          { value: 'repair', label: 'Repair' },
+          { value: 'emergency', label: 'Emergency' },
+          { value: 'upgrade', label: 'Upgrade' },
+          { value: 'other', label: 'Other' },
+        ],
+      },
+      {
+        name: 'topic_id',
+        label: 'Topic Category (Optional)',
+        type: 'select',
+        required: false,
+        // Options will be populated dynamically from topics API
+      },
     ],
   },
   {
@@ -132,29 +152,15 @@ export const workOrderFormSections: FormSection[] = [
     title: 'Maintenance Details',
     fields: [
       {
-        name: 'has_pm',
-        label: 'Has Preventive Maintenance',
-        type: 'enhanced-checkbox',
-        description: 'This work order includes preventive maintenance tasks',
-        required: false,
-      },
-      {
-        name: 'has_issue',
-        label: 'Has Issue/Problem',
-        type: 'enhanced-checkbox',
-        description: 'This work order addresses a specific issue or problem',
-        required: false,
-      },
-      {
         name: 'priority',
         label: 'Priority',
         type: 'select',
         required: true,
         options: [
-          { value: 'low', label: 'Low Priority' },
-          { value: 'medium', label: 'Medium Priority' },
-          { value: 'high', label: 'High Priority' },
-          { value: 'urgent', label: 'Urgent' },
+          { value: 'Low', label: 'Low Priority' },
+          { value: 'Medium', label: 'Medium Priority' },
+          { value: 'High', label: 'High Priority' },
+          { value: 'Urgent', label: 'Urgent' },
         ],
       },
       {
@@ -163,50 +169,30 @@ export const workOrderFormSections: FormSection[] = [
         type: 'select',
         required: true,
         options: [
-          { value: 'pending', label: 'Pending' },
-          { value: 'scheduled', label: 'Scheduled' },
-          { value: 'in-progress', label: 'In Progress' },
-          { value: 'on-hold', label: 'On Hold' },
+          { value: 'Pending', label: 'Pending' },
+          { value: 'In Progress', label: 'In Progress' },
+          { value: 'Completed', label: 'Completed' },
+          { value: 'Cancelled', label: 'Cancelled' },
         ],
       },
     ],
   },
   {
     id: 'scheduling',
-    title: 'Scheduling & Assignment',
+    title: 'Scheduling',
     fields: [
       {
-        name: 'scheduledDate',
-        label: 'Scheduled Date',
+        name: 'due_date',
+        label: 'Due Date',
         type: 'datetime-local',
         required: true,
         validation: {
           custom: (value: string) => {
             const selectedDate = new Date(value)
             const now = new Date()
-            return selectedDate > now || 'Scheduled date must be in the future'
+            return selectedDate > now || 'Due date must be in the future'
           },
         },
-      },
-      {
-        name: 'recurring',
-        label: 'Recurring Work Order',
-        type: 'checkbox',
-        required: false,
-      },
-      {
-        name: 'recurringFrequency',
-        label: 'Frequency',
-        type: 'select',
-        required: false,
-        conditional: 'recurring',
-        options: [
-          { value: 'daily', label: 'Daily' },
-          { value: 'weekly', label: 'Weekly' },
-          { value: 'monthly', label: 'Monthly' },
-          { value: 'quarterly', label: 'Quarterly' },
-          { value: 'annually', label: 'Annually' },
-        ],
       },
     ],
   },
@@ -215,14 +201,19 @@ export const workOrderFormSections: FormSection[] = [
     title: 'Assignment & Location',
     fields: [
       {
-        name: 'location',
+        name: 'room_id',
         label: 'Room/Location',
-        type: 'autocomplete',
+        type: 'select',
         required: true,
-        placeholder: 'Search for a room...',
       },
       {
-        name: 'assignedTo',
+        name: 'machine_id',
+        label: 'Machine (Optional)',
+        type: 'select',
+        required: false,
+      },
+      {
+        name: 'assigned_to_id',
         label: 'Assigned To',
         type: 'select',
         required: true,
@@ -268,13 +259,13 @@ export const workOrderFormSections: FormSection[] = [
         minHeight: 200,
       },
       {
-        name: 'attachments',
-        label: 'Additional Documents',
+        name: 'pdf_file_path',
+        label: 'PDF Documents',
         type: 'file',
-        accept: '.pdf,.doc,.docx,.txt',
+        accept: '.pdf',
         required: false,
-        multiple: true,
-        maxFiles: 3,
+        multiple: false,
+        maxFiles: 1,
         maxSize: 20,
       },
     ],
