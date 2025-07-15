@@ -1,3 +1,7 @@
+# ==============================================================================
+# File: backend/my_app/models.py (CORRECTED)
+# Description: Defines the database schema using the imported Base.
+# ==============================================================================
 from sqlalchemy import (
     Column, Integer, String, ForeignKey, DateTime, Date,
     Boolean, Table, Text
@@ -124,29 +128,32 @@ class WorkOrder(Base):
     due_date = Column(Date, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
-    frequency = Column(String(50), nullable=True, index=True)
-    # New columns
+    
+    # Image columns
     before_images = Column(JSONB, nullable=True, server_default='[]')
     after_images = Column(JSONB, nullable=True, server_default='[]')
+    before_image_path = Column(String(500), nullable=True)
+    after_image_path = Column(String(500), nullable=True)
+    pdf_file_path = Column(String(500), nullable=True)
     
+    # Foreign keys
     property_id = Column(Integer, ForeignKey('properties.id'), nullable=False)
     machine_id = Column(Integer, ForeignKey('machines.id'), nullable=True)
     room_id = Column(Integer, ForeignKey('rooms.id'), nullable=True)
     assigned_to_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     topic_id = Column(Integer, ForeignKey('topics.id'), nullable=True)
     
+    # Work order type
+    type = Column(String(50), nullable=False, default='pm')
+    
+    # Relationships
     property = relationship("Property", back_populates="work_orders")
     machine = relationship("Machine", back_populates="work_orders")
     room = relationship("Room", back_populates="work_orders")
     assigned_to = relationship("User", back_populates="work_orders_assigned")
     files = relationship("WorkOrderFile", back_populates="work_order", cascade="all, delete-orphan")
     topic = relationship("Topic", back_populates="work_orders")
-    
-    before_image_path = Column(String(500), nullable=True)
-    after_image_path = Column(String(500), nullable=True)
-    pdf_file_path = Column(String(500), nullable=True)
-    
-    type = Column(String(50), nullable=False, default='pm')
+    procedure_execution = relationship("ProcedureExecution", back_populates="work_order", uselist=False)
     
     def __str__(self):
         return f"{self.task} - {self.status}"
@@ -171,19 +178,53 @@ class Procedure(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(200), nullable=False)
     remark = Column(String(500), nullable=True)
-    machine_id = Column(Integer, ForeignKey('machines.id'), nullable=True)
-    frequency = Column(String(50), nullable=True, index=True)
+    machine_id = Column(Integer, ForeignKey('machines.id'), nullable=True)  # Made nullable for now
+    frequency = Column(String(50), nullable=True, index=True)  # Daily, Weekly, Monthly, Quarterly, Yearly
     
-    # Add the back relationship
+    # PM image and scheduling fields
+    pm_image_path = Column(String(500), nullable=True)
+    next_due_date = Column(Date, nullable=True)
+    last_completed_date = Column(Date, nullable=True)
+    is_active = Column(Boolean, default=True)
+    estimated_duration_minutes = Column(Integer, nullable=True)
+    
+    # Relationships
     machine = relationship("Machine", back_populates="procedures")
-
-    @property
-    def machine_name(self):
-        try:
-            return self.machine.name if self.machine else "No machine"
-        except Exception:
-            return "No machine"
+    procedure_executions = relationship("ProcedureExecution", back_populates="procedure", cascade="all, delete-orphan")
 
     def __str__(self):
-        # Use the machine_name property instead of accessing the relationship directly
-        return f"{self.title} (Machine ID: {self.machine_id}, Machine: {self.machine_name})"
+        return f"{self.title} (Machine: {self.machine.name if self.machine else 'Unknown'})"
+
+class ProcedureExecution(Base):
+    __tablename__ = 'procedure_executions'
+    id = Column(Integer, primary_key=True, index=True)
+    procedure_id = Column(Integer, ForeignKey('procedures.id'), nullable=False)
+    work_order_id = Column(Integer, ForeignKey('workorders.id'), nullable=True)
+    
+    # Execution details
+    scheduled_date = Column(Date, nullable=False)
+    completed_date = Column(Date, nullable=True)
+    status = Column(String(50), default='Scheduled')  # Scheduled, In Progress, Completed, Skipped
+    
+    # Images for this execution
+    before_images = Column(JSONB, nullable=True, server_default='[]')
+    after_images = Column(JSONB, nullable=True, server_default='[]')
+    execution_notes = Column(Text, nullable=True)
+    
+    # Who performed it
+    assigned_to_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    completed_by_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    
+    # Timing
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Relationships
+    procedure = relationship("Procedure", back_populates="procedure_executions")
+    work_order = relationship("WorkOrder", back_populates="procedure_execution")
+    assigned_to = relationship("User", foreign_keys=[assigned_to_id])
+    completed_by = relationship("User", foreign_keys=[completed_by_id])
+    
+    def __str__(self):
+        return f"{self.procedure.title} - {self.scheduled_date} ({self.status})"

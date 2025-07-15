@@ -237,7 +237,7 @@ class WorkOrderCreate(BaseModel):
     pdf_file_path: Optional[str] = Field(None, max_length=500)
     type: Literal['pm', 'issue'] = Field(...)
     topic_id: Optional[int] = None
-    frequency: Optional[str] = Field(None, max_length=50)
+  
 
     @field_validator('due_date', mode='before')
     @classmethod
@@ -397,3 +397,66 @@ class TechnicianStatus(BaseModel):
     completedToday: int
     utilization: int
     location: Optional[str] = None
+# Procedure Execution Schemas
+class ProcedureExecutionBase(BaseModel):
+    scheduled_date: date
+    status: Literal['Scheduled', 'In Progress', 'Completed', 'Skipped'] = 'Scheduled'
+    execution_notes: Optional[str] = None
+    assigned_to_id: Optional[int] = None
+
+class ProcedureExecutionCreate(ProcedureExecutionBase):
+    procedure_id: int
+
+class ProcedureExecutionUpdate(BaseModel):
+    status: Optional[Literal['Scheduled', 'In Progress', 'Completed', 'Skipped']] = None
+    completed_date: Optional[date] = None
+    execution_notes: Optional[str] = None
+    before_images: Optional[List[str]] = Field(default_factory=list)
+    after_images: Optional[List[str]] = Field(default_factory=list)
+    completed_by_id: Optional[int] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+class ProcedureExecution(ProcedureExecutionBase):
+    id: int
+    procedure_id: int
+    work_order_id: Optional[int] = None
+    completed_date: Optional[date] = None
+    before_images: List[str] = Field(default_factory=list)
+    after_images: List[str] = Field(default_factory=list)
+    completed_by_id: Optional[int] = None
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class ProcedureExecutionWithDetails(ProcedureExecution):
+    procedure: Optional[ProcedureWithMachine] = None
+    assigned_to: Optional[UserSimple] = None
+    completed_by: Optional[UserSimple] = None
+    work_order: Optional[WorkOrder] = None
+
+# Update Procedure schemas
+class ProcedureBase(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    remark: Optional[str] = Field(None, max_length=500)
+    pm_image_path: Optional[str] = Field(None, max_length=500)
+    frequency: Optional[str] = Field(None, max_length=50)
+    next_due_date: Optional[date] = None
+    estimated_duration_minutes: Optional[int] = Field(None, ge=1)
+    is_active: bool = True
+
+class ProcedureWithExecutions(ProcedureWithMachine):
+    last_completed_date: Optional[date] = None
+    recent_executions: List[ProcedureExecution] = Field(default_factory=list)
+
+# Calendar Event Schema
+class CalendarEvent(BaseModel):
+    id: str
+    title: str
+    start: str  # ISO date string
+    end: Optional[str] = None
+    backgroundColor: str = "#007bff"
+    borderColor: str = "#007bff"
+    extendedProps: dict = Field(default_factory=dict)    

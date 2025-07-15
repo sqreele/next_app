@@ -2,6 +2,7 @@ from sqladmin import ModelView
 from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile, Topic, Procedure
 from markupsafe import Markup
 from sqlalchemy.orm import selectinload
+from .models import ProcedureExecution
 
 # Helper functions
 def format_image_preview(model, attribute):
@@ -77,25 +78,22 @@ class MachineAdmin(ModelView, model=Machine):
 
 # *** ULTRA-SIMPLE PROCEDURE ADMIN ***
 class ProcedureAdmin(ModelView, model=Procedure):
-    column_list = [Procedure.id, Procedure.title, Procedure.remark, Procedure.frequency, "machine_name"]
-    form_columns = ["machine", "title", "remark", "frequency"]
-    column_searchable_list = [Procedure.title, Procedure.remark, Procedure.frequency]
-    column_sortable_list = [Procedure.id, Procedure.title, Procedure.machine_id, Procedure.frequency]
+    column_list = [Procedure.id, Procedure.title, Procedure.remark, Procedure.frequency, "machine.name"]
     
-    # Add formatters to control display
-    column_formatters = {
-        'title': lambda m, a: (m.title[:50] + '...') if m.title and len(m.title) > 50 else m.title,
-        'remark': lambda m, a: (m.remark[:30] + '...') if m.remark and len(m.remark) > 30 else m.remark,
-    }
+    form_columns = ["machine", "title", "remark", "frequency"]
+    
+    column_searchable_list = [Procedure.title, Procedure.remark]
+    column_sortable_list = [Procedure.id, Procedure.title]
     
     column_labels = {
         'id': 'ID',
         'title': 'Title',
         'remark': 'Remark', 
         'frequency': 'Frequency',
-        'machine_name': 'Machine Name',
-        'machine': 'Machine'
+        'machine.name': 'Machine Name'
     }
+    
+    page_size = 10
     
     def get_query(self, request):
         return super().get_query(request).options(selectinload(Procedure.machine))
@@ -106,14 +104,14 @@ class ProcedureAdmin(ModelView, model=Procedure):
 class WorkOrderAdmin(ModelView, model=WorkOrder):
     column_list = [WorkOrder.id, WorkOrder.task, WorkOrder.status, WorkOrder.priority, WorkOrder.due_date, 
                    WorkOrder.property_id, WorkOrder.machine_id, WorkOrder.room_id, WorkOrder.assigned_to,
-                   'before_images', 'after_images', WorkOrder.pdf_file_path, WorkOrder.topic_id, WorkOrder.frequency]
+                   'before_images', 'after_images', WorkOrder.pdf_file_path, WorkOrder.topic_id]
     
     form_columns = [WorkOrder.property_id, WorkOrder.task, WorkOrder.description, WorkOrder.status, 
                     WorkOrder.priority, WorkOrder.due_date, WorkOrder.machine_id, WorkOrder.room_id, 
-                    WorkOrder.assigned_to_id, WorkOrder.pdf_file_path, WorkOrder.topic_id, WorkOrder.frequency]
+                    WorkOrder.assigned_to_id, WorkOrder.pdf_file_path, WorkOrder.topic_id]
     
-    column_searchable_list = [WorkOrder.task, WorkOrder.description, WorkOrder.status, WorkOrder.priority, WorkOrder.frequency]
-    column_sortable_list = [WorkOrder.id, WorkOrder.task, WorkOrder.status, WorkOrder.priority, WorkOrder.due_date, WorkOrder.created_at, WorkOrder.frequency]
+    column_searchable_list = [WorkOrder.task, WorkOrder.description, WorkOrder.status, WorkOrder.priority]
+    column_sortable_list = [WorkOrder.id, WorkOrder.task, WorkOrder.status, WorkOrder.priority, WorkOrder.due_date, WorkOrder.created_at]
     
     column_formatters = {
         'before_images': lambda m, a: format_image_array(m, 'before_images'),
@@ -125,7 +123,6 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
     name = "Work Order"
     name_plural = "Work Orders"
     icon = "fa-solid fa-list-check"
-
 class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
     column_list = [WorkOrderFile.id, WorkOrderFile.file_path, WorkOrderFile.file_name, WorkOrderFile.file_size, 
                    WorkOrderFile.mime_type, WorkOrderFile.upload_type, WorkOrderFile.uploaded_at, WorkOrderFile.work_order_id]
@@ -145,3 +142,36 @@ class TopicAdmin(ModelView, model=Topic):
     name = "Topic"
     name_plural = "Topics"
     icon = "fa-solid fa-tag"
+class ProcedureExecutionAdmin(ModelView, model=ProcedureExecution):
+    column_list = [ProcedureExecution.id, "procedure.title", "procedure.machine.name", 
+                   ProcedureExecution.scheduled_date, ProcedureExecution.status,
+                   ProcedureExecution.completed_date, "assigned_to.username"]
+    
+    form_columns = ["procedure", "scheduled_date", "status", "assigned_to", 
+                    "execution_notes", "completed_date", "completed_by"]
+    
+    column_searchable_list = ["procedure.title", "execution_notes"]
+    column_sortable_list = [ProcedureExecution.scheduled_date, ProcedureExecution.status]
+    
+    column_labels = {
+        'procedure.title': 'Procedure',
+        'procedure.machine.name': 'Machine',
+        'assigned_to.username': 'Assigned To',
+        'completed_by.username': 'Completed By'
+    }
+    
+    column_formatters = {
+        'before_images': lambda m, a: format_image_array(m, 'before_images'),
+        'after_images': lambda m, a: format_image_array(m, 'after_images'),
+    }
+    
+    def get_query(self, request):
+        return super().get_query(request).options(
+            selectinload(ProcedureExecution.procedure).selectinload(Procedure.machine),
+            selectinload(ProcedureExecution.assigned_to),
+            selectinload(ProcedureExecution.completed_by)
+        )
+    
+    name = "Procedure Execution"
+    name_plural = "Procedure Executions" 
+    icon = "fa-solid fa-calendar-check"    
