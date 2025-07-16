@@ -1,14 +1,14 @@
 # ==============================================================================
-# File: backend/my_app/routers/procedure.py (FIXED - Complete)
+# File: backend/my_app/routers/procedure.py (COMPLETE FIXED VERSION)
 # Description: Full CRUD operations for procedures with machine relationships
 # ==============================================================================
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Optional
+from typing import List, Optional  # ✅ FIXED: Added Optional import
 from .. import schemas, models, dependencies, crud
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from ..utils.procedure_planning import ProcedurePlanner  # ADDED: Missing import
+from ..utils.procedure_planning import ProcedurePlanner  # ✅ FIXED: Added missing import
 import os 
 from datetime import date, timedelta
 
@@ -94,7 +94,7 @@ async def create_procedure(
 @router.put("/{procedure_id}", response_model=schemas.ProcedureWithMachines)
 async def update_procedure(
     procedure_id: int, 
-    procedure: schemas.ProcedureUpdate,  # FIXED: Use Update schema
+    procedure: schemas.ProcedureUpdate,
     db: AsyncSession = Depends(dependencies.get_db)
 ):
     """Update a procedure"""
@@ -158,7 +158,6 @@ async def delete_procedure(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete procedure: {str(e)}")
 
-# Additional endpoints for better machine-procedure management
 @router.get("/machines/with-procedures", response_model=List[schemas.MachineWithProcedures])
 async def get_machines_with_procedures(
     skip: int = 0,
@@ -191,11 +190,10 @@ async def get_available_machines(db: AsyncSession = Depends(dependencies.get_db)
 async def upload_procedure_execution_image(
     execution_id: int,
     file: UploadFile = File(...),
-    upload_type: str = Form("before"),  # "before" or "after"
+    upload_type: str = Form("before"),
     db: AsyncSession = Depends(dependencies.get_db)
 ):
     """Upload image for procedure execution"""
-    
     try:
         # Verify execution exists
         execution = await db.get(models.ProcedureExecution, execution_id)
@@ -247,8 +245,8 @@ async def upload_procedure_execution_image(
 async def generate_maintenance_plan(
     start_date: date,
     end_date: date,
-    property_id: Optional[int] = None,
-    machine_ids: Optional[List[int]] = None,
+    property_id: Optional[int] = None,  # ✅ Now Optional is properly imported
+    machine_ids: Optional[List[int]] = None,  # ✅ Now Optional is properly imported
     db: AsyncSession = Depends(dependencies.get_db)
 ):
     """Generate a comprehensive maintenance plan"""
@@ -269,7 +267,7 @@ async def schedule_procedure_executions(
     procedure_id: int,
     start_date: date,
     end_date: date,
-    machine_ids: Optional[List[int]] = None,
+    machine_ids: Optional[List[int]] = None,  # ✅ Now Optional is properly imported
     db: AsyncSession = Depends(dependencies.get_db)
 ):
     """Schedule executions for a specific procedure"""
