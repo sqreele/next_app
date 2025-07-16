@@ -498,3 +498,95 @@ async def update_user_password(db: AsyncSession, user: models.User, new_password
     user.hashed_password = get_password_hash(new_password)
     await db.commit()
     return user
+    # Add this improved create_procedure function to crud.py
+async def create_procedure(db: AsyncSession, procedure: schemas.ProcedureCreate):
+    """Create a procedure and assign it to machines with proper transaction management"""
+    try:
+        db_procedure = models.Procedure(
+            title=procedure.title,
+            remark=procedure.remark,
+            frequency=procedure.frequency
+        )
+        db.add(db_procedure)
+        await db.flush()  # Get the ID before adding machines
+        
+        # Assign to machines if provided
+        if procedure.machine_ids:
+            machines = await db.execute(
+                select(models.Machine).where(models.Machine.id.in_(procedure.machine_ids))
+            )
+            machine_objects = machines.scalars().all()
+            
+            # Validate all machines exist
+            if len(machine_objects) != len(procedure.machine_ids):
+                await db.rollback()
+                return None
+            
+            db_procedure.machines.extend(machine_objects)
+        
+        await db.commit()
+        await db.refresh(db_procedure)
+        
+        # Reload with machines relationship
+        result = await db.execute(
+            select(models.Procedure)
+            .options(selectinload(models.Procedure.machines))
+            .filter(models.Procedure.id == db_procedure.id)
+        )
+        return result.scalars().first()
+        
+    except Exception as e:
+        await db.rollback()
+        print(f"Error creating procedure: {e}")
+        raise e
+
+# Improved update_procedure function
+async def update_procedure(db: AsyncSession, procedure_id: int, procedure: schemas.ProcedureUpdate):
+    """Update a procedure and its machine assignments with proper validation"""
+    try:
+        db_procedure = await db.get(models.Procedure, procedure_id)
+        if not db_procedure:
+            return None
+        
+        # Update basic fields
+        if procedure.title is not None:
+            db_procedure.title = procedure.title
+        if procedure.remark is not None:
+            db_procedure.remark = procedure.remark
+        if procedure.frequency is not None:
+            db_procedure.frequency = procedure.frequency
+        
+        # Update machine assignments if provided
+        if procedure.machine_ids is not None:
+            # Clear existing assignments
+            db_procedure.machines.clear()
+            
+            # Add new assignments
+            if procedure.machine_ids:
+                machines = await db.execute(
+                    select(models.Machine).where(models.Machine.id.in_(procedure.machine_ids))
+                )
+                machine_objects = machines.scalars().all()
+                
+                # Validate all machines exist
+                if len(machine_objects) != len(procedure.machine_ids):
+                    await db.rollback()
+                    return None
+                
+                db_procedure.machines.extend(machine_objects)
+        
+        await db.commit()
+        await db.refresh(db_procedure)
+        
+        # Reload with machines relationship
+        result = await db.execute(
+            select(models.Procedure)
+            .options(selectinload(models.Procedure.machines))
+            .filter(models.Procedure.id == procedure_id)
+        )
+        return result.scalars().first()
+        
+    except Exception as e:
+        await db.rollback()
+        print(f"Error updating procedure: {e}")
+        raise e
