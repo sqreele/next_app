@@ -16,46 +16,54 @@ async def get_procedure_schedule(
     db: AsyncSession = Depends(dependencies.get_db)
 ):
     """Get scheduled procedures for calendar view"""
-    query = select(models.ProcedureExecution).options(
-        selectinload(models.ProcedureExecution.procedure).selectinload(models.Procedure.machine),
-        selectinload(models.ProcedureExecution.assigned_to)
-    ).filter(
-        models.ProcedureExecution.scheduled_date >= start_date,
-        models.ProcedureExecution.scheduled_date <= end_date
-    )
-    
-    if machine_id:
-        query = query.join(models.Procedure).filter(models.Procedure.machine_id == machine_id)
-    
-    result = await db.execute(query)
-    executions = result.scalars().all()
-    
-    events = []
-    for execution in executions:
-        color = {
-            'Scheduled': '#007bff',
-            'In Progress': '#ffc107', 
-            'Completed': '#28a745',
-            'Skipped': '#6c757d'
-        }.get(execution.status, '#007bff')
+    try:
+        query = select(models.ProcedureExecution).options(
+            selectinload(models.ProcedureExecution.procedure).selectinload(models.Procedure.machines),
+            selectinload(models.ProcedureExecution.machine),  # FIXED: Load machine directly
+            selectinload(models.ProcedureExecution.assigned_to)
+        ).filter(
+            models.ProcedureExecution.scheduled_date >= start_date,
+            models.ProcedureExecution.scheduled_date <= end_date
+        )
         
-        events.append(schemas.CalendarEvent(
-            id=f"procedure-{execution.id}",
-            title=f"{execution.procedure.title} - {execution.procedure.machine.name}",
-            start=execution.scheduled_date.isoformat(),
-            backgroundColor=color,
-            borderColor=color,
-            extendedProps={
-                "type": "procedure",
-                "procedureId": execution.procedure.id,
-                "executionId": execution.id,
-                "machineId": execution.procedure.machine_id,
-                "status": execution.status,
-                "estimatedDuration": execution.procedure.estimated_duration_minutes
-            }
-        ))
-    
-    return events
+        if machine_id:
+            query = query.filter(models.ProcedureExecution.machine_id == machine_id)
+        
+        result = await db.execute(query)
+        executions = result.scalars().all()
+        
+        events = []
+        for execution in executions:
+            color = {
+                'Scheduled': '#007bff',
+                'In Progress': '#ffc107', 
+                'Completed': '#28a745',
+                'Skipped': '#6c757d'
+            }.get(execution.status, '#007bff')
+            
+            # FIXED: Handle machine display properly
+            machine_name = execution.machine.name if execution.machine else 'No Machine'
+            procedure_title = execution.procedure.title if execution.procedure else 'Unknown Procedure'
+            
+            events.append(schemas.CalendarEvent(
+                id=f"procedure-{execution.id}",
+                title=f"{procedure_title} - {machine_name}",
+                start=execution.scheduled_date.isoformat(),
+                backgroundColor=color,
+                borderColor=color,
+                extendedProps={
+                    "type": "procedure",
+                    "procedureId": execution.procedure.id if execution.procedure else None,
+                    "executionId": execution.id,
+                    "machineId": execution.machine_id,
+                    "status": execution.status,
+                    "estimatedDuration": getattr(execution.procedure, 'estimated_duration_minutes', 30) if execution.procedure else 30
+                }
+            ))
+        
+        return events
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch schedule: {str(e)}")
 
 @router.post("/procedure-executions", response_model=schemas.ProcedureExecutionWithDetails)
 async def create_procedure_execution(
@@ -63,27 +71,39 @@ async def create_procedure_execution(
     db: AsyncSession = Depends(dependencies.get_db)
 ):
     """Schedule a new procedure execution"""
-    # Verify procedure exists
-    procedure = await db.get(models.Procedure, execution.procedure_id)
-    if not procedure:
-        raise HTTPException(status_code=404, detail="Procedure not found")
-    
-    db_execution = models.ProcedureExecution(**execution.model_dump())
-    db.add(db_execution)
-    await db.commit()
-    await db.refresh(db_execution)
-    
-    # Load with relationships
-    result = await db.execute(
-        select(models.ProcedureExecution)
-        .options(
-            selectinload(models.ProcedureExecution.procedure).selectinload(models.Procedure.machine),
-            selectinload(models.ProcedureExecution.assigned_to),
-            selectinload(models.ProcedureExecution.completed_by)
+    try:
+        # Verify procedure exists
+        procedure = await db.get(models.Procedure, execution.procedure_id)
+        if not procedure:
+            raise HTTPException(status_code=404, detail="Procedure not found")
+        
+        # Verify machine exists if provided
+        if execution.machine_id:
+            machine = await db.get(models.Machine, execution.machine_id)
+            if not machine:
+                raise HTTPException(status_code=404, detail="Machine not found")
+        
+        db_execution = models.ProcedureExecution(**execution.model_dump())
+        db.add(db_execution)
+        await db.commit()
+        await db.refresh(db_execution)
+        
+        # Load with relationships
+        result = await db.execute(
+            select(models.ProcedureExecution)
+            .options(
+                selectinload(models.ProcedureExecution.procedure).selectinload(models.Procedure.machines),
+                selectinload(models.ProcedureExecution.machine),
+                selectinload(models.ProcedureExecution.assigned_to),
+                selectinload(models.ProcedureExecution.completed_by)
+            )
+            .filter(models.ProcedureExecution.id == db_execution.id)
         )
-        .filter(models.ProcedureExecution.id == db_execution.id)
-    )
-    return result.scalars().first()
+        return result.scalars().first()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create execution: {str(e)}")
 
 @router.put("/procedure-executions/{execution_id}", response_model=schemas.ProcedureExecutionWithDetails)
 async def update_procedure_execution(
@@ -92,38 +112,50 @@ async def update_procedure_execution(
     db: AsyncSession = Depends(dependencies.get_db)
 ):
     """Update procedure execution (mark as completed, add images, etc.)"""
-    db_execution = await db.get(models.ProcedureExecution, execution_id)
-    if not db_execution:
-        raise HTTPException(status_code=404, detail="Procedure execution not found")
-    
-    update_data = execution_update.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(db_execution, field, value)
-    
-    # If marking as completed, update procedure's last_completed_date
-    if execution_update.status == 'Completed' and execution_update.completed_date:
-        procedure = await db.get(models.Procedure, db_execution.procedure_id)
-        if procedure:
-            procedure.last_completed_date = execution_update.completed_date
-            # Calculate next due date based on frequency
-            if procedure.frequency and execution_update.completed_date:
-                next_due = calculate_next_due_date(execution_update.completed_date, procedure.frequency)
-                procedure.next_due_date = next_due
-    
-    await db.commit()
-    await db.refresh(db_execution)
-    
-    # Load with relationships
-    result = await db.execute(
-        select(models.ProcedureExecution)
-        .options(
-            selectinload(models.ProcedureExecution.procedure).selectinload(models.Procedure.machine),
-            selectinload(models.ProcedureExecution.assigned_to),
-            selectinload(models.ProcedureExecution.completed_by)
+    try:
+        db_execution = await db.get(models.ProcedureExecution, execution_id)
+        if not db_execution:
+            raise HTTPException(status_code=404, detail="Procedure execution not found")
+        
+        update_data = execution_update.model_dump(exclude_unset=True)
+        
+        # Handle image arrays properly
+        for field, value in update_data.items():
+            if field in ['before_images', 'after_images'] and value is not None:
+                # Ensure we're working with a list
+                if not isinstance(value, list):
+                    value = [value] if value else []
+                setattr(db_execution, field, value)
+                # Mark as modified for SQLAlchemy JSONB
+                from sqlalchemy.orm.attributes import flag_modified
+                flag_modified(db_execution, field)
+            else:
+                setattr(db_execution, field, value)
+        
+        # If marking as completed, update related data
+        if execution_update.status == 'Completed' and execution_update.completed_date:
+            if not db_execution.completed_at:
+                db_execution.completed_at = datetime.utcnow()
+        
+        await db.commit()
+        await db.refresh(db_execution)
+        
+        # Load with relationships
+        result = await db.execute(
+            select(models.ProcedureExecution)
+            .options(
+                selectinload(models.ProcedureExecution.procedure).selectinload(models.Procedure.machines),
+                selectinload(models.ProcedureExecution.machine),
+                selectinload(models.ProcedureExecution.assigned_to),
+                selectinload(models.ProcedureExecution.completed_by)
+            )
+            .filter(models.ProcedureExecution.id == execution_id)
         )
-        .filter(models.ProcedureExecution.id == execution_id)
-    )
-    return result.scalars().first()
+        return result.scalars().first()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update execution: {str(e)}")
 
 @router.post("/generate-schedule")
 async def generate_procedure_schedule(
@@ -133,42 +165,56 @@ async def generate_procedure_schedule(
     db: AsyncSession = Depends(dependencies.get_db)
 ):
     """Generate scheduled procedure executions for a date range"""
-    # Get active procedures
-    query = select(models.Procedure).filter(models.Procedure.is_active == True)
-    if machine_id:
-        query = query.filter(models.Procedure.machine_id == machine_id)
-    
-    result = await db.execute(query)
-    procedures = result.scalars().all()
-    
-    created_count = 0
-    for procedure in procedures:
-        if procedure.frequency and procedure.next_due_date:
-            current_date = max(procedure.next_due_date, start_date)
-            while current_date <= end_date:
-                # Check if execution already exists for this date
-                existing = await db.execute(
-                    select(models.ProcedureExecution).filter(
-                        models.ProcedureExecution.procedure_id == procedure.id,
-                        models.ProcedureExecution.scheduled_date == current_date
+    try:
+        # Get active procedures with machines
+        query = select(models.Procedure).options(
+            selectinload(models.Procedure.machines)
+        ).filter(models.Procedure.frequency.isnot(None))
+        
+        result = await db.execute(query)
+        procedures = result.scalars().all()
+        
+        created_count = 0
+        for procedure in procedures:
+            # Filter by machine if specified
+            target_machines = procedure.machines
+            if machine_id:
+                target_machines = [m for m in procedure.machines if m.id == machine_id]
+            
+            if not target_machines:
+                continue
+            
+            # Generate schedule for each machine
+            for machine in target_machines:
+                current_date = start_date
+                while current_date <= end_date:
+                    # Check if execution already exists for this date and machine
+                    existing = await db.execute(
+                        select(models.ProcedureExecution).filter(
+                            models.ProcedureExecution.procedure_id == procedure.id,
+                            models.ProcedureExecution.machine_id == machine.id,
+                            models.ProcedureExecution.scheduled_date == current_date
+                        )
                     )
-                )
-                if not existing.scalars().first():
-                    execution = models.ProcedureExecution(
-                        procedure_id=procedure.id,
-                        scheduled_date=current_date,
-                        status='Scheduled'
-                    )
-                    db.add(execution)
-                    created_count += 1
-                
-                # Calculate next occurrence
-                current_date = calculate_next_due_date(current_date, procedure.frequency)
-                if current_date is None:
-                    break
-    
-    await db.commit()
-    return {"message": f"Created {created_count} scheduled procedure executions"}
+                    if not existing.scalars().first():
+                        execution = models.ProcedureExecution(
+                            procedure_id=procedure.id,
+                            machine_id=machine.id,
+                            scheduled_date=current_date,
+                            status='Scheduled'
+                        )
+                        db.add(execution)
+                        created_count += 1
+                    
+                    # Calculate next occurrence
+                    current_date = calculate_next_due_date(current_date, procedure.frequency)
+                    if current_date is None or current_date > end_date:
+                        break
+        
+        await db.commit()
+        return {"message": f"Created {created_count} scheduled procedure executions"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate schedule: {str(e)}")
 
 def calculate_next_due_date(last_date: date, frequency: str) -> Optional[date]:
     """Calculate next due date based on frequency"""
@@ -181,61 +227,13 @@ def calculate_next_due_date(last_date: date, frequency: str) -> Optional[date]:
         if last_date.month == 12:
             return last_date.replace(year=last_date.year + 1, month=1)
         else:
-            return last_date.replace(month=last_date.month + 1)
+            try:
+                return last_date.replace(month=last_date.month + 1)
+            except ValueError:
+                # Handle month-end edge cases
+                return last_date.replace(month=last_date.month + 1, day=28)
     elif frequency == "Quarterly":
         return last_date + timedelta(days=90)
     elif frequency == "Yearly":
         return last_date.replace(year=last_date.year + 1)
     return None
-# In backend/my_app/routers/calendar.py - Update the existing endpoint
-
-@router.put("/procedure-executions/{execution_id}", response_model=schemas.ProcedureExecutionWithDetails)
-async def update_procedure_execution(
-    execution_id: int,
-    execution_update: schemas.ProcedureExecutionUpdate,
-    db: AsyncSession = Depends(dependencies.get_db)
-):
-    """Update procedure execution (mark as completed, add images, etc.)"""
-    db_execution = await db.get(models.ProcedureExecution, execution_id)
-    if not db_execution:
-        raise HTTPException(status_code=404, detail="Procedure execution not found")
-    
-    update_data = execution_update.model_dump(exclude_unset=True)
-    
-    # Handle image arrays properly
-    for field, value in update_data.items():
-        if field in ['before_images', 'after_images'] and value is not None:
-            # Ensure we're working with a list
-            if not isinstance(value, list):
-                value = [value] if value else []
-            setattr(db_execution, field, value)
-            # Mark as modified for SQLAlchemy JSONB
-            from sqlalchemy.orm.attributes import flag_modified
-            flag_modified(db_execution, field)
-        else:
-            setattr(db_execution, field, value)
-    
-    # If marking as completed, update procedure's last_completed_date
-    if execution_update.status == 'Completed' and execution_update.completed_date:
-        procedure = await db.get(models.Procedure, db_execution.procedure_id)
-        if procedure:
-            procedure.last_completed_date = execution_update.completed_date
-            # Calculate next due date based on frequency
-            if procedure.frequency and execution_update.completed_date:
-                next_due = calculate_next_due_date(execution_update.completed_date, procedure.frequency)
-                procedure.next_due_date = next_due
-    
-    await db.commit()
-    await db.refresh(db_execution)
-    
-    # Load with relationships
-    result = await db.execute(
-        select(models.ProcedureExecution)
-        .options(
-            selectinload(models.ProcedureExecution.procedure).selectinload(models.Procedure.machine),
-            selectinload(models.ProcedureExecution.assigned_to),
-            selectinload(models.ProcedureExecution.completed_by)
-        )
-        .filter(models.ProcedureExecution.id == execution_id)
-    )
-    return result.scalars().first()
