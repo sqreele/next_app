@@ -457,3 +457,15 @@ class CalendarEvent(BaseModel):
     backgroundColor: str = "#007bff"
     borderColor: str = "#007bff"
     extendedProps: dict = Field(default_factory=dict)
+# Add to schemas.py if missing
+class CalendarEvent(BaseModel):
+    id: str
+    title: str
+    start: str  # ISO date string
+    end: Optional[str] = None
+    backgroundColor: str = "#007bff"
+    borderColor: str = "#007bff"
+    extendedProps: dict = Field(default_factory=dict)
+    
+    model_config = ConfigDict(from_attributes=True)
+
