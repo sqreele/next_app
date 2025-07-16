@@ -1,5 +1,5 @@
 # ==============================================================================
-# File: backend/my_app/crud.py (Updated with procedure CRUD operations)
+# File: backend/my_app/crud.py (UPDATED FOR MANY-TO-MANY PROCEDURES)
 # Description: Fully asynchronous CRUD operations with proper relationship loading.
 # ==============================================================================
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -167,7 +167,7 @@ async def get_machine_with_procedures(db: AsyncSession, machine_id: int):
     )
     return result.scalars().first()
 
-# --- Procedure CRUD ---
+# --- UPDATED: Procedure CRUD for Many-to-Many ---
 async def get_procedures(db: AsyncSession, skip: int = 0, limit: int = 100):
     """Get all procedures"""
     result = await db.execute(
@@ -181,17 +181,17 @@ async def get_procedures_with_machines(db: AsyncSession, skip: int = 0, limit: i
     """Get all procedures with their machine details"""
     result = await db.execute(
         select(models.Procedure)
-        .options(selectinload(models.Procedure.machine))
+        .options(selectinload(models.Procedure.machines))
         .offset(skip)
         .limit(limit)
     )
     return result.scalars().all()
 
 async def get_procedure(db: AsyncSession, procedure_id: int):
-    """Get a single procedure by ID"""
+    """Get a single procedure by ID with machines"""
     result = await db.execute(
         select(models.Procedure)
-        .options(selectinload(models.Procedure.machine))
+        .options(selectinload(models.Procedure.machines))
         .filter(models.Procedure.id == procedure_id)
     )
     return result.scalars().first()
@@ -199,57 +199,76 @@ async def get_procedure(db: AsyncSession, procedure_id: int):
 async def get_procedures_by_machine(db: AsyncSession, machine_id: int):
     """Get all procedures for a specific machine"""
     result = await db.execute(
-        select(models.Procedure)
-        .options(selectinload(models.Procedure.machine))
-        .filter(models.Procedure.machine_id == machine_id)
+        select(models.Machine)
+        .options(selectinload(models.Machine.procedures))
+        .filter(models.Machine.id == machine_id)
     )
-    return result.scalars().all()
+    machine = result.scalars().first()
+    return machine.procedures if machine else []
 
-async def create_procedure_for_machine(db: AsyncSession, procedure: schemas.ProcedureCreate):
-    """Create a procedure and link it to a machine"""
-    # Verify the machine exists
-    machine = await db.get(models.Machine, procedure.machine_id)
-    if not machine:
-        return None
-    
+async def create_procedure(db: AsyncSession, procedure: schemas.ProcedureCreate):
+    """Create a procedure and assign it to machines"""
     db_procedure = models.Procedure(
         title=procedure.title,
         remark=procedure.remark,
-        machine_id=procedure.machine_id
+        frequency=procedure.frequency
     )
     db.add(db_procedure)
+    await db.flush()
+    
+    # Assign to machines if provided
+    if procedure.machine_ids:
+        machines = await db.execute(
+            select(models.Machine).where(models.Machine.id.in_(procedure.machine_ids))
+        )
+        machine_objects = machines.scalars().all()
+        db_procedure.machines.extend(machine_objects)
+    
     await db.commit()
     await db.refresh(db_procedure)
     
-    # Reload with machine relationship
+    # Reload with machines relationship
     result = await db.execute(
         select(models.Procedure)
-        .options(selectinload(models.Procedure.machine))
+        .options(selectinload(models.Procedure.machines))
         .filter(models.Procedure.id == db_procedure.id)
     )
     return result.scalars().first()
 
-async def update_procedure(db: AsyncSession, procedure_id: int, procedure: schemas.ProcedureCreate):
-    """Update a procedure"""
-    # Verify the machine exists
-    machine = await db.get(models.Machine, procedure.machine_id)
-    if not machine:
-        return None
-    
+async def update_procedure(db: AsyncSession, procedure_id: int, procedure: schemas.ProcedureUpdate):
+    """Update a procedure and its machine assignments"""
     db_procedure = await db.get(models.Procedure, procedure_id)
     if not db_procedure:
         return None
     
-    db_procedure.title = procedure.title
-    db_procedure.remark = procedure.remark
-    db_procedure.machine_id = procedure.machine_id
+    # Update basic fields
+    if procedure.title is not None:
+        db_procedure.title = procedure.title
+    if procedure.remark is not None:
+        db_procedure.remark = procedure.remark
+    if procedure.frequency is not None:
+        db_procedure.frequency = procedure.frequency
+    
+    # Update machine assignments if provided
+    if procedure.machine_ids is not None:
+        # Clear existing assignments
+        db_procedure.machines.clear()
+        
+        # Add new assignments
+        if procedure.machine_ids:
+            machines = await db.execute(
+                select(models.Machine).where(models.Machine.id.in_(procedure.machine_ids))
+            )
+            machine_objects = machines.scalars().all()
+            db_procedure.machines.extend(machine_objects)
+    
     await db.commit()
     await db.refresh(db_procedure)
     
-    # Reload with machine relationship
+    # Reload with machines relationship
     result = await db.execute(
         select(models.Procedure)
-        .options(selectinload(models.Procedure.machine))
+        .options(selectinload(models.Procedure.machines))
         .filter(models.Procedure.id == procedure_id)
     )
     return result.scalars().first()
@@ -264,7 +283,82 @@ async def delete_procedure(db: AsyncSession, procedure_id: int):
     await db.commit()
     return db_procedure
 
-# --- WorkOrder CRUD ---
+# --- NEW: Machine-Procedure Assignment CRUD ---
+async def assign_procedures_to_machine(db: AsyncSession, machine_id: int, procedure_ids: list[int]):
+    """Assign multiple procedures to a machine"""
+    machine = await db.get(models.Machine, machine_id)
+    if not machine:
+        return None
+    
+    # Clear existing assignments
+    machine.procedures.clear()
+    
+    # Add new assignments
+    if procedure_ids:
+        procedures = await db.execute(
+            select(models.Procedure).where(models.Procedure.id.in_(procedure_ids))
+        )
+        procedure_objects = procedures.scalars().all()
+        machine.procedures.extend(procedure_objects)
+    
+    await db.commit()
+    await db.refresh(machine)
+    return machine
+
+async def assign_machines_to_procedure(db: AsyncSession, procedure_id: int, machine_ids: list[int]):
+    """Assign multiple machines to a procedure"""
+    procedure = await db.get(models.Procedure, procedure_id)
+    if not procedure:
+        return None
+    
+    # Clear existing assignments
+    procedure.machines.clear()
+    
+    # Add new assignments
+    if machine_ids:
+        machines = await db.execute(
+            select(models.Machine).where(models.Machine.id.in_(machine_ids))
+        )
+        machine_objects = machines.scalars().all()
+        procedure.machines.extend(machine_objects)
+    
+    await db.commit()
+    await db.refresh(procedure)
+    return procedure
+
+# --- UPDATED: Procedure Execution CRUD ---
+async def create_procedure_execution(db: AsyncSession, execution: schemas.ProcedureExecutionCreate):
+    """Create a procedure execution for a specific machine"""
+    # Verify procedure exists
+    procedure = await db.get(models.Procedure, execution.procedure_id)
+    if not procedure:
+        return None
+    
+    # Verify machine exists if provided
+    if execution.machine_id:
+        machine = await db.get(models.Machine, execution.machine_id)
+        if not machine:
+            return None
+    
+    db_execution = models.ProcedureExecution(**execution.model_dump())
+    db.add(db_execution)
+    await db.commit()
+    await db.refresh(db_execution)
+    
+    # Load with relationships
+    result = await db.execute(
+        select(models.ProcedureExecution)
+        .options(
+            selectinload(models.ProcedureExecution.procedure).selectinload(models.Procedure.machines),
+            selectinload(models.ProcedureExecution.machine),
+            selectinload(models.ProcedureExecution.assigned_to),
+            selectinload(models.ProcedureExecution.completed_by)
+        )
+        .filter(models.ProcedureExecution.id == db_execution.id)
+    )
+    return result.scalars().first()
+
+# --- WorkOrder CRUD (unchanged) ---
 async def get_work_orders(db: AsyncSession, skip: int = 0, limit: int = 100):
     result = await db.execute(
         select(models.WorkOrder)
