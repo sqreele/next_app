@@ -1,6 +1,6 @@
 # ==============================================================================
-# File: backend/my_app/models.py (UPDATED WITH PERFORMANCE INDEXES)
-# Description: Defines the database schema with performance optimizations.
+# File: backend/my_app/models.py (CORRECTED VERSION)
+# Description: Defines the database schema with proper relationships and indexes.
 # ==============================================================================
 from sqlalchemy import (
     Column, Integer, String, ForeignKey, DateTime, Date,
@@ -11,12 +11,11 @@ from sqlalchemy.sql import func
 from .database import Base
 from sqlalchemy.dialects.postgresql import JSONB
 
-# Association table
+# Association table with indexes
 user_property_association = Table(
     'user_property_association', Base.metadata,
     Column('user_profile_id', Integer, ForeignKey('userprofiles.id')),
     Column('property_id', Integer, ForeignKey('properties.id')),
-    # Add index for association table
     Index('idx_user_property_profile', 'user_profile_id'),
     Index('idx_user_property_property', 'property_id'),
 )
@@ -32,12 +31,12 @@ class User(Base):
     
     profile = relationship("UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
     work_orders_assigned = relationship("WorkOrder", back_populates="assigned_to")
+    procedure_executions_assigned = relationship("ProcedureExecution", foreign_keys="[ProcedureExecution.assigned_to_id]", back_populates="assigned_to")
+    procedure_executions_completed = relationship("ProcedureExecution", foreign_keys="[ProcedureExecution.completed_by_id]", back_populates="completed_by")
 
-    # Performance indexes
     __table_args__ = (
         Index('idx_user_active', 'is_active'),
         Index('idx_user_username_active', 'username', 'is_active'),
-        Index('idx_user_email_active', 'email', 'is_active'),
     )
 
     def __init__(self, **kwargs):
@@ -70,12 +69,9 @@ class UserProfile(Base):
     user = relationship("User", back_populates="profile")
     properties = relationship("Property", secondary=user_property_association, back_populates="user_profiles")
     
-    # Performance indexes
     __table_args__ = (
         Index('idx_userprofile_role', 'role'),
         Index('idx_userprofile_user', 'user_id'),
-        Index('idx_userprofile_position', 'position'),
-        Index('idx_userprofile_role_position', 'role', 'position'),
     )
     
     def __str__(self):
@@ -91,11 +87,6 @@ class Property(Base):
     machines = relationship("Machine", back_populates="property", cascade="all, delete-orphan")
     work_orders = relationship("WorkOrder", back_populates="property", cascade="all, delete-orphan")
     user_profiles = relationship("UserProfile", secondary=user_property_association, back_populates="properties")
-    
-    # Performance indexes
-    __table_args__ = (
-        Index('idx_property_name', 'name'),
-    )
     
     def __str__(self):
         return self.name
@@ -114,14 +105,10 @@ class Room(Base):
     machines = relationship("Machine", back_populates="room")
     work_orders = relationship("WorkOrder", back_populates="room")
     
-    # Performance indexes
     __table_args__ = (
         Index('idx_room_property', 'property_id'),
         Index('idx_room_active', 'is_active'),
-        Index('idx_room_type', 'room_type'),
         Index('idx_room_property_active', 'property_id', 'is_active'),
-        Index('idx_room_property_type', 'property_id', 'room_type'),
-        Index('idx_room_name_property', 'name', 'property_id'),
     )
     
     def __str__(self):
@@ -145,15 +132,11 @@ class Machine(Base):
     work_orders = relationship("WorkOrder", back_populates="machine")
     procedures = relationship("Procedure", back_populates="machine", cascade="all, delete-orphan")
     
-    # Performance indexes
     __table_args__ = (
         Index('idx_machine_property', 'property_id'),
         Index('idx_machine_room', 'room_id'),
         Index('idx_machine_status', 'status'),
-        Index('idx_machine_name', 'name'),
         Index('idx_machine_property_status', 'property_id', 'status'),
-        Index('idx_machine_room_status', 'room_id', 'status'),
-        Index('idx_machine_property_room', 'property_id', 'room_id'),
     )
     
     def __str__(self):
@@ -166,11 +149,6 @@ class Topic(Base):
     title = Column(String(200), nullable=False)
     
     work_orders = relationship("WorkOrder", back_populates="topic")
-    
-    # Performance indexes
-    __table_args__ = (
-        Index('idx_topic_title', 'title'),
-    )
     
     def __str__(self):
         return self.title
@@ -187,9 +165,11 @@ class WorkOrder(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
     
-    # Image columns
+    # Modern image storage (JSONB arrays)
     before_images = Column(JSONB, nullable=True, server_default='[]')
     after_images = Column(JSONB, nullable=True, server_default='[]')
+    
+    # Legacy image storage (keep for backward compatibility, but deprecated)
     before_image_path = Column(String(500), nullable=True)
     after_image_path = Column(String(500), nullable=True)
     pdf_file_path = Column(String(500), nullable=True)
@@ -211,34 +191,21 @@ class WorkOrder(Base):
     assigned_to = relationship("User", back_populates="work_orders_assigned")
     files = relationship("WorkOrderFile", back_populates="work_order", cascade="all, delete-orphan")
     topic = relationship("Topic", back_populates="work_orders")
-    procedure_execution = relationship("ProcedureExecution", back_populates="work_order", uselist=False)
     
-    # Performance indexes
+    # REMOVED: procedure_execution relationship to break circular dependency
+    
     __table_args__ = (
-        # Single column indexes
         Index('idx_workorder_status', 'status'),
         Index('idx_workorder_due_date', 'due_date'),
         Index('idx_workorder_property', 'property_id'),
         Index('idx_workorder_assigned_to', 'assigned_to_id'),
         Index('idx_workorder_created_at', 'created_at'),
         Index('idx_workorder_type', 'type'),
-        Index('idx_workorder_priority', 'priority'),
         Index('idx_workorder_machine', 'machine_id'),
-        Index('idx_workorder_room', 'room_id'),
-        Index('idx_workorder_topic', 'topic_id'),
-        Index('idx_workorder_completed_at', 'completed_at'),
-        
-        # Composite indexes for common queries
         Index('idx_workorder_status_property', 'status', 'property_id'),
         Index('idx_workorder_status_due_date', 'status', 'due_date'),
         Index('idx_workorder_property_type', 'property_id', 'type'),
         Index('idx_workorder_assigned_status', 'assigned_to_id', 'status'),
-        Index('idx_workorder_due_date_status', 'due_date', 'status'),
-        Index('idx_workorder_property_status_type', 'property_id', 'status', 'type'),
-        Index('idx_workorder_machine_status', 'machine_id', 'status'),
-        Index('idx_workorder_room_status', 'room_id', 'status'),
-        Index('idx_workorder_created_status', 'created_at', 'status'),
-        Index('idx_workorder_priority_status', 'priority', 'status'),
     )
     
     def __str__(self):
@@ -258,12 +225,9 @@ class WorkOrderFile(Base):
     
     work_order = relationship("WorkOrder", back_populates="files")
     
-    # Performance indexes
     __table_args__ = (
         Index('idx_workorderfile_workorder', 'work_order_id'),
         Index('idx_workorderfile_upload_type', 'upload_type'),
-        Index('idx_workorderfile_uploaded_at', 'uploaded_at'),
-        Index('idx_workorderfile_mime_type', 'mime_type'),
     )
     
     def __str__(self):
@@ -289,23 +253,13 @@ class Procedure(Base):
     machine = relationship("Machine", back_populates="procedures")
     procedure_executions = relationship("ProcedureExecution", back_populates="procedure", cascade="all, delete-orphan")
 
-    # Performance indexes
     __table_args__ = (
-        # Single column indexes
         Index('idx_procedure_machine', 'machine_id'),
         Index('idx_procedure_frequency', 'frequency'),
         Index('idx_procedure_active', 'is_active'),
         Index('idx_procedure_next_due', 'next_due_date'),
-        Index('idx_procedure_last_completed', 'last_completed_date'),
-        Index('idx_procedure_title', 'title'),
-        Index('idx_procedure_duration', 'estimated_duration_minutes'),
-        
-        # Composite indexes for common queries
         Index('idx_procedure_machine_active', 'machine_id', 'is_active'),
         Index('idx_procedure_frequency_active', 'frequency', 'is_active'),
-        Index('idx_procedure_due_date_active', 'next_due_date', 'is_active'),
-        Index('idx_procedure_machine_frequency', 'machine_id', 'frequency'),
-        Index('idx_procedure_active_due_date', 'is_active', 'next_due_date'),
     )
 
     def __str__(self):
@@ -339,35 +293,21 @@ class ProcedureExecution(Base):
     
     # Relationships
     procedure = relationship("Procedure", back_populates="procedure_executions")
-    work_order = relationship("WorkOrder", back_populates="procedure_execution")
-    assigned_to = relationship("User", foreign_keys=[assigned_to_id])
-    completed_by = relationship("User", foreign_keys=[completed_by_id])
+    assigned_to = relationship("User", foreign_keys=[assigned_to_id], back_populates="procedure_executions_assigned")
+    completed_by = relationship("User", foreign_keys=[completed_by_id], back_populates="procedure_executions_completed")
     
-    # Performance indexes
+    # One-way relationship to WorkOrder (no back_populates to break circular dependency)
+    work_order = relationship("WorkOrder")
+    
     __table_args__ = (
-        # Single column indexes
         Index('idx_procedure_execution_date', 'scheduled_date'),
         Index('idx_procedure_execution_status', 'status'),
         Index('idx_procedure_execution_procedure', 'procedure_id'),
         Index('idx_procedure_execution_assigned', 'assigned_to_id'),
-        Index('idx_procedure_execution_completed_by', 'completed_by_id'),
-        Index('idx_procedure_execution_completed_date', 'completed_date'),
-        Index('idx_procedure_execution_created_at', 'created_at'),
         Index('idx_procedure_execution_workorder', 'work_order_id'),
-        Index('idx_procedure_execution_started_at', 'started_at'),
-        Index('idx_procedure_execution_completed_at', 'completed_at'),
-        
-        # Composite indexes for common queries
         Index('idx_procedure_execution_date_status', 'scheduled_date', 'status'),
         Index('idx_procedure_execution_procedure_status', 'procedure_id', 'status'),
         Index('idx_procedure_execution_assigned_status', 'assigned_to_id', 'status'),
-        Index('idx_procedure_execution_date_procedure', 'scheduled_date', 'procedure_id'),
-        Index('idx_procedure_execution_status_completed', 'status', 'completed_date'),
-        Index('idx_procedure_execution_procedure_date', 'procedure_id', 'scheduled_date'),
-        
-        # Calendar view optimization
-        Index('idx_procedure_execution_calendar', 'scheduled_date', 'status', 'procedure_id'),
-        Index('idx_procedure_execution_assigned_calendar', 'assigned_to_id', 'scheduled_date', 'status'),
     )
     
     def __str__(self):
