@@ -73,14 +73,20 @@ class MachineAdmin(ModelView, model=Machine):
     name_plural = "Machines"
     icon = "fa-solid fa-robot"
 
+    # FIXED: Load procedures relationship
     def get_query(self, request):
         return super().get_query(request).options(selectinload(Machine.procedures))
 
-# *** UPDATED PROCEDURE ADMIN FOR MANY-TO-MANY ***
+    # FIXED: Format procedures display
+    column_formatters = {
+        'procedures': lambda m, a: f"{len(m.procedures)} procedures" if m.procedures else "No procedures"
+    }
+
+# FIXED: Updated Procedure Admin for Many-to-Many
 class ProcedureAdmin(ModelView, model=Procedure):
     column_list = [Procedure.id, Procedure.title, Procedure.remark, Procedure.frequency, "machines"]
     
-    # FIXED: Updated form_columns for many-to-many relationship
+    # Form columns for many-to-many relationship
     form_columns = ["machines", "title", "remark", "frequency"]
     
     column_searchable_list = [Procedure.title, Procedure.remark]
@@ -91,7 +97,7 @@ class ProcedureAdmin(ModelView, model=Procedure):
         'title': 'Title',
         'remark': 'Remark', 
         'frequency': 'Frequency',
-        'machines': 'Machines'  # FIXED: Updated label
+        'machines': 'Machines'
     }
     
     # FIXED: Custom formatter for many-to-many machines display
@@ -101,7 +107,7 @@ class ProcedureAdmin(ModelView, model=Procedure):
     
     page_size = 10
     
-    # FIXED: Updated query to load machines relationship
+    # FIXED: Load machines relationship
     def get_query(self, request):
         return super().get_query(request).options(selectinload(Procedure.machines))
     
@@ -152,34 +158,43 @@ class TopicAdmin(ModelView, model=Topic):
     name_plural = "Topics"
     icon = "fa-solid fa-tag"
 
+# FIXED: Procedure Execution Admin
 class ProcedureExecutionAdmin(ModelView, model=ProcedureExecution):
     column_list = [ProcedureExecution.id, "procedure.title", "machine.name", 
                    ProcedureExecution.scheduled_date, ProcedureExecution.status,
-                   ProcedureExecution.completed_date, "assigned_to.username"]
+                   ProcedureExecution.completed_date, "assigned_to.username",
+                   'before_images', 'after_images']
     
-    # FIXED: Updated form_columns for new machine relationship
+    # FIXED: Form columns for machine relationship
     form_columns = ["procedure", "machine", "scheduled_date", "status", "assigned_to", 
                     "execution_notes", "completed_date", "completed_by"]
     
-    column_searchable_list = ["procedure.title", "execution_notes"]
+    column_searchable_list = ["procedure.title", "machine.name", "execution_notes"]
     column_sortable_list = [ProcedureExecution.scheduled_date, ProcedureExecution.status]
     
     column_labels = {
         'procedure.title': 'Procedure',
         'machine.name': 'Machine',
         'assigned_to.username': 'Assigned To',
-        'completed_by.username': 'Completed By'
+        'completed_by.username': 'Completed By',
+        'before_images': 'Before Images',
+        'after_images': 'After Images'
     }
     
     column_formatters = {
         'before_images': lambda m, a: format_image_array(m, 'before_images'),
         'after_images': lambda m, a: format_image_array(m, 'after_images'),
+        'procedure.title': lambda m, a: m.procedure.title if m.procedure else 'No Procedure',
+        'machine.name': lambda m, a: m.machine.name if m.machine else 'No Machine',
+        'assigned_to.username': lambda m, a: m.assigned_to.username if m.assigned_to else 'Unassigned',
+        'completed_by.username': lambda m, a: m.completed_by.username if m.completed_by else 'Not Completed'
     }
     
+    # FIXED: Load all relationships
     def get_query(self, request):
         return super().get_query(request).options(
             selectinload(ProcedureExecution.procedure),
-            selectinload(ProcedureExecution.machine),  # FIXED: Load machine directly
+            selectinload(ProcedureExecution.machine),
             selectinload(ProcedureExecution.assigned_to),
             selectinload(ProcedureExecution.completed_by)
         )
