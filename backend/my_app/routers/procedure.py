@@ -10,6 +10,7 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 import os 
 from datetime import date, timedelta
+from ..utils.procedure_planning import ProcedurePlanner
 db_procedure = await crud.create_procedure(db, procedure)
 router = APIRouter(prefix="/procedures", tags=["procedures"])
 
