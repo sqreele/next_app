@@ -76,11 +76,12 @@ class MachineAdmin(ModelView, model=Machine):
     def get_query(self, request):
         return super().get_query(request).options(selectinload(Machine.procedures))
 
-# *** ULTRA-SIMPLE PROCEDURE ADMIN ***
+# *** UPDATED PROCEDURE ADMIN FOR MANY-TO-MANY ***
 class ProcedureAdmin(ModelView, model=Procedure):
-    column_list = [Procedure.id, Procedure.title, Procedure.remark, Procedure.frequency, "machine.name"]
+    column_list = [Procedure.id, Procedure.title, Procedure.remark, Procedure.frequency, "machines"]
     
-    form_columns = ["machine", "title", "remark", "frequency"]
+    # FIXED: Updated form_columns for many-to-many relationship
+    form_columns = ["machines", "title", "remark", "frequency"]
     
     column_searchable_list = [Procedure.title, Procedure.remark]
     column_sortable_list = [Procedure.id, Procedure.title]
@@ -90,17 +91,24 @@ class ProcedureAdmin(ModelView, model=Procedure):
         'title': 'Title',
         'remark': 'Remark', 
         'frequency': 'Frequency',
-        'machine.name': 'Machine Name'
+        'machines': 'Machines'  # FIXED: Updated label
+    }
+    
+    # FIXED: Custom formatter for many-to-many machines display
+    column_formatters = {
+        'machines': lambda m, a: ', '.join([machine.name for machine in m.machines]) if m.machines else 'No Machines'
     }
     
     page_size = 10
     
+    # FIXED: Updated query to load machines relationship
     def get_query(self, request):
-        return super().get_query(request).options(selectinload(Procedure.machine))
+        return super().get_query(request).options(selectinload(Procedure.machines))
     
     name = "Procedure"
     name_plural = "Procedures"
     icon = "fa-solid fa-list"
+
 class WorkOrderAdmin(ModelView, model=WorkOrder):
     column_list = [WorkOrder.id, WorkOrder.task, WorkOrder.status, WorkOrder.priority, WorkOrder.due_date, 
                    WorkOrder.property_id, WorkOrder.machine_id, WorkOrder.room_id, WorkOrder.assigned_to,
@@ -123,6 +131,7 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
     name = "Work Order"
     name_plural = "Work Orders"
     icon = "fa-solid fa-list-check"
+
 class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
     column_list = [WorkOrderFile.id, WorkOrderFile.file_path, WorkOrderFile.file_name, WorkOrderFile.file_size, 
                    WorkOrderFile.mime_type, WorkOrderFile.upload_type, WorkOrderFile.uploaded_at, WorkOrderFile.work_order_id]
@@ -142,13 +151,14 @@ class TopicAdmin(ModelView, model=Topic):
     name = "Topic"
     name_plural = "Topics"
     icon = "fa-solid fa-tag"
-# Remove or comment out ProcedureExecutionAdmin if ProcedureExecution is not defined
+
 class ProcedureExecutionAdmin(ModelView, model=ProcedureExecution):
-    column_list = [ProcedureExecution.id, "procedure.title", "procedure.machine.name", 
+    column_list = [ProcedureExecution.id, "procedure.title", "machine.name", 
                    ProcedureExecution.scheduled_date, ProcedureExecution.status,
                    ProcedureExecution.completed_date, "assigned_to.username"]
     
-    form_columns = ["procedure", "scheduled_date", "status", "assigned_to", 
+    # FIXED: Updated form_columns for new machine relationship
+    form_columns = ["procedure", "machine", "scheduled_date", "status", "assigned_to", 
                     "execution_notes", "completed_date", "completed_by"]
     
     column_searchable_list = ["procedure.title", "execution_notes"]
@@ -156,7 +166,7 @@ class ProcedureExecutionAdmin(ModelView, model=ProcedureExecution):
     
     column_labels = {
         'procedure.title': 'Procedure',
-        'procedure.machine.name': 'Machine',
+        'machine.name': 'Machine',
         'assigned_to.username': 'Assigned To',
         'completed_by.username': 'Completed By'
     }
@@ -168,7 +178,8 @@ class ProcedureExecutionAdmin(ModelView, model=ProcedureExecution):
     
     def get_query(self, request):
         return super().get_query(request).options(
-            selectinload(ProcedureExecution.procedure).selectinload(Procedure.machine),
+            selectinload(ProcedureExecution.procedure),
+            selectinload(ProcedureExecution.machine),  # FIXED: Load machine directly
             selectinload(ProcedureExecution.assigned_to),
             selectinload(ProcedureExecution.completed_by)
         )
