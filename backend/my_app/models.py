@@ -1,5 +1,5 @@
 # ==============================================================================
-# File: backend/my_app/models.py (CORRECTED - MATCHING YOUR EXISTING DATABASE)
+# File: backend/my_app/models.py (FIXED DETACHED INSTANCE ERROR)
 # Description: Defines the database schema using the imported Base.
 # ==============================================================================
 from sqlalchemy import (
@@ -8,6 +8,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from sqlalchemy.orm.exc import DetachedInstanceError
 from .database import Base
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -198,7 +199,13 @@ class Procedure(Base):
     )
 
     def __str__(self):
-        return f"{self.title} (Machine: {self.machine.name if self.machine else 'Unknown'})"
+        # FIXED: Safe __str__ method that handles detached instances
+        try:
+            machine_name = self.machine.name if self.machine else 'Unknown'
+            return f"{self.title} (Machine: {machine_name})"
+        except DetachedInstanceError:
+            # If instance is detached from session, just return the title
+            return f"{self.title} (ID: {self.id})"
 
 class ProcedureExecution(Base):
     __tablename__ = 'procedure_executions'
@@ -237,4 +244,10 @@ class ProcedureExecution(Base):
     )
     
     def __str__(self):
-        return f"{self.procedure.title} - {self.scheduled_date} ({self.status})"
+        # FIXED: Safe __str__ method that handles detached instances
+        try:
+            procedure_title = self.procedure.title if self.procedure else 'Unknown Procedure'
+            return f"{procedure_title} - {self.scheduled_date} ({self.status})"
+        except DetachedInstanceError:
+            # If instance is detached from session, use basic info
+            return f"Procedure Execution {self.id} - {self.scheduled_date} ({self.status})"
