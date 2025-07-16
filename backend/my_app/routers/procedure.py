@@ -9,6 +9,8 @@ from .. import schemas, models, dependencies, crud
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 import os 
+from datetime import date, timedelta
+from ..utils.procedure_planning import ProcedurePlanner
 router = APIRouter(prefix="/procedures", tags=["procedures"])
 
 @router.get("/", response_model=List[schemas.ProcedureWithMachines])  # FIXED: Added 's'
@@ -198,3 +200,115 @@ async def upload_procedure_execution_image(
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 # Rest of endpoints...
+@router.post("/generate-maintenance-plan")
+async def generate_maintenance_plan(
+    start_date: date,
+    end_date: date,
+    property_id: Optional[int] = None,
+    machine_ids: Optional[List[int]] = None,
+    db: AsyncSession = Depends(dependencies.get_db)
+):
+    """Generate a comprehensive maintenance plan"""
+    
+    plan = await ProcedurePlanner.create_maintenance_plan(
+        db, start_date, end_date, property_id, machine_ids
+    )
+    
+    return {
+        "maintenance_plan": plan,
+        "message": f"Generated plan with {plan['summary']['total_executions']} scheduled executions"
+    }
+
+@router.post("/procedures/{procedure_id}/schedule")
+async def schedule_procedure_executions(
+    procedure_id: int,
+    start_date: date,
+    end_date: date,
+    machine_ids: Optional[List[int]] = None,
+    db: AsyncSession = Depends(dependencies.get_db)
+):
+    """Schedule executions for a specific procedure"""
+    
+    # Get the procedure
+    procedure = await db.get(models.Procedure, procedure_id)
+    if not procedure:
+        raise HTTPException(status_code=404, detail="Procedure not found")
+    
+    # Load machines
+    await db.refresh(procedure, ['machines'])
+    
+    # Filter machines if specified
+    machines = procedure.machines
+    if machine_ids:
+        machines = [m for m in machines if m.id in machine_ids]
+    
+    # Generate schedule
+    schedule = ProcedurePlanner.generate_schedule(procedure, start_date, end_date, machines)
+    
+    # Create actual executions in database
+    created_executions = []
+    for item in schedule:
+        # Check if execution already exists
+        existing = await db.execute(
+            select(models.ProcedureExecution).where(
+                models.ProcedureExecution.procedure_id == item["procedure_id"],
+                models.ProcedureExecution.machine_id == item["machine_id"],
+                models.ProcedureExecution.scheduled_date == item["scheduled_date"]
+            )
+        )
+        
+        if not existing.scalars().first():
+            execution = models.ProcedureExecution(
+                procedure_id=item["procedure_id"],
+                machine_id=item["machine_id"],
+                scheduled_date=item["scheduled_date"],
+                status='Scheduled'
+            )
+            db.add(execution)
+            created_executions.append(item)
+    
+    await db.commit()
+    
+    return {
+        "procedure_title": procedure.title,
+        "scheduled_executions": created_executions,
+        "total_created": len(created_executions),
+        "message": f"Created {len(created_executions)} scheduled executions"
+    }
+
+@router.get("/procedures/{procedure_id}/next-due-dates")
+async def get_next_due_dates(
+    procedure_id: int,
+    count: int = 10,
+    db: AsyncSession = Depends(dependencies.get_db)
+):
+    """Get next due dates for a procedure"""
+    
+    procedure = await db.get(models.Procedure, procedure_id)
+    if not procedure:
+        raise HTTPException(status_code=404, detail="Procedure not found")
+    
+    if not procedure.frequency:
+        return {"message": "No frequency set for this procedure"}
+    
+    # Calculate next due dates
+    current_date = date.today()
+    due_dates = []
+    
+    for i in range(count):
+        next_date = ProcedurePlanner.calculate_next_due_date(current_date, procedure.frequency)
+        if next_date:
+            due_dates.append({
+                "date": next_date,
+                "days_from_now": (next_date - date.today()).days,
+                "week_day": next_date.strftime("%A")
+            })
+            current_date = next_date
+        else:
+            break
+    
+    return {
+        "procedure_title": procedure.title,
+        "frequency": procedure.frequency,
+        "next_due_dates": due_dates
+    }
