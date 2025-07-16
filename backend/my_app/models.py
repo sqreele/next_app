@@ -1,5 +1,5 @@
 # ==============================================================================
-# File: backend/my_app/models.py (FIXED DETACHED INSTANCE ERROR)
+# File: backend/my_app/models.py (WITH MACHINE-PROCEDURE MANY-TO-MANY)
 # Description: Defines the database schema using the imported Base.
 # ==============================================================================
 from sqlalchemy import (
@@ -12,11 +12,20 @@ from sqlalchemy.orm.exc import DetachedInstanceError
 from .database import Base
 from sqlalchemy.dialects.postgresql import JSONB
 
-# Association table
+# Association table for user-property
 user_property_association = Table(
     'user_property_association', Base.metadata,
     Column('user_profile_id', Integer, ForeignKey('userprofiles.id')),
     Column('property_id', Integer, ForeignKey('properties.id'))
+)
+
+# NEW: Association table for machine-procedure many-to-many
+machine_procedure_association = Table(
+    'machine_procedure_association', Base.metadata,
+    Column('machine_id', Integer, ForeignKey('machines.id')),
+    Column('procedure_id', Integer, ForeignKey('procedures.id')),
+    Index('idx_machine_procedure_machine', 'machine_id'),
+    Index('idx_machine_procedure_procedure', 'procedure_id'),
 )
 
 class User(Base):
@@ -104,7 +113,9 @@ class Machine(Base):
     property = relationship("Property", back_populates="machines")
     room = relationship("Room", back_populates="machines")
     work_orders = relationship("WorkOrder", back_populates="machine")
-    procedures = relationship("Procedure", back_populates="machine", cascade="all, delete-orphan")
+    
+    # CHANGED: Many-to-many relationship with procedures
+    procedures = relationship("Procedure", secondary=machine_procedure_association, back_populates="machines")
     
     def __str__(self):
         return self.name
@@ -156,7 +167,7 @@ class WorkOrder(Base):
     topic = relationship("Topic", back_populates="work_orders")
     procedure_execution = relationship("ProcedureExecution", back_populates="work_order", uselist=False)
     
-    # ADDED: Your requested performance indexes
+    # Your requested performance indexes
     __table_args__ = (
         Index('idx_workorder_status', 'status'),
         Index('idx_workorder_due_date', 'due_date'),
@@ -186,25 +197,27 @@ class Procedure(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(200), nullable=False)
     remark = Column(String(500), nullable=True)
-    machine_id = Column(Integer, ForeignKey('machines.id'), nullable=True)  # Made nullable for now
     frequency = Column(String(50), nullable=True, index=True)  # Daily, Weekly, Monthly, Quarterly, Yearly
     
-    # Relationships
-    machine = relationship("Machine", back_populates="procedures")
+    # REMOVED: machine_id foreign key (now many-to-many)
+    # machine_id = Column(Integer, ForeignKey('machines.id'), nullable=True)
+    
+    # CHANGED: Many-to-many relationship with machines
+    machines = relationship("Machine", secondary=machine_procedure_association, back_populates="procedures")
     procedure_executions = relationship("ProcedureExecution", back_populates="procedure", cascade="all, delete-orphan")
 
-    # ADDED: Your requested performance indexes
+    # UPDATED: Performance indexes (removed idx_procedure_machine since no machine_id column)
     __table_args__ = (
-        Index('idx_procedure_machine', 'machine_id'),
+        Index('idx_procedure_frequency', 'frequency'),
+        Index('idx_procedure_title', 'title'),
     )
 
     def __str__(self):
-        # FIXED: Safe __str__ method that handles detached instances
+        # UPDATED: Show count of machines instead of single machine
         try:
-            machine_name = self.machine.name if self.machine else 'Unknown'
-            return f"{self.title} (Machine: {machine_name})"
+            machine_count = len(self.machines) if self.machines else 0
+            return f"{self.title} ({machine_count} machines)"
         except DetachedInstanceError:
-            # If instance is detached from session, just return the title
             return f"{self.title} (ID: {self.id})"
 
 class ProcedureExecution(Base):
@@ -212,6 +225,9 @@ class ProcedureExecution(Base):
     id = Column(Integer, primary_key=True, index=True)
     procedure_id = Column(Integer, ForeignKey('procedures.id'), nullable=False)
     work_order_id = Column(Integer, ForeignKey('workorders.id'), nullable=True)
+    
+    # NEW: Add machine_id to specify which machine this execution is for
+    machine_id = Column(Integer, ForeignKey('machines.id'), nullable=True)
     
     # Execution details
     scheduled_date = Column(Date, nullable=False)
@@ -235,19 +251,22 @@ class ProcedureExecution(Base):
     # Relationships
     procedure = relationship("Procedure", back_populates="procedure_executions")
     work_order = relationship("WorkOrder", back_populates="procedure_execution")
+    machine = relationship("Machine")  # NEW: Direct relationship to machine
     assigned_to = relationship("User", foreign_keys=[assigned_to_id])
     completed_by = relationship("User", foreign_keys=[completed_by_id])
     
-    # ADDED: Your requested performance indexes
+    # UPDATED: Performance indexes (added machine_id)
     __table_args__ = (
         Index('idx_procedure_execution_date', 'scheduled_date'),
+        Index('idx_procedure_execution_machine', 'machine_id'),  # NEW: Index for machine
+        Index('idx_procedure_execution_procedure', 'procedure_id'),
+        Index('idx_procedure_execution_status', 'status'),
     )
     
     def __str__(self):
-        # FIXED: Safe __str__ method that handles detached instances
         try:
             procedure_title = self.procedure.title if self.procedure else 'Unknown Procedure'
-            return f"{procedure_title} - {self.scheduled_date} ({self.status})"
+            machine_name = self.machine.name if self.machine else 'No Machine'
+            return f"{procedure_title} - {machine_name} - {self.scheduled_date} ({self.status})"
         except DetachedInstanceError:
-            # If instance is detached from session, use basic info
             return f"Procedure Execution {self.id} - {self.scheduled_date} ({self.status})"
