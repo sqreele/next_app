@@ -10,7 +10,7 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 import os 
 from datetime import date, timedelta
-from ..utils.procedure_planning import ProcedurePlanner
+
 router = APIRouter(prefix="/procedures", tags=["procedures"])
 
 @router.get("/", response_model=List[schemas.ProcedureWithMachines])  # FIXED: Added 's'
