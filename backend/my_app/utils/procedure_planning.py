@@ -1,10 +1,9 @@
 # ==============================================================================
-# File: backend/my_app/utils/procedure_planning.py
+# File: backend/my_app/utils/procedure_planning.py (NO EXTERNAL DEPENDENCIES)
 # Description: Procedure scheduling and planning utilities
 # ==============================================================================
 from datetime import date, datetime, timedelta
 from typing import List, Dict, Optional
-from dateutil.relativedelta import relativedelta
 from .. import models, schemas
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -13,28 +12,75 @@ class ProcedurePlanner:
     
     @staticmethod
     def calculate_next_due_date(last_date: date, frequency: str) -> Optional[date]:
-        """Calculate next due date based on frequency"""
-        frequency_map = {
-            "Daily": timedelta(days=1),
-            "Weekly": timedelta(weeks=1),
-            "Bi-Weekly": timedelta(weeks=2),
-            "Monthly": relativedelta(months=1),
-            "Quarterly": relativedelta(months=3),
-            "Semi-Annual": relativedelta(months=6),
-            "Annual": relativedelta(years=1),
-            "Yearly": relativedelta(years=1)
-        }
+        """Calculate next due date based on frequency using only built-in datetime"""
         
-        if frequency not in frequency_map:
-            return None
+        if frequency == "Daily":
+            return last_date + timedelta(days=1)
+        elif frequency == "Weekly":
+            return last_date + timedelta(weeks=1)
+        elif frequency == "Bi-Weekly":
+            return last_date + timedelta(weeks=2)
+        elif frequency == "Monthly":
+            # Handle month rollover manually
+            year = last_date.year
+            month = last_date.month + 1
+            day = last_date.day
             
-        delta = frequency_map[frequency]
+            if month > 12:
+                year += 1
+                month = 1
+            
+            # Handle day overflow (e.g., Jan 31 -> Feb 28)
+            try:
+                return date(year, month, day)
+            except ValueError:
+                # If day doesn't exist in target month, use last day of month
+                if month == 2:
+                    # February handling
+                    if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0):
+                        return date(year, month, 29)  # Leap year
+                    else:
+                        return date(year, month, 28)
+                elif month in [4, 6, 9, 11]:
+                    return date(year, month, 30)  # 30-day months
+                else:
+                    return date(year, month, 31)  # 31-day months
         
-        # Handle relativedelta vs timedelta
-        if isinstance(delta, relativedelta):
-            return last_date + delta
+        elif frequency == "Quarterly":
+            return ProcedurePlanner._add_months(last_date, 3)
+        elif frequency == "Semi-Annual":
+            return ProcedurePlanner._add_months(last_date, 6)
+        elif frequency == "Annual" or frequency == "Yearly":
+            return ProcedurePlanner._add_months(last_date, 12)
         else:
-            return last_date + delta
+            return None
+    
+    @staticmethod
+    def _add_months(start_date: date, months: int) -> date:
+        """Add months to a date handling edge cases"""
+        year = start_date.year
+        month = start_date.month + months
+        day = start_date.day
+        
+        # Handle year rollover
+        while month > 12:
+            year += 1
+            month -= 12
+        
+        # Handle day overflow
+        try:
+            return date(year, month, day)
+        except ValueError:
+            # Use last day of the target month
+            if month == 2:
+                if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0):
+                    return date(year, month, 29)
+                else:
+                    return date(year, month, 28)
+            elif month in [4, 6, 9, 11]:
+                return date(year, month, 30)
+            else:
+                return date(year, month, 31)
     
     @staticmethod
     def generate_schedule(
@@ -49,7 +95,6 @@ class ProcedurePlanner:
             return []
             
         schedule = []
-        current_date = start_date
         
         # If no machines specified, use all machines assigned to procedure
         target_machines = machines or procedure.machines
@@ -66,7 +111,7 @@ class ProcedurePlanner:
                     "machine_name": machine.name,
                     "scheduled_date": current_date,
                     "frequency": procedure.frequency,
-                    "estimated_duration": procedure.estimated_duration_minutes or 30
+                    "estimated_duration": getattr(procedure, 'estimated_duration_minutes', 30)
                 })
                 
                 # Calculate next occurrence
@@ -87,13 +132,11 @@ class ProcedurePlanner:
     ) -> Dict:
         """Create a comprehensive maintenance plan"""
         
-        # Get all active procedures
-        query = select(models.Procedure).where(models.Procedure.is_active == True)
-        
-        if machine_ids:
-            query = query.join(models.machine_procedure_association).where(
-                models.machine_procedure_association.c.machine_id.in_(machine_ids)
-            )
+        # Get all procedures with frequency set
+        query = select(models.Procedure).where(
+            models.Procedure.frequency.isnot(None),
+            models.Procedure.frequency != ""
+        )
         
         result = await db.execute(query)
         procedures = result.scalars().all()
@@ -117,6 +160,12 @@ class ProcedurePlanner:
             if property_id:
                 machines = [m for m in machines if m.property_id == property_id]
             
+            if machine_ids:
+                machines = [m for m in machines if m.id in machine_ids]
+            
+            if not machines:
+                continue
+                
             schedule = ProcedurePlanner.generate_schedule(
                 procedure, start_date, end_date, machines
             )
