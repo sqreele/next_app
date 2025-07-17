@@ -7,7 +7,7 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from . import models, schemas
 from .security import get_password_hash
-
+from typing import List, Optional
 # --- User CRUD ---
 async def get_user(db: AsyncSession, user_id: int):
     result = await db.execute(
