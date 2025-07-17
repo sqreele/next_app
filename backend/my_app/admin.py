@@ -1,8 +1,11 @@
+# backend/my_app/admin.py
+
 from sqladmin import ModelView
 from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile, Topic, Procedure, ProcedureExecution
 from markupsafe import Markup
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import text
+from sqlalchemy.orm.exc import DetachedInstanceError
 
 # Helper functions
 def format_image_preview(model, attribute):
@@ -26,6 +29,36 @@ def format_image_array(model, attribute):
             previews.append(f'<span style="color: #666; font-size: 12px;">...and {len(images) - 3} more</span>')
         return Markup(f'<div class="image-preview-container">{("".join(previews))}</div>')
     return Markup('<span style="color: #ccc; font-size: 12px;">No Images</span>')
+
+# Safe formatters that handle DetachedInstanceError
+def safe_has_work_order_type(machine, work_order_type):
+    """Safely check if machine has work orders of specific type"""
+    try:
+        if hasattr(machine, 'work_orders') and machine.work_orders is not None:
+            return any(wo.type == work_order_type for wo in machine.work_orders)
+        return False
+    except (DetachedInstanceError, AttributeError):
+        return False
+
+def safe_get_relationship_name(obj, relationship_attr, default="Unknown"):
+    """Safely get name from a relationship attribute"""
+    try:
+        related_obj = getattr(obj, relationship_attr, None)
+        if related_obj and hasattr(related_obj, 'name'):
+            return related_obj.name
+        return default
+    except (DetachedInstanceError, AttributeError):
+        return default
+
+def safe_get_relationship_count(obj, relationship_attr):
+    """Safely get count of items in a relationship"""
+    try:
+        related_items = getattr(obj, relationship_attr, None)
+        if related_items is not None:
+            return len(related_items)
+        return 0
+    except (DetachedInstanceError, AttributeError):
+        return 0
 
 class UserAdmin(ModelView, model=User):
     column_list = [User.id, User.username, User.email, User.is_active]
@@ -65,11 +98,11 @@ class RoomAdmin(ModelView, model=Room):
     icon = "fa-solid fa-door-open"
 
 class MachineAdmin(ModelView, model=Machine):
-    column_list = [Machine.id, Machine.name, Machine.status, "property.name", "room.name", "procedures", "has_pm", "has_issue"]
+    column_list = [Machine.id, Machine.name, Machine.status, "property_name", "room_name", "procedure_count", "has_pm", "has_issue"]
     form_columns = [Machine.property, Machine.name, Machine.status, Machine.room, Machine.procedures]
     column_searchable_list = [Machine.name, Machine.status]
     column_sortable_list = [Machine.id, Machine.name, Machine.status]
-    column_filters = ["name", "status", "property.name", "room.name", "work_orders.type"]
+    column_filters = ["name", "status"]  # Removed problematic filters
     name = "Machine"
     name_plural = "Machines"
     icon = "fa-solid fa-robot"
@@ -77,21 +110,21 @@ class MachineAdmin(ModelView, model=Machine):
     def get_query(self, request):
         return super().get_query(request).options(
             selectinload(Machine.procedures),
-            selectinload(Machine.work_orders),  # Eagerly load work_orders
+            selectinload(Machine.work_orders),
             selectinload(Machine.property),
             selectinload(Machine.room)
         )
 
     column_formatters = {
-        'procedures': lambda m, a: f"{len(m.procedures)} procedures" if m.procedures else "No procedures",
-        'has_pm': lambda m, a: "Yes" if any(wo.type == 'pm' for wo in (m.work_orders or [])) else "No",
-        'has_issue': lambda m, a: "Yes" if any(wo.type == 'issue' for wo in (m.work_orders or [])) else "No",
-        'property.name': lambda m, a: m.property.name if m.property else "No Property",
-        'room.name': lambda m, a: m.room.name if m.room else "No Room"
+        'procedure_count': lambda m, a: safe_get_relationship_count(m, 'procedures'),
+        'has_pm': lambda m, a: "Yes" if safe_has_work_order_type(m, 'pm') else "No",
+        'has_issue': lambda m, a: "Yes" if safe_has_work_order_type(m, 'issue') else "No",
+        'property_name': lambda m, a: safe_get_relationship_name(m, 'property', "No Property"),
+        'room_name': lambda m, a: safe_get_relationship_name(m, 'room', "No Room")
     }
 
 class ProcedureAdmin(ModelView, model=Procedure):
-    column_list = [Procedure.id, Procedure.title, Procedure.remark, Procedure.frequency, "machines"]
+    column_list = [Procedure.id, Procedure.title, Procedure.remark, Procedure.frequency, "machine_names"]
     form_columns = ["machines", "title", "remark", "frequency"]
     column_searchable_list = [Procedure.title, Procedure.remark]
     column_sortable_list = [Procedure.id, Procedure.title]
@@ -100,10 +133,10 @@ class ProcedureAdmin(ModelView, model=Procedure):
         'title': 'Title',
         'remark': 'Remark',
         'frequency': 'Frequency',
-        'machines': 'Machines'
+        'machine_names': 'Machines'
     }
     column_formatters = {
-        'machines': lambda m, a: ', '.join([machine.name for machine in m.machines]) if m.machines else 'No Machines'
+        'machine_names': lambda m, a: ', '.join([machine.name for machine in (m.machines or [])]) if safe_get_relationship_count(m, 'machines') > 0 else 'No Machines'
     }
     page_size = 10
 
@@ -116,7 +149,7 @@ class ProcedureAdmin(ModelView, model=Procedure):
 
 class WorkOrderAdmin(ModelView, model=WorkOrder):
     column_list = [WorkOrder.id, WorkOrder.task, WorkOrder.status, WorkOrder.priority, WorkOrder.due_date,
-                   WorkOrder.property_id, WorkOrder.machine_id, WorkOrder.room_id, WorkOrder.assigned_to,
+                   WorkOrder.property_id, WorkOrder.machine_id, WorkOrder.room_id, "assigned_to_name",
                    'before_images', 'after_images', WorkOrder.pdf_file_path, WorkOrder.topic_id, WorkOrder.type]
     form_columns = [WorkOrder.property_id, WorkOrder.task, WorkOrder.description, WorkOrder.status,
                     WorkOrder.priority, WorkOrder.due_date, WorkOrder.machine_id, WorkOrder.room_id,
@@ -127,7 +160,7 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
     column_formatters = {
         'before_images': lambda m, a: format_image_array(m, 'before_images'),
         'after_images': lambda m, a: format_image_array(m, 'after_images'),
-        'assigned_to': lambda m, a: m.assigned_to.username if m.assigned_to else "Unassigned",
+        'assigned_to_name': lambda m, a: safe_get_relationship_name(m, 'assigned_to', "Unassigned"),
         'pdf_file_path': lambda m, a: Markup(f'<a href="/Uploads/{m.pdf_file_path.strip("/")}" target="_blank" class="pdf-link">📄 View PDF</a>') if m.pdf_file_path else Markup('<span style="color: #ccc; font-size: 12px;">No PDF</span>'),
         'type': lambda m, a: m.type.upper() if m.type else "N/A"
     }
@@ -165,29 +198,29 @@ class TopicAdmin(ModelView, model=Topic):
     icon = "fa-solid fa-tag"
 
 class ProcedureExecutionAdmin(ModelView, model=ProcedureExecution):
-    column_list = [ProcedureExecution.id, "procedure.title", "machine.name",
+    column_list = [ProcedureExecution.id, "procedure_title", "machine_name",
                    ProcedureExecution.scheduled_date, ProcedureExecution.status,
-                   ProcedureExecution.completed_date, "assigned_to.username",
+                   ProcedureExecution.completed_date, "assigned_to_name",
                    'before_images', 'after_images']
     form_columns = ["procedure", "machine", "scheduled_date", "status", "assigned_to",
                     "execution_notes", "completed_date", "completed_by"]
-    column_searchable_list = ["procedure.title", "machine.name", "execution_notes"]
+    column_searchable_list = ["execution_notes"]
     column_sortable_list = [ProcedureExecution.scheduled_date, ProcedureExecution.status]
     column_labels = {
-        'procedure.title': 'Procedure',
-        'machine.name': 'Machine',
-        'assigned_to.username': 'Assigned To',
-        'completed_by.username': 'Completed By',
+        'procedure_title': 'Procedure',
+        'machine_name': 'Machine',
+        'assigned_to_name': 'Assigned To',
+        'completed_by_name': 'Completed By',
         'before_images': 'Before Images',
         'after_images': 'After Images'
     }
     column_formatters = {
         'before_images': lambda m, a: format_image_array(m, 'before_images'),
         'after_images': lambda m, a: format_image_array(m, 'after_images'),
-        'procedure.title': lambda m, a: m.procedure.title if m.procedure else 'No Procedure',
-        'machine.name': lambda m, a: m.machine.name if m.machine else 'No Machine',
-        'assigned_to.username': lambda m, a: m.assigned_to.username if m.assigned_to else 'Unassigned',
-        'completed_by.username': lambda m, a: m.completed_by.username if m.completed_by else 'Not Completed'
+        'procedure_title': lambda m, a: safe_get_relationship_name(m, 'procedure', 'No Procedure'),
+        'machine_name': lambda m, a: safe_get_relationship_name(m, 'machine', 'No Machine'),
+        'assigned_to_name': lambda m, a: safe_get_relationship_name(m, 'assigned_to', 'Unassigned'),
+        'completed_by_name': lambda m, a: safe_get_relationship_name(m, 'completed_by', 'Not Completed')
     }
     def get_query(self, request):
         return super().get_query(request).options(
