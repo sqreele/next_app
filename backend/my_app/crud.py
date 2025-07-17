@@ -590,3 +590,28 @@ async def update_procedure(db: AsyncSession, procedure_id: int, procedure: schem
         await db.rollback()
         print(f"Error updating procedure: {e}")
         raise e
+async def get_machines_by_work_order_type(
+    db: AsyncSession, 
+    work_order_type: str, 
+    skip: int = 0, 
+    limit: int = 100
+) -> List[models.Machine]:
+    """
+    Retrieve machines that have work orders of the specified type ('pm' or 'issue').
+    """
+    if work_order_type not in ['pm', 'issue']:
+        raise ValueError("work_order_type must be 'pm' or 'issue'")
+
+    # Query machines with joined work orders filtered by type
+    result = await db.execute(
+        select(models.Machine)
+        .join(models.WorkOrder, models.Machine.id == models.WorkOrder.machine_id)
+        .filter(models.WorkOrder.type == work_order_type)
+        .options(selectinload(models.Machine.work_orders))  # Eagerly load work orders
+        .offset(skip)
+        .limit(limit)
+        .distinct()  # Ensure unique machines
+    )
+    machines = result.scalars().all()
+
+    return machines
