@@ -51,16 +51,29 @@ class MachinesAPI {
   /**
    * Get all machines with optional filters
    */
-  async getMachines(filters?: MachineFilters): Promise<Machine[]> {
-    const params = new URLSearchParams()
+async getMachine(id: number): Promise<MachineResponse> {
+  try {
+    console.log(`API: Fetching machine ${id}`)
+    const response: AxiosResponse<Machine | MachineResponse> = await apiClient.get(`${this.endpoint}/${id}`)
     
-    if (filters) {
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== '') {
-          params.append(key, value.toString())
-        }
-      })
+    // Handle different response formats
+    if (response.data && typeof response.data === 'object') {
+      // If response.data has a 'data' property (wrapped response)
+      if ('data' in response.data) {
+        return response.data as MachineResponse
+      }
+      // If response.data is the machine directly
+      else if ('id' in response.data) {
+        return { data: response.data as Machine }
+      }
     }
+    
+    throw new Error('Invalid response format')
+  } catch (error) {
+    console.error(`API Error fetching machine ${id}:`, error)
+    throw error
+  }
+}
 
     const response: AxiosResponse<Machine[] | MachinesResponse> = await apiClient.get(
       `${this.endpoint}${params.toString() ? `?${params.toString()}` : ''}`
