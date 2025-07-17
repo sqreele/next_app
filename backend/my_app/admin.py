@@ -69,25 +69,23 @@ class MachineAdmin(ModelView, model=Machine):
     form_columns = [Machine.property, Machine.name, Machine.status, Machine.room, Machine.procedures]
     column_searchable_list = [Machine.name, Machine.status]
     column_sortable_list = [Machine.id, Machine.name, Machine.status]
-    column_filters = ["name", "status", "property.name", "room.name", "work_orders.type"]  # Added work_orders.type filter
+    column_filters = ["name", "status", "property.name", "room.name", "work_orders.type"]
     name = "Machine"
     name_plural = "Machines"
     icon = "fa-solid fa-robot"
 
-    # Load relationships
     def get_query(self, request):
         return super().get_query(request).options(
             selectinload(Machine.procedures),
-            selectinload(Machine.work_orders),  # Load work orders for has_pm and has_issue
+            selectinload(Machine.work_orders),  # Eagerly load work_orders
             selectinload(Machine.property),
             selectinload(Machine.room)
         )
 
-    # Formatters for custom columns
     column_formatters = {
         'procedures': lambda m, a: f"{len(m.procedures)} procedures" if m.procedures else "No procedures",
-        'has_pm': lambda m, a: "Yes" if any(wo.type == 'pm' for wo in m.work_orders) else "No",
-        'has_issue': lambda m, a: "Yes" if any(wo.type == 'issue' for wo in m.work_orders) else "No",
+        'has_pm': lambda m, a: "Yes" if any(wo.type == 'pm' for wo in (m.work_orders or [])) else "No",
+        'has_issue': lambda m, a: "Yes" if any(wo.type == 'issue' for wo in (m.work_orders or [])) else "No",
         'property.name': lambda m, a: m.property.name if m.property else "No Property",
         'room.name': lambda m, a: m.room.name if m.room else "No Room"
     }
@@ -125,7 +123,7 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
                     WorkOrder.assigned_to_id, WorkOrder.pdf_file_path, WorkOrder.topic_id, WorkOrder.type]
     column_searchable_list = [WorkOrder.task, WorkOrder.description, WorkOrder.status, WorkOrder.priority]
     column_sortable_list = [WorkOrder.id, WorkOrder.task, WorkOrder.status, WorkOrder.priority, WorkOrder.due_date, WorkOrder.created_at]
-    column_filters = ["status", "priority", "type"]  # Added type filter for WorkOrder
+    column_filters = ["status", "priority", "type"]
     column_formatters = {
         'before_images': lambda m, a: format_image_array(m, 'before_images'),
         'after_images': lambda m, a: format_image_array(m, 'after_images'),
