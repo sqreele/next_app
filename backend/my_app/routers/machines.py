@@ -94,3 +94,37 @@ async def get_machine_with_procedures(
     if machine is None:
         raise HTTPException(status_code=404, detail="Machine not found")
     return machine
+
+@router.get("/by-work-order-type/{work_order_type}", response_model=List[schemas.Machine])
+async def read_machines_by_work_order_type(
+    work_order_type: str,
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(dependencies.get_db),
+):
+    """
+    Get machines that have work orders of the specified type ('pm' or 'issue').
+    """
+    if work_order_type not in ['pm', 'issue']:
+        raise HTTPException(status_code=400, detail="work_order_type must be 'pm' or 'issue'")
+    
+    machines = await crud.get_machines_by_work_order_type(
+        db=db, 
+        work_order_type=work_order_type, 
+        skip=skip, 
+        limit=limit
+    )
+    
+    # Annotate with has_pm and has_issue
+    result = []
+    for m in machines:
+        has_pm = any(getattr(wo, 'type', None) == 'pm' for wo in getattr(m, 'work_orders', []))
+        has_issue = any(getattr(wo, 'type', None) == 'issue' for wo in getattr(m, 'work_orders', []))
+        m_dict = m.__dict__.copy()
+        m_dict['has_pm'] = has_pm
+        m_dict['has_issue'] = has_issue
+        result.append(m_dict)
+    
+    return result
+
+
