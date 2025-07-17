@@ -98,11 +98,11 @@ class RoomAdmin(ModelView, model=Room):
     icon = "fa-solid fa-door-open"
 
 class MachineAdmin(ModelView, model=Machine):
-    column_list = [Machine.id, Machine.name, Machine.status, "property_name", "room_name", "procedure_count", "has_pm", "has_issue"]
+    column_list = [Machine.id, Machine.name, Machine.status, "property.name", "room.name", "procedures", "has_pm", "has_issue"]
     form_columns = [Machine.property, Machine.name, Machine.status, Machine.room, Machine.procedures]
     column_searchable_list = [Machine.name, Machine.status]
     column_sortable_list = [Machine.id, Machine.name, Machine.status]
-    column_filters = ["name", "status"]  # Removed problematic filters
+    column_filters = ["name", "status", "property.name", "room.name"]
     name = "Machine"
     name_plural = "Machines"
     icon = "fa-solid fa-robot"
@@ -116,11 +116,9 @@ class MachineAdmin(ModelView, model=Machine):
         )
 
     column_formatters = {
-        'procedure_count': lambda m, a: safe_get_relationship_count(m, 'procedures'),
+        'procedures': lambda m, a: f"{len(m.procedures)} procedures" if m.procedures else "No procedures",
         'has_pm': lambda m, a: "Yes" if safe_has_work_order_type(m, 'pm') else "No",
         'has_issue': lambda m, a: "Yes" if safe_has_work_order_type(m, 'issue') else "No",
-        'property_name': lambda m, a: safe_get_relationship_name(m, 'property', "No Property"),
-        'room_name': lambda m, a: safe_get_relationship_name(m, 'room', "No Room")
     }
 
 class ProcedureAdmin(ModelView, model=Procedure):
