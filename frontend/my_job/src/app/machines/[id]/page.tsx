@@ -1,4 +1,3 @@
-// src/app/machines/[id]/page.tsx
 'use client'
 
 import React, { useEffect, useState } from 'react'
@@ -27,7 +26,14 @@ import {
 export default function MachineDetailPage() {
   const params = useParams()
   const router = useRouter()
-  const machineId = parseInt(params.id as string)
+  
+  // ✅ Safe parsing with validation
+  const machineId = React.useMemo(() => {
+    if (!params?.id) return null
+    const id = Array.isArray(params.id) ? params.id[0] : params.id
+    const parsed = parseInt(id, 10)
+    return isNaN(parsed) ? null : parsed
+  }, [params?.id])
   
   const { 
     selectedMachine, 
@@ -41,8 +47,10 @@ export default function MachineDetailPage() {
   const { rooms, fetchRooms } = useRoomStore()
   const [isUpdating, setIsUpdating] = useState(false)
 
+  // ✅ Fixed useEffect with proper validation
   useEffect(() => {
-    if (machineId) {
+    if (machineId !== null) { // ✅ Now checks for valid number
+      console.log('Fetching machine with ID:', machineId) // Debug log
       fetchMachine(machineId)
     }
     if (rooms.length === 0) {
@@ -50,8 +58,89 @@ export default function MachineDetailPage() {
     }
   }, [machineId, fetchMachine, fetchRooms, rooms.length])
 
+  // ✅ Handle invalid machine ID
+  if (machineId === null && params?.id) {
+    return (
+      <ProtectedRoute>
+        <div className="text-center py-8">
+          <CogIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-500">Invalid machine ID: {params.id}</p>
+          <Link href="/machines">
+            <Button variant="secondary" className="mt-4">
+              Back to Machines
+            </Button>
+          </Link>
+        </div>
+      </ProtectedRoute>
+    )
+  }
+
+  // ✅ Handle loading state for params
+  if (!params?.id) {
+    return (
+      <ProtectedRoute>
+        <div className="flex items-center justify-center p-8">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <span className="ml-2">Loading...</span>
+        </div>
+      </ProtectedRoute>
+    )
+  }
+
+  if (loading) {
+    return (
+      <ProtectedRoute>
+        <div className="flex items-center justify-center p-8">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <span className="ml-2">Loading machine details...</span>
+        </div>
+      </ProtectedRoute>
+    )
+  }
+
+  if (error) {
+    return (
+      <ProtectedRoute>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-800">Error: {error}</p>
+          <div className="flex gap-2 mt-4">
+            <Button 
+              onClick={() => machineId && fetchMachine(machineId)} 
+              variant="secondary"
+            >
+              Retry
+            </Button>
+            <Link href="/machines">
+              <Button variant="secondary">Back to Machines</Button>
+            </Link>
+          </div>
+        </div>
+      </ProtectedRoute>
+    )
+  }
+
+  if (!selectedMachine) {
+    return (
+      <ProtectedRoute>
+        <div className="text-center py-8">
+          <CogIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-500">Machine not found</p>
+          <p className="text-sm text-gray-400 mt-2">
+            Machine with ID {machineId} does not exist
+          </p>
+          <Link href="/machines">
+            <Button variant="secondary" className="mt-4">
+              Back to Machines
+            </Button>
+          </Link>
+        </div>
+      </ProtectedRoute>
+    )
+  }
+
+  // Rest of your existing component code...
   const handleStatusToggle = async () => {
-    if (!selectedMachine) return
+    if (!selectedMachine || !machineId) return
     
     setIsUpdating(true)
     try {
@@ -74,7 +163,7 @@ export default function MachineDetailPage() {
   }
 
   const handleDelete = async () => {
-    if (!selectedMachine) return
+    if (!selectedMachine || !machineId) return
     
     if (window.confirm(`Are you sure you want to delete machine "${selectedMachine.name}"?`)) {
       try {
@@ -86,6 +175,11 @@ export default function MachineDetailPage() {
         toast.error('Failed to delete machine')
       }
     }
+  }
+
+  const getRoomName = (room_id: number) => {
+    const room = rooms.find(r => r.id === room_id)
+    return room ? `${room.name} (${room.number})` : `Room ${room_id}`
   }
 
   const getStatusIcon = (status: string) => {
@@ -106,49 +200,6 @@ export default function MachineDetailPage() {
       case 'Decommissioned': return 'bg-gray-100 text-gray-800'
       default: return 'bg-gray-100 text-gray-800'
     }
-  }
-
-  const getRoomName = (room_id: number) => {
-    const room = rooms.find(r => r.id === room_id)
-    return room ? `${room.name} (${room.number})` : `Room ${room_id}`
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        <span className="ml-2">Loading machine details...</span>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800">Error: {error}</p>
-        <Button 
-          onClick={() => fetchMachine(machineId)} 
-          variant="secondary" 
-          className="mt-2"
-        >
-          Retry
-        </Button>
-      </div>
-    )
-  }
-
-  if (!selectedMachine) {
-    return (
-      <div className="text-center py-8">
-        <CogIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-        <p className="text-gray-500">Machine not found</p>
-        <Link href="/machines">
-          <Button variant="secondary" className="mt-4">
-            Back to Machines
-          </Button>
-        </Link>
-      </div>
-    )
   }
 
   const StatusIcon = getStatusIcon(selectedMachine.status)
@@ -300,4 +351,4 @@ export default function MachineDetailPage() {
       </div>
     </ProtectedRoute>
   )
-} 
+}
