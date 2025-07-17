@@ -233,32 +233,34 @@ export const useMachineStore = create<MachineState>()(
         }
       },
 
-      fetchMachine: async (id) => {
-  set({ loading: true, error: null, selectedMachine: null })
+fetchMachine: async (id) => {
+  set({ loading: true, error: null, selectedMachine: null });
   
   try {
-    console.log(`Fetching machine with ID: ${id}`)
-    const response = await machinesAPI.getMachine(id)
-    console.log('Machine API response:', response)
+    console.log(`Fetching machine with ID: ${id}`);
+    const response = await machinesAPI.getMachine(id);
+    console.log('Machine API response:', response.data); // Log response.data directly
     
-    if (response?.data) {
-      set({ selectedMachine: response.data })
-    } else {
-      set({ error: 'Machine data not found' })
+    // Validate response data
+    if (!response.data || typeof response.data !== 'object' || !response.data.id) {
+      throw new Error('Invalid machine data');
     }
+    
+    set({ selectedMachine: response.data as Machine });
   } catch (error: any) {
-    console.error('Error fetching machine:', error)
+    console.error('Error fetching machine:', error);
     
     if (error?.response?.status === 404) {
-      set({ error: 'Machine not found' })
+      set({ error: 'Machine not found' });
     } else {
-      const errorMessage = error?.response?.data?.message || 
-                          error?.message || 
-                          'Failed to fetch machine'
-      set({ error: errorMessage })
+      const errorMessage =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Failed to fetch machine';
+      set({ error: errorMessage });
     }
   } finally {
-    set({ loading: false })
+    set({ loading: false });
   }
 },
 
