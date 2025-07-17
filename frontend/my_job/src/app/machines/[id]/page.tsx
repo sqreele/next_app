@@ -1,4 +1,4 @@
-//machine[id]/page.tsx//
+//machine/[id]/page.tsx//
 
 'use client'
 
