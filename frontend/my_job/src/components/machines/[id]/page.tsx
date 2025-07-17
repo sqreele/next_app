@@ -1,5 +1,5 @@
 'use client'
-
+//components/[id]/page//
 import React, { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useMachineStore } from '@/stores/machines-store'
