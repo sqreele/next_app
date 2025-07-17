@@ -12,7 +12,7 @@ def format_image_preview(model, attribute):
     image_path = getattr(model, attribute, None)
     if image_path and isinstance(image_path, str) and image_path.strip():
         clean_path = image_path.strip('/')
-        url = f"/Uploads/{clean_path}"
+        url = f"/uploads/{clean_path}"
         return Markup(f'<a href="{url}" target="_blank"><img src="{url}" width="100" height="75" style="object-fit: cover; border-radius: 4px;" alt="Image" loading="lazy"></a>')
     return Markup('<span style="color: #ccc; font-size: 12px;">No Image</span>')
 
@@ -23,7 +23,7 @@ def format_image_array(model, attribute):
         for img_path in images[:3]:
             if img_path and isinstance(img_path, str) and img_path.strip():
                 clean_path = img_path.strip('/')
-                url = f"/Uploads/{clean_path}"
+                url = f"/uploads/{clean_path}"
                 previews.append(f'<a href="{url}" target="_blank"><img src="{url}" width="50" height="50" style="object-fit: cover; border-radius: 4px;" alt="Image" loading="lazy"></a>')
         if len(images) > 3:
             previews.append(f'<span style="color: #666; font-size: 12px;">...and {len(images) - 3} more</span>')
