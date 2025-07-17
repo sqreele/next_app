@@ -234,19 +234,33 @@ export const useMachineStore = create<MachineState>()(
       },
 
       fetchMachine: async (id) => {
-        set({ loading: true, error: null })
-        
-        try {
-          const response = await machinesAPI.getMachine(id)
-          set({ selectedMachine: response.data })
-        } catch (error: any) {
-          const errorMessage = error?.response?.data?.message || error?.message || 'Failed to fetch machine'
-          set({ error: errorMessage })
-          console.error('Error fetching machine:', error)
-        } finally {
-          set({ loading: false })
-        }
-      },
+  set({ loading: true, error: null, selectedMachine: null })
+  
+  try {
+    console.log(`Fetching machine with ID: ${id}`)
+    const response = await machinesAPI.getMachine(id)
+    console.log('Machine API response:', response)
+    
+    if (response?.data) {
+      set({ selectedMachine: response.data })
+    } else {
+      set({ error: 'Machine data not found' })
+    }
+  } catch (error: any) {
+    console.error('Error fetching machine:', error)
+    
+    if (error?.response?.status === 404) {
+      set({ error: 'Machine not found' })
+    } else {
+      const errorMessage = error?.response?.data?.message || 
+                          error?.message || 
+                          'Failed to fetch machine'
+      set({ error: errorMessage })
+    }
+  } finally {
+    set({ loading: false })
+  }
+},
 
       createMachine: async (data) => {
         set({ loading: true, error: null })
