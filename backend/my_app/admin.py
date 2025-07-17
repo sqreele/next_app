@@ -1,15 +1,15 @@
 from sqladmin import ModelView
-from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile, Topic, Procedure
+from .models import User, UserProfile, Property, Room, Machine, WorkOrder, WorkOrderFile, Topic, Procedure, ProcedureExecution
 from markupsafe import Markup
 from sqlalchemy.orm import selectinload
-from .models import ProcedureExecution
+from sqlalchemy.sql import text
 
 # Helper functions
 def format_image_preview(model, attribute):
     image_path = getattr(model, attribute, None)
     if image_path and isinstance(image_path, str) and image_path.strip():
         clean_path = image_path.strip('/')
-        url = f"/uploads/{clean_path}"
+        url = f"/Uploads/{clean_path}"
         return Markup(f'<a href="{url}" target="_blank"><img src="{url}" width="100" height="75" style="object-fit: cover; border-radius: 4px;" alt="Image" loading="lazy"></a>')
     return Markup('<span style="color: #ccc; font-size: 12px;">No Image</span>')
 
@@ -20,7 +20,7 @@ def format_image_array(model, attribute):
         for img_path in images[:3]:
             if img_path and isinstance(img_path, str) and img_path.strip():
                 clean_path = img_path.strip('/')
-                url = f"/uploads/{clean_path}"
+                url = f"/Uploads/{clean_path}"
                 previews.append(f'<a href="{url}" target="_blank"><img src="{url}" width="50" height="50" style="object-fit: cover; border-radius: 4px;" alt="Image" loading="lazy"></a>')
         if len(images) > 3:
             previews.append(f'<span style="color: #666; font-size: 12px;">...and {len(images) - 3} more</span>')
@@ -65,83 +65,91 @@ class RoomAdmin(ModelView, model=Room):
     icon = "fa-solid fa-door-open"
 
 class MachineAdmin(ModelView, model=Machine):
-    column_list = [Machine.id, Machine.name, Machine.status, "property.name", "room.name", "procedures"]
-    form_columns = [Machine.property, Machine.name, Machine.status, Machine.room]
+    column_list = [Machine.id, Machine.name, Machine.status, "property.name", "room.name", "procedures", "has_pm", "has_issue"]
+    form_columns = [Machine.property, Machine.name, Machine.status, Machine.room, Machine.procedures]
     column_searchable_list = [Machine.name, Machine.status]
     column_sortable_list = [Machine.id, Machine.name, Machine.status]
+    column_filters = ["name", "status", "property.name", "room.name", "work_orders.type"]  # Added work_orders.type filter
     name = "Machine"
     name_plural = "Machines"
     icon = "fa-solid fa-robot"
 
-    # FIXED: Load procedures relationship
+    # Load relationships
     def get_query(self, request):
-        return super().get_query(request).options(selectinload(Machine.procedures))
+        return super().get_query(request).options(
+            selectinload(Machine.procedures),
+            selectinload(Machine.work_orders),  # Load work orders for has_pm and has_issue
+            selectinload(Machine.property),
+            selectinload(Machine.room)
+        )
 
-    # FIXED: Format procedures display
+    # Formatters for custom columns
     column_formatters = {
-        'procedures': lambda m, a: f"{len(m.procedures)} procedures" if m.procedures else "No procedures"
+        'procedures': lambda m, a: f"{len(m.procedures)} procedures" if m.procedures else "No procedures",
+        'has_pm': lambda m, a: "Yes" if any(wo.type == 'pm' for wo in m.work_orders) else "No",
+        'has_issue': lambda m, a: "Yes" if any(wo.type == 'issue' for wo in m.work_orders) else "No",
+        'property.name': lambda m, a: m.property.name if m.property else "No Property",
+        'room.name': lambda m, a: m.room.name if m.room else "No Room"
     }
 
-# FIXED: Updated Procedure Admin for Many-to-Many
 class ProcedureAdmin(ModelView, model=Procedure):
     column_list = [Procedure.id, Procedure.title, Procedure.remark, Procedure.frequency, "machines"]
-    
-    # Form columns for many-to-many relationship
     form_columns = ["machines", "title", "remark", "frequency"]
-    
     column_searchable_list = [Procedure.title, Procedure.remark]
     column_sortable_list = [Procedure.id, Procedure.title]
-    
     column_labels = {
         'id': 'ID',
         'title': 'Title',
-        'remark': 'Remark', 
+        'remark': 'Remark',
         'frequency': 'Frequency',
         'machines': 'Machines'
     }
-    
-    # FIXED: Custom formatter for many-to-many machines display
     column_formatters = {
         'machines': lambda m, a: ', '.join([machine.name for machine in m.machines]) if m.machines else 'No Machines'
     }
-    
     page_size = 10
-    
-    # FIXED: Load machines relationship
+
     def get_query(self, request):
         return super().get_query(request).options(selectinload(Procedure.machines))
-    
+
     name = "Procedure"
     name_plural = "Procedures"
     icon = "fa-solid fa-list"
 
 class WorkOrderAdmin(ModelView, model=WorkOrder):
-    column_list = [WorkOrder.id, WorkOrder.task, WorkOrder.status, WorkOrder.priority, WorkOrder.due_date, 
+    column_list = [WorkOrder.id, WorkOrder.task, WorkOrder.status, WorkOrder.priority, WorkOrder.due_date,
                    WorkOrder.property_id, WorkOrder.machine_id, WorkOrder.room_id, WorkOrder.assigned_to,
-                   'before_images', 'after_images', WorkOrder.pdf_file_path, WorkOrder.topic_id]
-    
-    form_columns = [WorkOrder.property_id, WorkOrder.task, WorkOrder.description, WorkOrder.status, 
-                    WorkOrder.priority, WorkOrder.due_date, WorkOrder.machine_id, WorkOrder.room_id, 
-                    WorkOrder.assigned_to_id, WorkOrder.pdf_file_path, WorkOrder.topic_id]
-    
+                   'before_images', 'after_images', WorkOrder.pdf_file_path, WorkOrder.topic_id, WorkOrder.type]
+    form_columns = [WorkOrder.property_id, WorkOrder.task, WorkOrder.description, WorkOrder.status,
+                    WorkOrder.priority, WorkOrder.due_date, WorkOrder.machine_id, WorkOrder.room_id,
+                    WorkOrder.assigned_to_id, WorkOrder.pdf_file_path, WorkOrder.topic_id, WorkOrder.type]
     column_searchable_list = [WorkOrder.task, WorkOrder.description, WorkOrder.status, WorkOrder.priority]
     column_sortable_list = [WorkOrder.id, WorkOrder.task, WorkOrder.status, WorkOrder.priority, WorkOrder.due_date, WorkOrder.created_at]
-    
+    column_filters = ["status", "priority", "type"]  # Added type filter for WorkOrder
     column_formatters = {
         'before_images': lambda m, a: format_image_array(m, 'before_images'),
         'after_images': lambda m, a: format_image_array(m, 'after_images'),
         'assigned_to': lambda m, a: m.assigned_to.username if m.assigned_to else "Unassigned",
-        'pdf_file_path': lambda m, a: Markup(f'<a href="/uploads/{m.pdf_file_path.strip("/")}" target="_blank" class="pdf-link">📄 View PDF</a>') if m.pdf_file_path else Markup('<span style="color: #ccc; font-size: 12px;">No PDF</span>'),
+        'pdf_file_path': lambda m, a: Markup(f'<a href="/Uploads/{m.pdf_file_path.strip("/")}" target="_blank" class="pdf-link">📄 View PDF</a>') if m.pdf_file_path else Markup('<span style="color: #ccc; font-size: 12px;">No PDF</span>'),
+        'type': lambda m, a: m.type.upper() if m.type else "N/A"
     }
-    
     name = "Work Order"
     name_plural = "Work Orders"
     icon = "fa-solid fa-list-check"
 
+    def get_query(self, request):
+        return super().get_query(request).options(
+            selectinload(WorkOrder.assigned_to),
+            selectinload(WorkOrder.property),
+            selectinload(WorkOrder.machine),
+            selectinload(WorkOrder.room),
+            selectinload(WorkOrder.topic)
+        )
+
 class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
-    column_list = [WorkOrderFile.id, WorkOrderFile.file_path, WorkOrderFile.file_name, WorkOrderFile.file_size, 
+    column_list = [WorkOrderFile.id, WorkOrderFile.file_path, WorkOrderFile.file_name, WorkOrderFile.file_size,
                    WorkOrderFile.mime_type, WorkOrderFile.upload_type, WorkOrderFile.uploaded_at, WorkOrderFile.work_order_id]
-    form_columns = [WorkOrderFile.work_order_id, WorkOrderFile.file_path, WorkOrderFile.file_name, 
+    form_columns = [WorkOrderFile.work_order_id, WorkOrderFile.file_path, WorkOrderFile.file_name,
                     WorkOrderFile.file_size, WorkOrderFile.mime_type, WorkOrderFile.upload_type, WorkOrderFile.uploaded_at]
     column_searchable_list = [WorkOrderFile.file_path, WorkOrderFile.upload_type]
     column_sortable_list = [WorkOrderFile.id, WorkOrderFile.file_path, WorkOrderFile.upload_type, WorkOrderFile.uploaded_at]
@@ -158,20 +166,15 @@ class TopicAdmin(ModelView, model=Topic):
     name_plural = "Topics"
     icon = "fa-solid fa-tag"
 
-# FIXED: Procedure Execution Admin
 class ProcedureExecutionAdmin(ModelView, model=ProcedureExecution):
-    column_list = [ProcedureExecution.id, "procedure.title", "machine.name", 
+    column_list = [ProcedureExecution.id, "procedure.title", "machine.name",
                    ProcedureExecution.scheduled_date, ProcedureExecution.status,
                    ProcedureExecution.completed_date, "assigned_to.username",
                    'before_images', 'after_images']
-    
-    # FIXED: Form columns for machine relationship
-    form_columns = ["procedure", "machine", "scheduled_date", "status", "assigned_to", 
+    form_columns = ["procedure", "machine", "scheduled_date", "status", "assigned_to",
                     "execution_notes", "completed_date", "completed_by"]
-    
     column_searchable_list = ["procedure.title", "machine.name", "execution_notes"]
     column_sortable_list = [ProcedureExecution.scheduled_date, ProcedureExecution.status]
-    
     column_labels = {
         'procedure.title': 'Procedure',
         'machine.name': 'Machine',
@@ -180,7 +183,6 @@ class ProcedureExecutionAdmin(ModelView, model=ProcedureExecution):
         'before_images': 'Before Images',
         'after_images': 'After Images'
     }
-    
     column_formatters = {
         'before_images': lambda m, a: format_image_array(m, 'before_images'),
         'after_images': lambda m, a: format_image_array(m, 'after_images'),
@@ -189,8 +191,6 @@ class ProcedureExecutionAdmin(ModelView, model=ProcedureExecution):
         'assigned_to.username': lambda m, a: m.assigned_to.username if m.assigned_to else 'Unassigned',
         'completed_by.username': lambda m, a: m.completed_by.username if m.completed_by else 'Not Completed'
     }
-    
-    # FIXED: Load all relationships
     def get_query(self, request):
         return super().get_query(request).options(
             selectinload(ProcedureExecution.procedure),
@@ -198,7 +198,6 @@ class ProcedureExecutionAdmin(ModelView, model=ProcedureExecution):
             selectinload(ProcedureExecution.assigned_to),
             selectinload(ProcedureExecution.completed_by)
         )
-    
     name = "Procedure Execution"
-    name_plural = "Procedure Executions" 
+    name_plural = "Procedure Executions"
     icon = "fa-solid fa-calendar-check"
