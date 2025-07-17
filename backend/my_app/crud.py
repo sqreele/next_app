@@ -360,31 +360,38 @@ async def create_procedure_execution(db: AsyncSession, execution: schemas.Proced
 
 # --- WorkOrder CRUD (unchanged) ---
 async def get_work_orders(db: AsyncSession, skip: int = 0, limit: int = 100):
-    result = await db.execute(
-        select(models.WorkOrder)
-        .options(
-            selectinload(models.WorkOrder.room),
-            selectinload(models.WorkOrder.property),
-            selectinload(models.WorkOrder.machine),
-            selectinload(models.WorkOrder.assigned_to)
+    """Get work orders with all relationships properly loaded"""
+    try:
+        result = await db.execute(
+            select(models.WorkOrder)
+            .options(
+                selectinload(models.WorkOrder.room),
+                selectinload(models.WorkOrder.property),
+                selectinload(models.WorkOrder.machine),
+                selectinload(models.WorkOrder.assigned_to),
+                selectinload(models.WorkOrder.topic)
+            )
+            .offset(skip)
+            .limit(limit)
+            .order_by(models.WorkOrder.created_at.desc())  # Add ordering
         )
-        .offset(skip)
-        .limit(limit)
-    )
-    return result.scalars().all()
+        work_orders = result.scalars().all()
+        
+        # Ensure all relationships are accessible
+        for wo in work_orders:
+            # Touch relationships to ensure they're loaded
+            _ = wo.property
+            _ = wo.room  
+            _ = wo.machine
+            _ = wo.assigned_to
+            _ = wo.topic
+            
+        return work_orders
+    except Exception as e:
+        print(f"Error in get_work_orders CRUD: {e}")
+        raise e
 
-async def get_work_order(db: AsyncSession, work_order_id: int):
-    result = await db.execute(
-        select(models.WorkOrder)
-        .options(
-            selectinload(models.WorkOrder.room),
-            selectinload(models.WorkOrder.property),
-            selectinload(models.WorkOrder.machine),
-            selectinload(models.WorkOrder.assigned_to)
-        )
-        .filter(models.WorkOrder.id == work_order_id)
-    )
-    return result.scalars().first()
+
 
 async def create_work_order(db: AsyncSession, work_order: schemas.WorkOrderCreate):
     print(f"🔍 [CRUD] Creating work order with data:")
