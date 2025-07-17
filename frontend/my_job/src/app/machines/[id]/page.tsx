@@ -1,8 +1,7 @@
-//machine/[id]/page.tsx//
-
+// machine/[id]/page.tsx
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useMachineStore } from '@/stores/machines-store'
 import { useRoomStore } from '@/stores/rooms-store'
@@ -22,51 +21,160 @@ import {
   PencilIcon,
   TrashIcon,
   ClipboardDocumentListIcon,
-  ExclamationCircleIcon
+  ExclamationCircleIcon,
 } from '@heroicons/react/24/outline'
+
+// Define types for machine and room
+interface Machine {
+  id: number
+  name: string
+  room_id: number
+  property_id: number
+  status: 'Operational' | 'Maintenance' | 'Offline' | 'Decommissioned'
+  created_at?: string
+  updated_at?: string
+}
+
+interface Room {
+  id: number
+  name: string
+  number: string
+}
 
 export default function MachineDetailPage() {
   const params = useParams()
   const router = useRouter()
-  
-  // ✅ Safe parsing with validation
+
+  // Safe parsing with validation
   const machineId = React.useMemo(() => {
     if (!params?.id) return null
     const id = Array.isArray(params.id) ? params.id[0] : params.id
     const parsed = parseInt(id, 10)
     return isNaN(parsed) ? null : parsed
   }, [params?.id])
-  
-  const { 
-    selectedMachine, 
-    loading, 
-    error, 
-    fetchMachine, 
+
+  const {
+    selectedMachine,
+    loading,
+    error,
+    fetchMachine,
     updateMachineStatus,
-    removeMachine 
+    removeMachine,
   } = useMachineStore()
-  
   const { rooms, fetchRooms } = useRoomStore()
   const [isUpdating, setIsUpdating] = useState(false)
 
-  // ✅ Fixed useEffect with proper validation
+  // Fetch machine and rooms data
   useEffect(() => {
-    if (machineId !== null) { // ✅ Now checks for valid number
-      console.log('Fetching machine with ID:', machineId) // Debug log
-      fetchMachine(machineId)
+    if (machineId === null) return
+
+    let isMounted = true
+    const loadData = async () => {
+      try {
+        await Promise.all([
+          fetchMachine(machineId),
+          rooms.length === 0 ? fetchRooms() : Promise.resolve(),
+        ])
+      } catch (err) {
+        if (isMounted) {
+          console.error('Error loading data:', err)
+        }
+      }
     }
-    if (rooms.length === 0) {
-      fetchRooms()
+
+    loadData()
+    return () => {
+      isMounted = false
     }
   }, [machineId, fetchMachine, fetchRooms, rooms.length])
 
-  // ✅ Handle invalid machine ID
-  if (machineId === null && params?.id) {
+  // Handle status toggle
+  const handleStatusToggle = useCallback(async () => {
+    if (!selectedMachine || !machineId) return
+
+    setIsUpdating(true)
+    try {
+      const statusCycle: Record<Machine['status'], Machine['status']> = {
+        Operational: 'Maintenance',
+        Maintenance: 'Offline',
+        Offline: 'Operational',
+        Decommissioned: 'Operational',
+      }
+
+      const newStatus = statusCycle[selectedMachine.status]
+      if (!newStatus) {
+        throw new Error(`Invalid status: ${selectedMachine.status}`)
+      }
+
+      await updateMachineStatus(machineId, newStatus)
+      toast.success('Machine status updated successfully')
+    } catch (err) {
+      console.error('Error updating machine status:', err)
+      toast.error('Failed to update machine status')
+    } finally {
+      setIsUpdating(false)
+    }
+  }, [selectedMachine, machineId, updateMachineStatus])
+
+  // Handle delete
+  const handleDelete = useCallback(async () => {
+    if (!selectedMachine || !machineId) return
+
+    if (window.confirm(`Are you sure you want to delete machine "${selectedMachine.name}"?`)) {
+      try {
+        await removeMachine(machineId)
+        toast.success('Machine deleted successfully')
+        router.push('/machines')
+      } catch (err) {
+        console.error('Error deleting machine:', err)
+        toast.error('Failed to delete machine')
+      }
+    }
+  }, [selectedMachine, machineId, removeMachine, router])
+
+  // Utility functions
+  const getRoomName = useCallback((room_id: number) => {
+    const room = rooms.find((r: Room) => r.id === room_id)
+    return room ? `${room.name} (${room.number})` : `Room ${room_id}`
+  }, [rooms])
+
+  const getStatusIcon = useCallback((status: string) => {
+    switch (status) {
+      case 'Operational':
+        return CheckCircleIcon
+      case 'Maintenance':
+        return WrenchScrewdriverIcon
+      case 'Offline':
+        return XMarkIcon
+      case 'Decommissioned':
+        return ExclamationTriangleIcon
+      default:
+        return CogIcon
+    }
+  }, [])
+
+  const getStatusColor = useCallback((status: string) => {
+    switch (status) {
+      case 'Operational':
+        return 'bg-green-100 text-green-800'
+      case 'Maintenance':
+        return 'bg-yellow-100 text-yellow-800'
+      case 'Offline':
+        return 'bg-red-100 text-red-800'
+      case 'Decommissioned':
+        return 'bg-gray-100 text-gray-800'
+      default:
+        return 'bg-gray-100 text-gray-800'
+    }
+  }, [])
+
+  // Handle invalid machine ID
+  if (machineId === null) {
     return (
       <ProtectedRoute>
         <div className="text-center py-8">
           <CogIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-500">Invalid machine ID: {params.id}</p>
+          <p className="text-gray-500">Invalid machine ID: {params?.id}</p>
           <Link href="/machines">
             <Button variant="secondary" className="mt-4">
               Back to Machines
@@ -77,18 +185,7 @@ export default function MachineDetailPage() {
     )
   }
 
-  // ✅ Handle loading state for params
-  if (!params?.id) {
-    return (
-      <ProtectedRoute>
-        <div className="flex items-center justify-center p-8">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-          <span className="ml-2">Loading...</span>
-        </div>
-      </ProtectedRoute>
-    )
-  }
-
+  // Handle loading state
   if (loading) {
     return (
       <ProtectedRoute>
@@ -100,14 +197,15 @@ export default function MachineDetailPage() {
     )
   }
 
+  // Handle error state
   if (error) {
     return (
       <ProtectedRoute>
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <p className="text-red-800">Error: {error}</p>
           <div className="flex gap-2 mt-4">
-            <Button 
-              onClick={() => machineId && fetchMachine(machineId)} 
+            <Button
+              onClick={() => fetchMachine(machineId)}
               variant="secondary"
             >
               Retry
@@ -121,6 +219,7 @@ export default function MachineDetailPage() {
     )
   }
 
+  // Handle machine not found
   if (!selectedMachine) {
     return (
       <ProtectedRoute>
@@ -138,70 +237,6 @@ export default function MachineDetailPage() {
         </div>
       </ProtectedRoute>
     )
-  }
-
-  // Rest of your existing component code...
-  const handleStatusToggle = async () => {
-    if (!selectedMachine || !machineId) return
-    
-    setIsUpdating(true)
-    try {
-      const statusCycle = {
-        'Operational': 'Maintenance',
-        'Maintenance': 'Offline', 
-        'Offline': 'Operational',
-        'Decommissioned': 'Operational'
-      }
-      
-      const newStatus = statusCycle[selectedMachine.status as keyof typeof statusCycle] as any
-      await updateMachineStatus(machineId, newStatus)
-      toast.success('Machine status updated successfully')
-    } catch (error) {
-      console.error('Error updating machine status:', error)
-      toast.error('Failed to update machine status')
-    } finally {
-      setIsUpdating(false)
-    }
-  }
-
-  const handleDelete = async () => {
-    if (!selectedMachine || !machineId) return
-    
-    if (window.confirm(`Are you sure you want to delete machine "${selectedMachine.name}"?`)) {
-      try {
-        await removeMachine(machineId)
-        toast.success('Machine deleted successfully')
-        router.push('/machines')
-      } catch (error) {
-        console.error('Error deleting machine:', error)
-        toast.error('Failed to delete machine')
-      }
-    }
-  }
-
-  const getRoomName = (room_id: number) => {
-    const room = rooms.find(r => r.id === room_id)
-    return room ? `${room.name} (${room.number})` : `Room ${room_id}`
-  }
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'Operational': return CheckCircleIcon
-      case 'Maintenance': return WrenchScrewdriverIcon
-      case 'Offline': return XMarkIcon
-      case 'Decommissioned': return ExclamationTriangleIcon
-      default: return CogIcon
-    }
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Operational': return 'bg-green-100 text-green-800'
-      case 'Maintenance': return 'bg-yellow-100 text-yellow-800'
-      case 'Offline': return 'bg-red-100 text-red-800'
-      case 'Decommissioned': return 'bg-gray-100 text-gray-800'
-      default: return 'bg-gray-100 text-gray-800'
-    }
   }
 
   const StatusIcon = getStatusIcon(selectedMachine.status)
@@ -242,8 +277,8 @@ export default function MachineDetailPage() {
                 Edit
               </Button>
             </Link>
-            <Button 
-              variant="secondary" 
+            <Button
+              variant="secondary"
               onClick={handleDelete}
               className="text-red-600 hover:text-red-900"
             >
@@ -279,7 +314,6 @@ export default function MachineDetailPage() {
                   <p className="text-lg">Property {selectedMachine.property_id}</p>
                 </div>
               </div>
-              
               <div>
                 <label className="text-sm font-medium text-gray-500">Status</label>
                 <div className="flex items-center gap-2 mt-1">
@@ -287,7 +321,7 @@ export default function MachineDetailPage() {
                     <StatusIcon className="h-4 w-4 mr-1" />
                     {selectedMachine.status}
                   </Badge>
-                  <Button 
+                  <Button
                     onClick={handleStatusToggle}
                     disabled={isUpdating}
                     variant="secondary"
@@ -338,13 +372,17 @@ export default function MachineDetailPage() {
               <div>
                 <label className="text-sm font-medium text-gray-500">Created</label>
                 <p className="text-sm text-gray-900">
-                  {selectedMachine.created_at ? new Date(selectedMachine.created_at).toLocaleDateString() : 'N/A'}
+                  {selectedMachine.created_at
+                    ? new Date(selectedMachine.created_at).toLocaleDateString()
+                    : 'N/A'}
                 </p>
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-500">Last Updated</label>
                 <p className="text-sm text-gray-900">
-                  {selectedMachine.updated_at ? new Date(selectedMachine.updated_at).toLocaleDateString() : 'N/A'}
+                  {selectedMachine.updated_at
+                    ? new Date(selectedMachine.updated_at).toLocaleDateString()
+                    : 'N/A'}
                 </p>
               </div>
             </div>
