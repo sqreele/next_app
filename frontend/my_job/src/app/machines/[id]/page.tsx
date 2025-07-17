@@ -1,51 +1,22 @@
-// machine/[id]/page.tsx
+// frontend/my_job/src/app/machines/[id]/page.tsx
 'use client'
 
 import React, { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { useMachineStore } from '@/stores/machines-store'
-import { useRoomStore } from '@/stores/rooms-store'
+import { useMachineStore, Machine } from '@/stores/machines-store'
+import { useRoomStore, Room } from '@/stores/rooms-store'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
 import Link from 'next/link'
-import {
-  CogIcon,
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
-  XMarkIcon,
-  WrenchScrewdriverIcon,
-  ArrowLeftIcon,
-  PencilIcon,
-  TrashIcon,
-  ClipboardDocumentListIcon,
-  ExclamationCircleIcon,
-} from '@heroicons/react/24/outline'
-
-// Define types for machine and room
-interface Machine {
-  id: number
-  name: string
-  room_id: number
-  property_id: number
-  status: 'Operational' | 'Maintenance' | 'Offline' | 'Decommissioned'
-  created_at?: string
-  updated_at?: string
-}
-
-interface Room {
-  id: number
-  name: string
-  number: string
-}
+import { CogIcon } from '@heroicons/react/24/outline'
+import { MachineDetail } from '@/components/machines/MachineDetail'
 
 export default function MachineDetailPage() {
   const params = useParams()
   const router = useRouter()
 
-  // Safe parsing with validation
+  // Safe parsing of machineId from URL
   const machineId = React.useMemo(() => {
     if (!params?.id) return null
     const id = Array.isArray(params.id) ? params.id[0] : params.id
@@ -53,6 +24,7 @@ export default function MachineDetailPage() {
     return isNaN(parsed) ? null : parsed
   }, [params?.id])
 
+  // State and actions from Zustand stores
   const {
     selectedMachine,
     loading,
@@ -64,31 +36,21 @@ export default function MachineDetailPage() {
   const { rooms, fetchRooms } = useRoomStore()
   const [isUpdating, setIsUpdating] = useState(false)
 
-  // Fetch machine and rooms data
+  // Effect to fetch machine data based on machineId
   useEffect(() => {
-    if (machineId === null) return
-
-    let isMounted = true
-    const loadData = async () => {
-      try {
-        await Promise.all([
-          fetchMachine(machineId),
-          rooms.length === 0 ? fetchRooms() : Promise.resolve(),
-        ])
-      } catch (err) {
-        if (isMounted) {
-          console.error('Error loading data:', err)
-        }
-      }
+    if (machineId !== null) {
+      fetchMachine(machineId)
     }
+  }, [machineId, fetchMachine])
 
-    loadData()
-    return () => {
-      isMounted = false
+  // Effect to fetch rooms data if not already present
+  useEffect(() => {
+    if (rooms.length === 0) {
+      fetchRooms()
     }
-  }, [machineId, fetchMachine, fetchRooms, rooms.length])
+  }, [rooms.length, fetchRooms])
 
-  // Handle status toggle
+  // Callback to handle toggling machine status
   const handleStatusToggle = useCallback(async () => {
     if (!selectedMachine || !machineId) return
 
@@ -103,7 +65,7 @@ export default function MachineDetailPage() {
 
       const newStatus = statusCycle[selectedMachine.status]
       if (!newStatus) {
-        throw new Error(`Invalid status: ${selectedMachine.status}`)
+        throw new Error(`Invalid status transition from: ${selectedMachine.status}`)
       }
 
       await updateMachineStatus(machineId, newStatus)
@@ -116,11 +78,15 @@ export default function MachineDetailPage() {
     }
   }, [selectedMachine, machineId, updateMachineStatus])
 
-  // Handle delete
+  // Callback to handle deleting a machine
   const handleDelete = useCallback(async () => {
     if (!selectedMachine || !machineId) return
 
-    if (window.confirm(`Are you sure you want to delete machine "${selectedMachine.name}"?`)) {
+    if (
+      window.confirm(
+        `Are you sure you want to delete machine "${selectedMachine.name}"?`
+      )
+    ) {
       try {
         await removeMachine(machineId)
         toast.success('Machine deleted successfully')
@@ -132,60 +98,7 @@ export default function MachineDetailPage() {
     }
   }, [selectedMachine, machineId, removeMachine, router])
 
-  // Utility functions
-  const getRoomName = useCallback((room_id: number) => {
-    const room = rooms.find((r: Room) => r.id === room_id)
-    return room ? `${room.name} (${room.number})` : `Room ${room_id}`
-  }, [rooms])
-
-  const getStatusIcon = useCallback((status: string) => {
-    switch (status) {
-      case 'Operational':
-        return CheckCircleIcon
-      case 'Maintenance':
-        return WrenchScrewdriverIcon
-      case 'Offline':
-        return XMarkIcon
-      case 'Decommissioned':
-        return ExclamationTriangleIcon
-      default:
-        return CogIcon
-    }
-  }, [])
-
-  const getStatusColor = useCallback((status: string) => {
-    switch (status) {
-      case 'Operational':
-        return 'bg-green-100 text-green-800'
-      case 'Maintenance':
-        return 'bg-yellow-100 text-yellow-800'
-      case 'Offline':
-        return 'bg-red-100 text-red-800'
-      case 'Decommissioned':
-        return 'bg-gray-100 text-gray-800'
-      default:
-        return 'bg-gray-100 text-gray-800'
-    }
-  }, [])
-
-  // Handle invalid machine ID
-  if (machineId === null) {
-    return (
-      <ProtectedRoute>
-        <div className="text-center py-8">
-          <CogIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-500">Invalid machine ID: {params?.id}</p>
-          <Link href="/machines">
-            <Button variant="secondary" className="mt-4">
-              Back to Machines
-            </Button>
-          </Link>
-        </div>
-      </ProtectedRoute>
-    )
-  }
-
-  // Handle loading state
+  // Render loading state
   if (loading) {
     return (
       <ProtectedRoute>
@@ -197,7 +110,7 @@ export default function MachineDetailPage() {
     )
   }
 
-  // Handle error state
+  // Render error state
   if (error) {
     return (
       <ProtectedRoute>
@@ -205,7 +118,7 @@ export default function MachineDetailPage() {
           <p className="text-red-800">Error: {error}</p>
           <div className="flex gap-2 mt-4">
             <Button
-              onClick={() => fetchMachine(machineId)}
+              onClick={() => machineId && fetchMachine(machineId)}
               variant="secondary"
             >
               Retry
@@ -219,16 +132,20 @@ export default function MachineDetailPage() {
     )
   }
 
-  // Handle machine not found
+  // Render "not found" or invalid ID state
   if (!selectedMachine) {
     return (
       <ProtectedRoute>
         <div className="text-center py-8">
           <CogIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-500">Machine not found</p>
-          <p className="text-sm text-gray-400 mt-2">
-            Machine with ID {machineId} does not exist
+          <p className="text-gray-500">
+            {machineId === null ? `Invalid machine ID: ${params?.id}` : 'Machine not found'}
           </p>
+          {machineId !== null && (
+             <p className="text-sm text-gray-400 mt-2">
+                Machine with ID {machineId} does not exist
+             </p>
+          )}
           <Link href="/machines">
             <Button variant="secondary" className="mt-4">
               Back to Machines
@@ -239,156 +156,16 @@ export default function MachineDetailPage() {
     )
   }
 
-  const StatusIcon = getStatusIcon(selectedMachine.status)
-
+  // Render the MachineDetail component with all required data and handlers
   return (
     <ProtectedRoute>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/machines">
-              <Button variant="secondary" size="sm">
-                <ArrowLeftIcon className="h-4 w-4 mr-2" />
-                Back
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">{selectedMachine.name}</h1>
-              <p className="text-gray-600">Machine Details</p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Link href={`/pm/create?machine_id=${selectedMachine.id}`}>
-              <Button variant="secondary">
-                <ClipboardDocumentListIcon className="h-4 w-4 mr-2" />
-                Create PM
-              </Button>
-            </Link>
-            <Link href={`/issues/create?machine_id=${selectedMachine.id}`}>
-              <Button variant="secondary">
-                <ExclamationCircleIcon className="h-4 w-4 mr-2" />
-                Create Issue
-              </Button>
-            </Link>
-            <Link href={`/machines/${selectedMachine.id}/edit`}>
-              <Button variant="secondary">
-                <PencilIcon className="h-4 w-4 mr-2" />
-                Edit
-              </Button>
-            </Link>
-            <Button
-              variant="secondary"
-              onClick={handleDelete}
-              className="text-red-600 hover:text-red-900"
-            >
-              <TrashIcon className="h-4 w-4 mr-2" />
-              Delete
-            </Button>
-          </div>
-        </div>
-
-        {/* Machine Information */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Info Card */}
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle>Machine Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Machine ID</label>
-                  <p className="text-lg font-semibold">{selectedMachine.id}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Name</label>
-                  <p className="text-lg font-semibold">{selectedMachine.name}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Room</label>
-                  <p className="text-lg">{getRoomName(selectedMachine.room_id)}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Property</label>
-                  <p className="text-lg">Property {selectedMachine.property_id}</p>
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">Status</label>
-                <div className="flex items-center gap-2 mt-1">
-                  <Badge className={`${getStatusColor(selectedMachine.status)}`}>
-                    <StatusIcon className="h-4 w-4 mr-1" />
-                    {selectedMachine.status}
-                  </Badge>
-                  <Button
-                    onClick={handleStatusToggle}
-                    disabled={isUpdating}
-                    variant="secondary"
-                    size="sm"
-                  >
-                    {isUpdating ? 'Updating...' : 'Change Status'}
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Quick Actions Card */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Link href={`/work-orders/create?machine_id=${selectedMachine.id}`}>
-                <Button className="w-full justify-start">
-                  <ClipboardDocumentListIcon className="h-4 w-4 mr-2" />
-                  Create Work Order
-                </Button>
-              </Link>
-              <Link href={`/pm/create?machine_id=${selectedMachine.id}`}>
-                <Button variant="secondary" className="w-full justify-start">
-                  <ClipboardDocumentListIcon className="h-4 w-4 mr-2" />
-                  Schedule PM
-                </Button>
-              </Link>
-              <Link href={`/issues/create?machine_id=${selectedMachine.id}`}>
-                <Button variant="secondary" className="w-full justify-start">
-                  <ExclamationCircleIcon className="h-4 w-4 mr-2" />
-                  Report Issue
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Additional Details */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Additional Details</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-gray-500">Created</label>
-                <p className="text-sm text-gray-900">
-                  {selectedMachine.created_at
-                    ? new Date(selectedMachine.created_at).toLocaleDateString()
-                    : 'N/A'}
-                </p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">Last Updated</label>
-                <p className="text-sm text-gray-900">
-                  {selectedMachine.updated_at
-                    ? new Date(selectedMachine.updated_at).toLocaleDateString()
-                    : 'N/A'}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <MachineDetail
+        machine={selectedMachine}
+        rooms={rooms}
+        isUpdating={isUpdating}
+        onStatusToggle={handleStatusToggle}
+        onDelete={handleDelete}
+      />
     </ProtectedRoute>
   )
 }
