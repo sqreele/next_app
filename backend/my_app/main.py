@@ -87,6 +87,43 @@ async def websocket_endpoint(websocket: WebSocket, client_id: int):
             data = await websocket.receive_text()
             await manager.send_personal_message(f"You wrote: {data}", websocket)
             await manager.broadcast(f"Client #{client_id} says: {data}")
-    except WebSocketDisconnect:
+    except WebSocketDisconnect:# Add this to your main.py temporarily for debugging
+
+@app.get("/debug/check-admin")
+async def check_admin_exists():
+    """Debug endpoint to check if admin exists"""
+    from sqlalchemy.orm import Session
+    from my_app.models import User, UserProfile
+    from my_app.database import sync_engine
+    
+    with Session(sync_engine) as db:
+        try:
+            # Check for admin users
+            admin_users = db.query(User).join(UserProfile).filter(
+                UserProfile.role == 'Admin'
+            ).all()
+            
+            result = {
+                "admin_count": len(admin_users),
+                "admins": []
+            }
+            
+            for user in admin_users:
+                result["admins"].append({
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                    "is_active": user.is_active,
+                    "has_profile": user.profile is not None,
+                    "role": user.profile.role if user.profile else None
+                })
+            
+            return result
+            
+        except Exception as e:
+            return {"error": str(e)}
         manager.disconnect(websocket)
         await manager.broadcast(f"Client #{client_id} left the chat")
+
+
+      
