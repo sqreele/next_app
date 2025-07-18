@@ -79,16 +79,7 @@ async def root():
 async def health_check():
     return {"status": "healthy"}
 
-@app.websocket("/ws/{client_id}")
-async def websocket_endpoint(websocket: WebSocket, client_id: int):
-    await manager.connect(websocket)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            await manager.send_personal_message(f"You wrote: {data}", websocket)
-            await manager.broadcast(f"Client #{client_id} says: {data}")
-    except WebSocketDisconnect:# Add this to your main.py temporarily for debugging
-
+# Debug endpoints (remove these in production)
 @app.get("/debug/check-admin")
 async def check_admin_exists():
     """Debug endpoint to check if admin exists"""
@@ -122,8 +113,92 @@ async def check_admin_exists():
             
         except Exception as e:
             return {"error": str(e)}
+
+@app.post("/debug/create-admin")
+async def manual_create_admin(username: str = "admin", password: str = "admin123"):
+    """Manually create admin user"""
+    from sqlalchemy.orm import Session
+    from my_app.models import User, UserProfile
+    from my_app.security import get_password_hash
+    
+    with Session(sync_engine) as db:
+        try:
+            # Check if user already exists
+            existing_user = db.query(User).filter(User.username == username).first()
+            if existing_user:
+                return {"error": f"User '{username}' already exists"}
+            
+            # Create user
+            admin_user = User(
+                username=username,
+                email=f"{username}@maintenancepro.com",
+                hashed_password=get_password_hash(password),
+                is_active=True
+            )
+            db.add(admin_user)
+            db.flush()
+            
+            # Create profile
+            admin_profile = UserProfile(
+                user_id=admin_user.id,
+                role="Admin",
+                position="System Administrator"
+            )
+            db.add(admin_profile)
+            
+            db.commit()
+            
+            return {
+                "success": True,
+                "message": f"Admin user '{username}' created successfully",
+                "username": username,
+                "password": password,
+                "user_id": admin_user.id
+            }
+            
+        except Exception as e:
+            db.rollback()
+            return {"error": str(e)}
+
+@app.post("/debug/test-auth")
+async def test_auth(username: str, password: str):
+    """Test authentication manually"""
+    from sqlalchemy.orm import Session
+    from my_app.security import verify_password
+    from my_app.models import User, UserProfile
+    
+    with Session(sync_engine) as db:
+        try:
+            user = db.query(User).filter(User.username == username).first()
+            
+            if not user:
+                return {"error": "User not found"}
+            
+            password_valid = verify_password(password, user.hashed_password)
+            
+            profile = db.query(UserProfile).filter(UserProfile.user_id == user.id).first()
+            
+            return {
+                "user_found": True,
+                "username": user.username,
+                "is_active": user.is_active,
+                "password_valid": password_valid,
+                "has_profile": profile is not None,
+                "role": profile.role if profile else None,
+                "can_access_admin": profile and profile.role in ['Admin', 'Manager'] if profile else False
+            }
+            
+        except Exception as e:
+            return {"error": str(e)}
+
+@app.websocket("/ws/{client_id}")
+async def websocket_endpoint(websocket: WebSocket, client_id: int):
+    await manager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            await manager.send_personal_message(f"You wrote: {data}", websocket)
+            await manager.broadcast(f"Client #{client_id} says: {data}")
+    except WebSocketDisconnect:
         manager.disconnect(websocket)
         await manager.broadcast(f"Client #{client_id} left the chat")
-
-
-      
