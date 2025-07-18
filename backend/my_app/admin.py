@@ -150,31 +150,26 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
                    "property_name", "machine_name", "room_name", "assigned_to_name",
                    'before_images', 'after_images', WorkOrder.pdf_file_path, "topic_name", WorkOrder.type]
     
-    # FIXED: Include all required fields in the form
+    # Use relationship objects for dropdown selections
     form_columns = [
-        WorkOrder.property_id,      # Property (required)
-        WorkOrder.machine_id,       # Machine
-        WorkOrder.room_id,          # Room
-        WorkOrder.task,             # Task (required)
-        WorkOrder.description,      # Description
-        WorkOrder.type,             # Type: pm/issue (required)
-        WorkOrder.status,           # Status
-        WorkOrder.priority,         # Priority
-        WorkOrder.due_date,         # Due Date
-        WorkOrder.assigned_to_id,   # Assigned To
-        WorkOrder.topic_id,         # Topic
-        WorkOrder.pdf_file_path,    # PDF File
-        WorkOrder.before_images,    # Before Images
-        WorkOrder.after_images      # After Images
+        WorkOrder.property,         # Property dropdown (shows property names)
+        WorkOrder.machine,          # Machine dropdown (shows machine names)
+        WorkOrder.room,             # Room dropdown (shows room names)
+        WorkOrder.task,
+        WorkOrder.description,
+        WorkOrder.type,
+        WorkOrder.status,
+        WorkOrder.priority,
+        WorkOrder.due_date,
+        WorkOrder.assigned_to,      # User dropdown (shows usernames)
+        WorkOrder.topic,            # Topic dropdown (shows topic titles)
+        WorkOrder.pdf_file_path,
+        WorkOrder.before_images,
+        WorkOrder.after_images
     ]
     
-    # Better field labels
+    # Same labels and formatters as above...
     column_labels = {
-        'property_id': 'Property',
-        'machine_id': 'Machine',
-        'room_id': 'Room',
-        'assigned_to_id': 'Assigned To',
-        'topic_id': 'Topic',
         'due_date': 'Due Date',
         'pdf_file_path': 'PDF File',
         'before_images': 'Before Images',
@@ -188,9 +183,8 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
     
     column_searchable_list = [WorkOrder.task, WorkOrder.description, WorkOrder.status, WorkOrder.priority]
     column_sortable_list = [WorkOrder.id, WorkOrder.task, WorkOrder.status, WorkOrder.priority, WorkOrder.due_date, WorkOrder.created_at]
-    column_filters = ["status", "priority", "type", "property_id", "machine_id"]
+    column_filters = ["status", "priority", "type"]
     
-    # Enhanced formatters with proper relationship names
     column_formatters = {
         'before_images': lambda m, a: format_image_array(m, 'before_images'),
         'after_images': lambda m, a: format_image_array(m, 'after_images'),
@@ -201,29 +195,6 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         'topic_name': lambda m, a: safe_get_relationship_name(m, 'topic', "No Topic"),
         'pdf_file_path': lambda m, a: Markup(f'<a href="/uploads/{m.pdf_file_path.strip("/")}" target="_blank" class="pdf-link">📄 View PDF</a>') if m.pdf_file_path else Markup('<span style="color: #ccc; font-size: 12px;">No PDF</span>'),
         'type': lambda m, a: f'<span class="badge badge-{"success" if m.type == "pm" else "warning"}">{m.type.upper()}</span>' if m.type else "N/A"
-    }
-    
-    # Add form configuration for better UX
-    form_args = {
-        'type': {
-            'choices': [('pm', 'Preventive Maintenance'), ('issue', 'Issue/Repair')]
-        },
-        'status': {
-            'choices': [
-                ('Pending', 'Pending'),
-                ('In Progress', 'In Progress'), 
-                ('Completed', 'Completed'),
-                ('Cancelled', 'Cancelled')
-            ]
-        },
-        'priority': {
-            'choices': [
-                ('Low', 'Low'),
-                ('Medium', 'Medium'),
-                ('High', 'High'),
-                ('Urgent', 'Urgent')
-            ]
-        }
     }
     
     name = "Work Order"
