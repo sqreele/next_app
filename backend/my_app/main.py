@@ -9,6 +9,10 @@ from sqladmin import Admin
 from fastapi.staticfiles import StaticFiles
 from my_app.routers import calendar
 from my_app.admin import ProcedureExecutionAdmin
+
+# Import the admin authentication system
+from my_app.login_admin import authentication_backend, init_admin_auth
+
 # Import after loading env
 from my_app.database import engine as async_engine, sync_engine, Base
 from my_app.routers import users, properties, rooms, machines, work_orders, auth, topic, procedure
@@ -26,11 +30,14 @@ UPLOADS_DIR = "/app/uploads"
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 
-# Setup Admin - AFTER imports
+# Setup Admin with Authentication - UPDATED
 from my_app.admin import (UserAdmin, UserProfileAdmin, PropertyAdmin, RoomAdmin, 
                           MachineAdmin, WorkOrderAdmin, WorkOrderFileAdmin, TopicAdmin, ProcedureAdmin)
 
-admin = Admin(app, sync_engine)
+# Create admin with authentication backend
+admin = Admin(app, sync_engine, authentication_backend=authentication_backend)
+
+# Add all admin views
 admin.add_view(UserAdmin)
 admin.add_view(UserProfileAdmin)
 admin.add_view(PropertyAdmin)
@@ -41,6 +48,7 @@ admin.add_view(WorkOrderAdmin)
 admin.add_view(WorkOrderFileAdmin)
 admin.add_view(TopicAdmin)
 admin.add_view(ProcedureExecutionAdmin)
+
 # Database setup
 async def create_db_and_tables():
     async with async_engine.begin() as conn:
@@ -49,6 +57,8 @@ async def create_db_and_tables():
 @app.on_event("startup")
 async def on_startup():
     await create_db_and_tables()
+    # Initialize admin authentication system
+    init_admin_auth()
 
 # Include routers
 app.include_router(users.router, prefix="/api/v1", tags=["users"])
