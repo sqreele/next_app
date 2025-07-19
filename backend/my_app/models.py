@@ -133,7 +133,6 @@ class Topic(Base):
 class WorkOrder(Base):
     __tablename__ = 'workorders'
     id = Column(Integer, primary_key=True, index=True)
-    task = Column(String(200), index=True, nullable=False)
     description = Column(Text, nullable=True)
     status = Column(String(50), default='Pending')
     priority = Column(String(50), default='Medium')
@@ -154,6 +153,7 @@ class WorkOrder(Base):
     room_id = Column(Integer, ForeignKey('rooms.id'), nullable=True)
     assigned_to_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     topic_id = Column(Integer, ForeignKey('topics.id'), nullable=True)
+    procedure_id = Column(Integer, ForeignKey('procedures.id'), nullable=True)
     
     # Work order type
     type = Column(String(50), nullable=False, default='pm')
@@ -165,6 +165,7 @@ class WorkOrder(Base):
     assigned_to = relationship("User", back_populates="work_orders_assigned")
     files = relationship("WorkOrderFile", back_populates="work_order", cascade="all, delete-orphan")
     topic = relationship("Topic", back_populates="work_orders")
+    procedure = relationship("Procedure")
     procedure_execution = relationship("ProcedureExecution", back_populates="work_order", uselist=False)
     
     # Your requested performance indexes
@@ -175,7 +176,7 @@ class WorkOrder(Base):
     )
     
     def __str__(self):
-        return f"{self.task} - {self.status}"
+        return f"WorkOrder {self.id} - {self.status}"
 
 class WorkOrderFile(Base):
     __tablename__ = 'workorderfiles'

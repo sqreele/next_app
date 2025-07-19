@@ -1,0 +1,106 @@
+{% extends "create.html" %}
+
+{% block head %}
+{{ super() }}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Work Order form script loaded');
+    
+    const typeField = document.querySelector('select[name="type"]');
+    const taskField = document.querySelector('input[name="task"], select[name="task"], textarea[name="task"]');
+    
+    if (!typeField || !taskField) {
+        console.log('Required fields not found');
+        return;
+    }
+    
+    let originalTaskField = taskField;
+    let currentTaskValue = taskField.value || '';
+    let proceduresCache = null;
+    
+    // Fetch procedures once
+    async function fetchProcedures() {
+        if (proceduresCache) return proceduresCache;
+        
+        try {
+            const response = await fetch('/api/admin/procedures');
+            proceduresCache = await response.json();
+            return proceduresCache;
+        } catch (error) {
+            console.error('Failed to fetch procedures:', error);
+            return [];
+        }
+    }
+    
+    async function updateTaskField() {
+        const workOrderType = typeField.value;
+        const taskContainer = originalTaskField.parentNode;
+        
+        // Save current value
+        const currentField = taskContainer.querySelector('input[name="task"], select[name="task"]');
+        if (currentField) {
+            currentTaskValue = currentField.value;
+        }
+        
+        if (workOrderType === 'pm') {
+            // Create procedure dropdown
+            const procedures = await fetchProcedures();
+            
+            const newSelect = document.createElement('select');
+            newSelect.name = 'task';
+            newSelect.className = originalTaskField.className;
+            newSelect.required = originalTaskField.required || false;
+            newSelect.id = originalTaskField.id || 'task';
+            
+            // Add default option
+            const defaultOption = document.createElement('option');
+            defaultOption.value = '';
+            defaultOption.textContent = 'Select a procedure...';
+            newSelect.appendChild(defaultOption);
+            
+            // Add procedure options
+            procedures.forEach(proc => {
+                const option = document.createElement('option');
+                option.value = proc.title;
+                option.textContent = proc.title;
+                if (proc.remark) {
+                    option.title = `${proc.title} - ${proc.remark} (${proc.frequency || 'No frequency'})`;
+                }
+                if (proc.title === currentTaskValue) {
+                    option.selected = true;
+                }
+                newSelect.appendChild(option);
+            });
+            
+            // Replace field
+            if (currentField) {
+                taskContainer.replaceChild(newSelect, currentField);
+            }
+            
+        } else {
+            // Create text input for issues
+            const newInput = document.createElement('input');
+            newInput.type = 'text';
+            newInput.name = 'task';
+            newInput.className = originalTaskField.className;
+            newInput.required = originalTaskField.required || false;
+            newInput.id = originalTaskField.id || 'task';
+            newInput.value = currentTaskValue;
+            newInput.placeholder = 'Enter task description...';
+            
+            // Replace field
+            const currentField = taskContainer.querySelector('input[name="task"], select[name="task"]');
+            if (currentField) {
+                taskContainer.replaceChild(newInput, currentField);
+            }
+        }
+    }
+    
+    // Listen for type changes
+    typeField.addEventListener('change', updateTaskField);
+    
+    // Initialize on page load
+    updateTaskField();
+});
+</script>
+{% endblock %}

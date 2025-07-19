@@ -1,4 +1,34 @@
-// src/stores/machines-store.ts (Fixed - Remove signal parameters)
+'use client'
+
+import React, { useEffect } from 'react'
+import { useTopicsStore } from '@/stores/topics-store'
+
+const GetTopic: React.FC = () => {
+  const { topics, fetchTopics, loading, error } = useTopicsStore()
+
+  useEffect(() => {
+    if (topics.length === 0 && !loading) {
+      fetchTopics()
+    }
+  }, [topics.length, loading, fetchTopics])
+
+  if (loading) return <div>Loading topics...</div>
+  if (error) return <div className="text-red-500">Error: {error}</div>
+  if (!topics.length) return <div>No topics found.</div>
+
+  return (
+    <div>
+      <h2 className="font-bold mb-2">Topics</h2>
+      <ul className="list-disc pl-5">
+        {topics.map(topic => (
+          <li key={topic.id}>{topic.title}</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+export default GetTopic
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { machinesAPI, Machine, CreateMachineData, MachineFilters } from '@/services/machines-api'

@@ -3,7 +3,6 @@ import { AxiosResponse, AxiosError } from 'axios'
 
 export interface WorkOrder {
   id: number
-  task: string
   description: string
   status: 'Pending' | 'In Progress' | 'Completed' | 'Cancelled'
   priority: 'Low' | 'Medium' | 'High' | 'Urgent'
@@ -19,14 +18,13 @@ export interface WorkOrder {
   before_images: string[]
   after_images: string[]
   pdf_file_path: string | null
-  type: 'pm' | 'cm' | 'inspection' | 'repair' | 'emergency' | 'upgrade' | 'other'
+  type: 'pm' | 'issue' | 'workorder'
   topic_id: number | null
   has_pm?: boolean
   has_issue?: boolean
 }
 
 export interface CreateWorkOrderData {
-  task: string
   description: string
   status: 'Pending' | 'In Progress' | 'Completed' | 'Cancelled'
   priority: 'Low' | 'Medium' | 'High' | 'Urgent'
@@ -40,10 +38,12 @@ export interface CreateWorkOrderData {
   before_images: string[]
   after_images: string[]
   pdf_file_path?: string | null
-  type: 'pm' | 'cm' | 'inspection' | 'repair' | 'emergency' | 'upgrade' | 'other'
+  type: 'pm' | 'cm' | 'inspection' | 'repair' | 'emergency' | 'upgrade' | 'other' | 'issue' | 'workorder'
   topic_id?: number | null
   has_pm?: boolean
   has_issue?: boolean
+  procedure_id?: number | string
+  frequency?: string
 }
 
 export interface UpdateWorkOrderData extends Partial<CreateWorkOrderData> {}

@@ -1,40 +1,45 @@
-// src/stores/auth-store.ts (Complete Fixed Version)
+// src/stores/auth-store.ts (Complete Fixed Version with Exports)
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { usersAPI, RegisterData, RegisterResponse } from '@/services/users-api'
 import { User, LoginCredentials, LoginResponse } from '@/types/user'
 
 // SSR-safe storage for Zustand persist
-const storage =
-  typeof window !== 'undefined'
-    ? createJSONStorage(() => window.localStorage)
-    : {
-        getItem: (_: string) => null,
-        setItem: (_: string, __: unknown) => {},
-        removeItem: (_: string) => {},
-      }
+const storage = typeof window !== 'undefined'
+  ? createJSONStorage(() => window.localStorage)
+  : {
+      getItem: (_: string) => null,
+      setItem: (_: string, __: unknown) => {},
+      removeItem: (_: string) => {},
+    }
 
 // Utility to check if a JWT token is expired
 function isTokenExpired(token: string | null): boolean {
-  if (!token) return true;
+  if (!token) return true
   try {
-    const [, payload] = token.split('.');
-    const decoded = JSON.parse(atob(payload));
-    if (!decoded.exp) return false;
-    const now = Math.floor(Date.now() / 1000);
-    return decoded.exp < now;
+    const [, payload] = token.split('.')
+    const decoded = JSON.parse(atob(payload))
+    if (!decoded.exp) return false
+    const now = Math.floor(Date.now() / 1000)
+    return decoded.exp < now
   } catch {
-    return true;
+    return true
   }
 }
 
-interface AuthState {
+// Export the AuthState interface
+export interface AuthState {
   // State
   user: User | null
   token: string | null
   isAuthenticated: boolean
   loading: boolean
   error: string | null
+  userLoading: boolean // NEW: dedicated flag for getCurrentUser
+  
+  // Private state for preventing race conditions
+  _isChecking: boolean
+  _lastCheckTime: number
   
   // Actions
   setUser: (user: User | null) => void
@@ -59,7 +64,7 @@ interface AuthState {
   isAdmin: () => boolean
   isTechnician: () => boolean
   reset: () => void
-  isTokenExpired: () => boolean;
+  isTokenExpired: () => boolean
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -71,26 +76,31 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       loading: false,
       error: null,
+      userLoading: false, // NEW: initial value
+      _isChecking: false,
+      _lastCheckTime: 0,
 
       // Basic setters
       setUser: (user) => {
         set({ 
           user, 
-          isAuthenticated: !!user 
+          isAuthenticated: !!user,
+          error: null 
         })
       },
 
       setToken: (token) => {
         set({ token, isAuthenticated: !!token })
-        // Update axios default headers
-        if (token) {
+        
+        // Update axios default headers safely
+        if (typeof window !== 'undefined') {
           import('@/lib/api-client').then(({ default: apiClient }) => {
-            apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`
-          })
-        } else {
-          import('@/lib/api-client').then(({ default: apiClient }) => {
-            delete apiClient.defaults.headers.common['Authorization']
-          })
+            if (token) {
+              apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`
+            } else {
+              delete apiClient.defaults.headers.common['Authorization']
+            }
+          }).catch(console.error)
         }
       },
 
@@ -98,15 +108,20 @@ export const useAuthStore = create<AuthState>()(
       setError: (error) => set({ error }),
       clearError: () => set({ error: null }),
 
-      // Registration
+      // Registration with proper error handling
       register: async (data) => {
+        const state = get()
+        if (state.loading) throw new Error('Registration already in progress')
+        
         set({ loading: true, error: null })
         try {
           const registerResponse = await usersAPI.register(data)
+          
           if (registerResponse.access_token) {
             get().setToken(registerResponse.access_token)
             get().setUser(registerResponse.user)
           }
+          
           return registerResponse
         } catch (error: any) {
           const errorMessage = error?.response?.data?.message || 
@@ -120,19 +135,29 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      // Auth actions
+      // Login with race condition protection
       login: async (credentials) => {
+        const state = get()
+        if (state.loading) throw new Error('Login already in progress')
+        
         set({ loading: true, error: null })
         try {
           const loginResponse: LoginResponse = await usersAPI.login(credentials)
           get().setToken(loginResponse.access_token)
+          
+          // Fetch user data after setting token
           await get().getCurrentUser()
         } catch (error: any) {
           const errorMessage = error?.response?.data?.message || 
                              error?.response?.data?.detail ||
                              error?.message || 
                              'Login failed'
-          set({ error: errorMessage, token: null, user: null, isAuthenticated: false })
+          set({ 
+            error: errorMessage, 
+            token: null, 
+            user: null, 
+            isAuthenticated: false 
+          })
           throw error
         } finally {
           set({ loading: false })
@@ -140,31 +165,47 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
-        set({ user: null, token: null, isAuthenticated: false, error: null })
-        import('@/lib/api-client').then(({ default: apiClient }) => {
-          delete apiClient.defaults.headers.common['Authorization']
+        set({ 
+          user: null, 
+          token: null, 
+          isAuthenticated: false, 
+          error: null,
+          loading: false,
+          _isChecking: false,
+          _lastCheckTime: 0
         })
+        
+        // Clear axios headers
         if (typeof window !== 'undefined') {
+          import('@/lib/api-client').then(({ default: apiClient }) => {
+            delete apiClient.defaults.headers.common['Authorization']
+          }).catch(console.error)
+          
           localStorage.removeItem('auth-storage')
         }
       },
 
       // Fixed getCurrentUser to prevent recursive calls
       getCurrentUser: async () => {
-        const { token } = get()
+        const state = get()
         
-        if (!token) {
+        if (!state.token) {
           throw new Error('No token available')
         }
 
-        set({ loading: true, error: null })
+        if (state.userLoading) {
+          // Prevent concurrent fetches
+          return
+        }
+
+        set({ userLoading: true, error: null })
         
         try {
           const user = await usersAPI.getCurrentUser()
           set({ 
             user, 
             isAuthenticated: true,
-            loading: false,
+            userLoading: false,
             error: null 
           })
         } catch (error: any) {
@@ -174,9 +215,10 @@ export const useAuthStore = create<AuthState>()(
           
           set({ 
             error: errorMessage,
-            loading: false
+            userLoading: false
           })
           
+          // If unauthorized, logout
           if (error?.response?.status === 401) {
             get().logout()
           }
@@ -184,25 +226,35 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      // Fixed checkAuth method to prevent infinite loops
+      // Fixed checkAuth with proper race condition handling
       checkAuth: async () => {
-        const { token, isAuthenticated, user } = get()
+        const state = get()
+        const now = Date.now()
         
-        // If no token, definitely not authenticated
-        if (!token) {
-          set({ 
-            user: null, 
-            isAuthenticated: false, 
-            token: null 
-          })
+        // Prevent multiple simultaneous checks
+        if (state._isChecking) {
+          return state.isAuthenticated
+        }
+        
+        // Rate limit checks (max once per 5 seconds)
+        if (now - state._lastCheckTime < 5000 && state.isAuthenticated && state.user) {
+          return true
+        }
+        
+        // If no token or token expired, definitely not authenticated
+        if (!state.token || isTokenExpired(state.token)) {
+          get().logout()
           return false
         }
 
-        // If already authenticated and have user data, skip check
-        if (isAuthenticated && user) {
+        // If already authenticated with user data and token is valid, skip check
+        if (state.isAuthenticated && state.user && !isTokenExpired(state.token)) {
+          set({ _lastCheckTime: now })
           return true
         }
 
+        set({ _isChecking: true, _lastCheckTime: now })
+        
         try {
           await get().getCurrentUser()
           return true
@@ -210,10 +262,12 @@ export const useAuthStore = create<AuthState>()(
           console.error('Auth check failed:', error)
           get().logout()
           return false
+        } finally {
+          set({ _isChecking: false })
         }
       },
 
-      // Validation helpers
+      // Validation helpers with error handling
       checkUsernameAvailability: async (username) => {
         try {
           const result = await usersAPI.checkUsernameAvailability(username)
@@ -240,13 +294,8 @@ export const useAuthStore = create<AuthState>()(
         return user?.profile?.role === role
       },
 
-      isAdmin: () => {
-        return get().hasRole('Admin')
-      },
-
-      isTechnician: () => {
-        return get().hasRole('Technician')
-      },
+      isAdmin: () => get().hasRole('Admin'),
+      isTechnician: () => get().hasRole('Technician'),
 
       reset: () => {
         set({
@@ -255,18 +304,41 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
           loading: false,
           error: null,
+          _isChecking: false,
+          _lastCheckTime: 0,
         })
       },
+
       isTokenExpired: () => isTokenExpired(get().token),
     }),
     {
       name: 'auth-storage',
-      storage, // Now properly defined above
+      storage,
+      partialize: (state) => ({
+        token: state.token,
+        user: state.user,
+        isAuthenticated: state.isAuthenticated,
+      }),
     }
   )
 )
 
 // Initialize auth on store creation (only on client side)
 if (typeof window !== 'undefined') {
-  useAuthStore.getState().setToken(useAuthStore.getState().token)
+  const state = useAuthStore.getState()
+  if (state.token) {
+    state.setToken(state.token)
+  }
 }
+
+// Export additional types that might be needed
+export type AuthStore = typeof useAuthStore
+export type AuthActions = Pick<AuthState, 
+  | 'setUser' 
+  | 'setToken' 
+  | 'login' 
+  | 'logout' 
+  | 'register' 
+  | 'getCurrentUser' 
+  | 'checkAuth'
+>

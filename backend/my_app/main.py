@@ -30,12 +30,17 @@ UPLOADS_DIR = "/app/uploads"
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 
-# Setup Admin with Authentication - UPDATED
+# Setup Admin with Authentication and Templates
 from my_app.admin import (UserAdmin, UserProfileAdmin, PropertyAdmin, RoomAdmin, 
                           MachineAdmin, WorkOrderAdmin, WorkOrderFileAdmin, TopicAdmin, ProcedureAdmin)
 
-# Create admin with authentication backend
-admin = Admin(app, sync_engine, authentication_backend=authentication_backend)
+# Create admin with authentication backend and templates
+admin = Admin(
+    app, 
+    sync_engine, 
+    authentication_backend=authentication_backend,
+    templates_dir="my_app/templates"  # Add this line
+)
 
 # Add all admin views
 admin.add_view(UserAdmin)
@@ -57,7 +62,6 @@ async def create_db_and_tables():
 @app.on_event("startup")
 async def on_startup():
     await create_db_and_tables()
-    # Initialize admin authentication system
     init_admin_auth()
 
 # Include routers
@@ -79,117 +83,25 @@ async def root():
 async def health_check():
     return {"status": "healthy"}
 
-# Debug endpoints (remove these in production)
-@app.get("/debug/check-admin")
-async def check_admin_exists():
-    """Debug endpoint to check if admin exists"""
+# Add the procedures API endpoint
+@app.get("/api/admin/procedures")
+async def get_procedures_for_admin():
+    """Get all procedures for admin dropdown"""
     from sqlalchemy.orm import Session
-    from my_app.models import User, UserProfile
+    from my_app.models import Procedure
     from my_app.database import sync_engine
     
     with Session(sync_engine) as db:
-        try:
-            # Check for admin users
-            admin_users = db.query(User).join(UserProfile).filter(
-                UserProfile.role == 'Admin'
-            ).all()
-            
-            result = {
-                "admin_count": len(admin_users),
-                "admins": []
+        procedures = db.query(Procedure).order_by(Procedure.title).all()
+        return [
+            {
+                "id": proc.id,
+                "title": proc.title,
+                "remark": proc.remark or "",
+                "frequency": proc.frequency or ""
             }
-            
-            for user in admin_users:
-                result["admins"].append({
-                    "id": user.id,
-                    "username": user.username,
-                    "email": user.email,
-                    "is_active": user.is_active,
-                    "has_profile": user.profile is not None,
-                    "role": user.profile.role if user.profile else None
-                })
-            
-            return result
-            
-        except Exception as e:
-            return {"error": str(e)}
-
-@app.post("/debug/create-admin")
-async def manual_create_admin(username: str = "admin", password: str = "admin123"):
-    """Manually create admin user"""
-    from sqlalchemy.orm import Session
-    from my_app.models import User, UserProfile
-    from my_app.security import get_password_hash
-    
-    with Session(sync_engine) as db:
-        try:
-            # Check if user already exists
-            existing_user = db.query(User).filter(User.username == username).first()
-            if existing_user:
-                return {"error": f"User '{username}' already exists"}
-            
-            # Create user
-            admin_user = User(
-                username=username,
-                email=f"{username}@maintenancepro.com",
-                hashed_password=get_password_hash(password),
-                is_active=True
-            )
-            db.add(admin_user)
-            db.flush()
-            
-            # Create profile
-            admin_profile = UserProfile(
-                user_id=admin_user.id,
-                role="Admin",
-                position="System Administrator"
-            )
-            db.add(admin_profile)
-            
-            db.commit()
-            
-            return {
-                "success": True,
-                "message": f"Admin user '{username}' created successfully",
-                "username": username,
-                "password": password,
-                "user_id": admin_user.id
-            }
-            
-        except Exception as e:
-            db.rollback()
-            return {"error": str(e)}
-
-@app.post("/debug/test-auth")
-async def test_auth(username: str, password: str):
-    """Test authentication manually"""
-    from sqlalchemy.orm import Session
-    from my_app.security import verify_password
-    from my_app.models import User, UserProfile
-    
-    with Session(sync_engine) as db:
-        try:
-            user = db.query(User).filter(User.username == username).first()
-            
-            if not user:
-                return {"error": "User not found"}
-            
-            password_valid = verify_password(password, user.hashed_password)
-            
-            profile = db.query(UserProfile).filter(UserProfile.user_id == user.id).first()
-            
-            return {
-                "user_found": True,
-                "username": user.username,
-                "is_active": user.is_active,
-                "password_valid": password_valid,
-                "has_profile": profile is not None,
-                "role": profile.role if profile else None,
-                "can_access_admin": profile and profile.role in ['Admin', 'Manager'] if profile else False
-            }
-            
-        except Exception as e:
-            return {"error": str(e)}
+            for proc in procedures
+        ]
 
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: int):

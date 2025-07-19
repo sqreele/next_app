@@ -214,7 +214,6 @@ class Topic(TopicBase):
 
 # --- WorkOrder Schemas ---
 class WorkOrderCreate(BaseModel):
-    task: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = Field(None, max_length=2000)
     status: WorkOrderStatus = Field(default=WorkOrderStatus.PENDING)
     priority: WorkOrderPriority = Field(default=WorkOrderPriority.MEDIUM)
@@ -230,6 +229,7 @@ class WorkOrderCreate(BaseModel):
     pdf_file_path: Optional[str] = Field(None, max_length=500)
     type: Literal['pm', 'issue'] = Field(...)
     topic_id: Optional[int] = None
+    procedure_id: Optional[int] = None
 
     @field_validator('due_date', mode='before')
     @classmethod
@@ -259,7 +259,6 @@ class WorkOrderCreate(BaseModel):
 
 class WorkOrderUpdate(BaseModel):
     """Schema for partial updates to work orders (PATCH method)"""
-    task: Optional[str] = Field(None, min_length=1, max_length=200)
     description: Optional[str] = Field(None, max_length=2000)
     status: Optional[WorkOrderStatus] = None
     priority: Optional[WorkOrderPriority] = None
@@ -275,6 +274,7 @@ class WorkOrderUpdate(BaseModel):
     pdf_file_path: Optional[str] = Field(None, max_length=500)
     type: Optional[Literal['pm', 'issue']] = None
     frequency: Optional[str] = Field(None, max_length=50)
+    procedure_id: Optional[int] = None
 
     @field_validator('due_date', mode='before')
     @classmethod
@@ -304,7 +304,6 @@ class WorkOrderUpdate(BaseModel):
 
 class WorkOrder(BaseModel):
     id: int
-    task: str
     description: Optional[str] = None
     status: WorkOrderStatus
     priority: WorkOrderPriority
@@ -321,6 +320,7 @@ class WorkOrder(BaseModel):
     after_images: Optional[List[str]] = Field(default_factory=list)
     pdf_file_path: Optional[str] = None
     type: Literal['pm', 'issue']
+    procedure_id: Optional[int] = None
     topic_id: Optional[int] = None
     frequency: Optional[str] = Field(None, max_length=50)
     

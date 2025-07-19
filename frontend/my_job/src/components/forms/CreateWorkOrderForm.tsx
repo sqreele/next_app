@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useWorkOrderStore } from '@/stores/work-orders-store'
 import { useMachineStore } from '@/stores/machines-store'
@@ -8,12 +8,13 @@ import { useRoomStore } from '@/stores/rooms-store'
 import { useTechnicianStore } from '@/stores/technicians-store'
 import { useAuthStore } from '@/stores/auth-store'
 import { useTopicsStore } from '@/stores/topics-store'
+import { useProceduresStore } from '@/stores/procedures-store'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
 import { ClipboardDocumentListIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
-import { workOrderFormSections, progressSteps } from '@/config/work-order-form-config'
+import { workOrderFormSections as baseWorkOrderFormSections } from '@/config/work-order-form-config'
 import { useWorkOrderForm } from '@/hooks/use-work-order-form'
 import { useFormProgress } from '@/hooks/use-form-progress'
 import { DynamicFormRenderer } from './dynamic-form-renderer'
@@ -21,8 +22,8 @@ import { ReviewSection } from './ReviewSection'
 import { ProgressBar } from '@/components/ui/progress-bar'
 import { motion, AnimatePresence } from 'framer-motion'
 
+
 const initialFormData = {
-  task: '',
   description: '',
   due_date: '',
   room_id: '',
@@ -37,6 +38,40 @@ const initialFormData = {
   beforePhotos: [],
   afterPhotos: [],
   pdf_file_path: null,
+  procedure_id: '',
+}
+
+// Define allowed statuses and type
+const allowedStatuses = ["Pending", "In Progress", "Completed", "Cancelled"] as const;
+type AllowedStatus = typeof allowedStatuses[number];
+// Define allowed priorities and type
+const allowedPriorities = ["Low", "Medium", "High", "Urgent"] as const;
+type AllowedPriority = typeof allowedPriorities[number];
+// Define allowed work order types and type
+const allowedTypes = ["pm", "issue", "workorder"] as const;
+type AllowedType = typeof allowedTypes[number];
+
+// Define the type that matches CreateWorkOrderData
+type CreateWorkOrderData = {
+  description: string
+  status: AllowedStatus
+  priority: AllowedPriority
+  due_date?: string
+  room_id?: number
+  machine_id?: number
+  assigned_to_id?: number
+  before_image_path?: string
+  after_image_path?: string
+  before_images: string[]
+  after_images: string[]
+  pdf_file_path?: string
+  property_id: number
+  type: AllowedType
+  topic_id?: number
+  has_pm?: boolean
+  has_issue?: boolean
+  frequency?: string
+  procedure_id?: number | string
 }
 
 export function CreateWorkOrderForm() {
@@ -47,12 +82,19 @@ export function CreateWorkOrderForm() {
   const { getAvailableTechnicians } = useTechnicianStore()
   const { user } = useAuthStore.getState()
   const { topics, fetchTopics, loading: topicsLoading, error: topicsError } = useTopicsStore()
+  const { procedures, fetchProcedures, loading: proceduresLoading, error: proceduresError } = useProceduresStore()
 
   useEffect(() => {
     if (topics.length === 0 && !topicsLoading) {
       fetchTopics()
     }
   }, [topics.length, topicsLoading, fetchTopics])
+
+  useEffect(() => {
+    if (procedures.length === 0 && !proceduresLoading) {
+      fetchProcedures()
+    }
+  }, [procedures.length, proceduresLoading, fetchProcedures])
 
   const {
     formData,
@@ -65,6 +107,26 @@ export function CreateWorkOrderForm() {
     reset,
   } = useWorkOrderForm(initialFormData)
 
+  // Dynamically inject procedure_id field into the config
+  const dynamicWorkOrderFormSections = React.useMemo(() => {
+    // Deep clone to avoid mutation
+    const sections = JSON.parse(JSON.stringify(baseWorkOrderFormSections))
+    // Find the section where you want to insert the procedure field (e.g., after type/has_pm)
+    const mainSection = sections[0]
+    const fields: any[] = mainSection?.fields || [];
+    if (mainSection && !fields.some((f: any) => f.name === 'procedure_id')) {
+      fields.push({
+        name: 'procedure_id',
+        label: 'Procedure',
+        type: 'select',
+        required: true,
+        conditional: (formData: any) => !!formData.has_pm,
+        selectOptions: procedures.map(proc => ({ value: proc.id, label: proc.title })),
+      })
+    }
+    return sections
+  }, [procedures])
+
   const {
     currentStep,
     completedSteps,
@@ -75,7 +137,7 @@ export function CreateWorkOrderForm() {
     canGoNext,
     canGoPrev,
     getCompletionPercentage,
-  } = useFormProgress(workOrderFormSections, formData, errors)
+  } = useFormProgress(dynamicWorkOrderFormSections, formData, errors)
 
   // Data from stores
   const operationalMachines = getOperationalMachines()
@@ -108,8 +170,8 @@ export function CreateWorkOrderForm() {
     console.log('🔍 Has Issue:', formData.has_issue)
   }, [formData])
 
-  const allFields = workOrderFormSections.flatMap(section => section.fields)
-  const currentSection = workOrderFormSections[currentStep]
+  const allFields = dynamicWorkOrderFormSections.flatMap((section: any) => (section as any).fields)
+  const currentSection = dynamicWorkOrderFormSections[currentStep]
 
   // Fetch data on component mount
   useEffect(() => {
@@ -167,6 +229,8 @@ export function CreateWorkOrderForm() {
     }
   }, [formData.type, selectedMachine, setValue])
 
+  const pmWarningShown = useRef(false)
+
   // Smart defaults for PM work orders
   useEffect(() => {
     // When user selects PM type, provide smart suggestions
@@ -181,10 +245,15 @@ export function CreateWorkOrderForm() {
       } else if (pmMachines.length > 1) {
         // Show helpful message if multiple PM machines available
         toast.info(`${pmMachines.length} machines support PM - please select one`)
-      } else if (pmMachines.length === 0) {
+      } else if (pmMachines.length === 0 && !pmWarningShown.current) {
         // Warn if no PM machines available
         toast.warning('No machines with PM capability found')
+        pmWarningShown.current = true
       }
+    }
+    // Reset the warning if type changes away from 'pm'
+    if (formData.type !== 'pm') {
+      pmWarningShown.current = false
     }
   }, [formData.type, formData.machine_id, operationalMachines, setValue])
 
@@ -217,10 +286,29 @@ export function CreateWorkOrderForm() {
     }
   }, [user])
 
+  // Lock priority for 'issue' and 'workorder', and to 'Low' for 'pm'
+  useEffect(() => {
+    if (formData.type === 'pm' && formData.priority !== 'Low') {
+      setValue('priority', 'Low')
+    } else if ((formData.type === 'issue' || formData.type === 'workorder') && formData.priority !== 'High') {
+      setValue('priority', 'High')
+    }
+  }, [formData.type, setValue])
+
+  // Dynamic machine dropdown filtered by type
+  const getFilteredMachines = () => {
+    if (formData.type === 'pm') {
+      return operationalMachines.filter(machine => machine.has_pm)
+    } else if (formData.type === 'issue') {
+      return operationalMachines
+    }
+    return []
+  }
+
   const handleNext = () => {
     const sectionFields = currentSection.fields
     
-    const sectionValid = sectionFields.every(field => {
+    const sectionValid = sectionFields.every((field: any) => {
       if (!field.required) return true
       if (field.conditional && !formData[field.conditional]) return true
       
@@ -271,7 +359,6 @@ export function CreateWorkOrderForm() {
   const validateSubmissionData = () => {
     const issues = []
     
-    if (!formData.task?.trim()) issues.push('Task is required')
     if (!formData.description?.trim()) issues.push('Description is required')
     if (!selectedRoom) issues.push('Room must be selected')
     if (!selectedTechnician) issues.push('Technician must be assigned')
@@ -284,6 +371,20 @@ export function CreateWorkOrderForm() {
     // Validate that selected machine supports PM if type is PM
     if (formData.type === 'pm' && selectedMachine && !selectedMachine.has_pm) {
       issues.push('Selected machine does not support Preventive Maintenance')
+    }
+    
+    // Require procedure if Has PM is checked
+    if (formData.has_pm && !formData.procedure_id) {
+      issues.push('Procedure is required when Has PM is checked')
+    }
+    
+    if (formData.type === 'pm') {
+      if (!formData.machine_id) issues.push('Machine is required for PM')
+      if (!formData.procedure_id) issues.push('Procedure is required for PM')
+      if (!formData.frequency) issues.push('Frequency is required for PM')
+    }
+    if (formData.type === 'issue') {
+      if (!formData.machine_id) issues.push('Machine is required for Issue')
     }
     
     if (issues.length > 0) {
@@ -331,44 +432,44 @@ export function CreateWorkOrderForm() {
     try {
       console.log('📤 Starting form submission...')
       
-      const beforeImageUrls = getUploadedImageUrls('beforePhotos')
-      const afterImageUrls = getUploadedImageUrls('afterPhotos')
+      const beforeImageUrls = getUploadedImageUrls('beforePhotos') ?? [];
+      const afterImageUrls = getUploadedImageUrls('afterPhotos') ?? [];
 
-      const submitData = {
-        task: formData.task,
+      // Construct submitData to match backend expectations
+      const submitData: CreateWorkOrderData = {
         description: formData.description,
-        status: formData.status,
-        priority: formData.priority,
-        due_date: formData.due_date ? formData.due_date.split('T')[0] : undefined,
+        status: allowedStatuses.includes(formData.status as AllowedStatus)
+          ? (formData.status as AllowedStatus)
+          : "Pending",
+        priority: formData.type === 'pm' ? 'Low' : 'High',
+        due_date: formData.due_date || undefined,
         room_id: formData.room_id ? Number(formData.room_id) : undefined,
-        machine_id: formData.machine_id ? Number(formData.machine_id) : null,
+        machine_id: formData.machine_id ? Number(formData.machine_id) : undefined,
         assigned_to_id: formData.assigned_to_id ? Number(formData.assigned_to_id) : undefined,
-        before_image_path: beforeImageUrls.length > 0 ? beforeImageUrls[0] : null,
-        after_image_path: afterImageUrls.length > 0 ? afterImageUrls[0] : null,
+        before_image_path: beforeImageUrls.length > 0 ? beforeImageUrls[0] : undefined,
+        after_image_path: afterImageUrls.length > 0 ? afterImageUrls[0] : undefined,
         before_images: beforeImageUrls,
         after_images: afterImageUrls,
-        pdf_file_path: formData.pdf_file_path,
-        property_id: numericPropertyId!,
-        type: formData.type,
-        topic_id: formData.topic_id ? Number(formData.topic_id) : null,
-        has_pm: formData.has_pm || false,
-        has_issue: formData.has_issue || false,
+        pdf_file_path: formData.pdf_file_path || undefined,
+        property_id: numericPropertyId as number, // ensure always a number
+        type: allowedTypes.includes(formData.type as AllowedType)
+          ? (formData.type as AllowedType)
+          : "pm",
+        topic_id: formData.topic_id ? Number(formData.topic_id) : undefined,
+        has_pm: !!formData.has_pm,
+        has_issue: !!formData.has_issue,
+        frequency: formData.frequency || undefined,
+        procedure_id: formData.procedure_id ? Number(formData.procedure_id) : undefined,
       }
 
       console.log('📋 === FINAL SUBMIT DATA ===')
-      console.log('Task:', submitData.task)
-      console.log('Type:', submitData.type)
-      console.log('Has PM:', submitData.has_pm)
-      console.log('Has Issue:', submitData.has_issue)
-      console.log('Machine ID:', submitData.machine_id)
-      console.log('Room ID:', submitData.room_id)
-      console.log('Assigned To ID:', submitData.assigned_to_id)
+      Object.entries(submitData).forEach(([k, v]) => console.log(`${k}:`, v))
       console.log('🔍 === END SUBMIT DATA ===')
 
       const newWorkOrder = await createWorkOrder(submitData)
       
       toast.success('Work order created successfully!', {
-        description: `Work order "${newWorkOrder.task}" has been created.`
+        description: `Work order "${newWorkOrder.description}" has been created.`
       })
 
       reset()
@@ -404,36 +505,25 @@ export function CreateWorkOrderForm() {
         return techOptions
         
       case 'machine_id':
-        let machineOptions = []
-        
-        // If work order type is PM, only show machines that have PM
+        const filteredMachines = getFilteredMachines();
         if (formData.type === 'pm') {
-          const pmMachines = operationalMachines.filter(machine => machine.has_pm)
-          machineOptions = [
-            { 
-              value: '', 
-              label: pmMachines.length > 0 
-                ? 'Select PM-Capable Machine' 
-                : 'No PM-Capable Machines Available' 
-            },
-            ...pmMachines.map(machine => ({
+          return [
+            { value: '', label: filteredMachines.length > 0 ? 'Select PM-Capable Machine' : 'No PM-Capable Machines Available' },
+            ...filteredMachines.map(machine => ({
               value: machine.id.toString(),
               label: `${machine.name} (PM Available)`
             }))
           ]
-        } else {
-          // For other types, show all operational machines
-          machineOptions = [
+        } else if (formData.type === 'issue') {
+          return [
             { value: '', label: 'No Machine Selected (Optional)' },
-            ...operationalMachines.map(machine => ({
+            ...filteredMachines.map(machine => ({
               value: machine.id.toString(),
               label: machine.name
             }))
           ]
         }
-        
-        console.log(`🔍 Machine options for type "${formData.type}":`, machineOptions.length, 'options')
-        return machineOptions
+        return []
         
       case 'room_id':
         return activeRooms.map(room => ({
@@ -461,6 +551,72 @@ export function CreateWorkOrderForm() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Work Order Type Selector */}
+      <div className="max-w-4xl mx-auto p-4 lg:p-8">
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Work Order Type</label>
+          <select
+            value={formData.type}
+            onChange={e => setValue('type', e.target.value)}
+            className="block w-full border-gray-300 rounded-md shadow-sm"
+          >
+            {allowedTypes.map(t => (
+              <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+            ))}
+          </select>
+        </div>
+        {/* Topic Selector */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Topic</label>
+          <select
+            value={formData.topic_id || ''}
+            onChange={e => setValue('topic_id', e.target.value)}
+            className="block w-full border-gray-300 rounded-md shadow-sm"
+          >
+            <option value="">No Topic Selected</option>
+            {topics.map(topic => (
+              <option key={topic.id} value={topic.id}>{topic.title}</option>
+            ))}
+          </select>
+        </div>
+        {/* Has PM and Has Issue Checkboxes */}
+        <div className="mb-6 flex gap-6">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={!!formData.has_pm}
+              onChange={e => setValue('has_pm', e.target.checked)}
+              className="form-checkbox h-4 w-4 text-blue-600"
+            />
+            <span className="text-sm text-gray-700">Has PM</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={!!formData.has_issue}
+              onChange={e => setValue('has_issue', e.target.checked)}
+              className="form-checkbox h-4 w-4 text-blue-600"
+            />
+            <span className="text-sm text-gray-700">Has Issue</span>
+          </label>
+        </div>
+        {/* Procedure Title Selector (only if Has PM is checked) */}
+        {formData.has_pm && (
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Procedure Title</label>
+            <select
+              value={formData.procedure_id || ''}
+              onChange={e => setValue('procedure_id', e.target.value)}
+              className="block w-full border-gray-300 rounded-md shadow-sm"
+            >
+              <option value="">Select a procedure...</option>
+              {procedures.map(proc => (
+                <option key={proc.id} value={proc.id}>{proc.title}</option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
       {/* Mobile Header */}
       <div className="lg:hidden bg-white border-b border-gray-200 px-4 py-3">
         <div className="flex items-center justify-between">
@@ -495,7 +651,7 @@ export function CreateWorkOrderForm() {
         <div className="mb-6 lg:mb-8">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-gray-700">
-              Step {currentStep + 1} of {workOrderFormSections.length}
+              Step {currentStep + 1} of {dynamicWorkOrderFormSections.length}
             </span>
             <span className="text-sm text-gray-500">
               {getCompletionPercentage()}% Complete
@@ -511,7 +667,7 @@ export function CreateWorkOrderForm() {
           {/* Mobile Step Indicator */}
           <div className="lg:hidden mt-4">
             <div className="flex justify-between text-xs text-gray-500">
-              {workOrderFormSections.map((section, index) => (
+              {dynamicWorkOrderFormSections.map((section: any, index: number) => (
                 <div
                   key={index}
                   className={`flex flex-col items-center ${
@@ -553,7 +709,7 @@ export function CreateWorkOrderForm() {
                 exit={{ opacity: 0, x: -20 }}
                 transition={{ duration: 0.3 }}
               >
-                {currentSection.fields.map((field) => (
+                {currentSection.fields.map((field: any) => (
                   <div key={field.name}>
                     {/* Enhanced Machine selection with PM info */}
                     {field.name === 'machine_id' ? (
@@ -618,13 +774,36 @@ export function CreateWorkOrderForm() {
                     ) : (
                       // Regular field rendering
                       <div className="mb-6">
-                        <DynamicFormRenderer
-                          field={field}
-                          value={formData[field.name]}
-                          error={errors[field.name]}
-                          onChange={(value) => setValue(field.name, value)}
-                          selectOptions={getSelectOptions(field.name)}
-                        />
+                        {field.name === 'priority' ? (
+                          (formData.type === 'issue' || formData.type === 'workorder' || formData.type === 'pm') ? (
+                            <div className="mb-6">
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+                              <input
+                                type="text"
+                                value={formData.priority}
+                                readOnly
+                                className="block w-full border-gray-300 rounded-md shadow-sm bg-gray-100 cursor-not-allowed"
+                              />
+                            </div>
+                          ) : (
+                            // fallback for other types if needed
+                            <DynamicFormRenderer
+                              field={field}
+                              value={formData[field.name]}
+                              error={errors[field.name]}
+                              onChange={(value) => setValue(field.name, value)}
+                              selectOptions={getSelectOptions(field.name)}
+                            />
+                          )
+                        ) : (
+                          <DynamicFormRenderer
+                            field={field}
+                            value={formData[field.name]}
+                            error={errors[field.name]}
+                            onChange={(value) => setValue(field.name, value)}
+                            selectOptions={getSelectOptions(field.name)}
+                          />
+                        )}
                         {errors[field.name] && (
                           <p className="mt-1 text-sm text-red-600">{errors[field.name]}</p>
                         )}
@@ -649,7 +828,7 @@ export function CreateWorkOrderForm() {
             Previous
           </Button>
 
-          {currentStep < workOrderFormSections.length - 1 ? (
+          {currentStep < dynamicWorkOrderFormSections.length - 1 ? (
             <Button
               onClick={handleNext}
               disabled={!canGoNext}
@@ -680,7 +859,7 @@ export function CreateWorkOrderForm() {
         </div>
 
         {/* Review Section */}
-        {currentStep === workOrderFormSections.length - 1 && (
+        {currentStep === dynamicWorkOrderFormSections.length - 1 && (
           <div className="mt-6">
             <ReviewSection 
               formData={formData}
@@ -690,6 +869,12 @@ export function CreateWorkOrderForm() {
               getUploadedImageUrls={getUploadedImageUrls}
               uploadStatus={getUploadStatus()}
             />
+            {/* Show procedure in review if present */}
+            {formData.has_pm && formData.procedure_id && (
+              <div className="mb-2">
+                <span className="font-medium">Procedure:</span> {procedures.find((p: any) => p.id === Number(formData.procedure_id))?.title || formData.procedure_id}
+              </div>
+            )}
           </div>
         )}
 

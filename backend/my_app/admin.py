@@ -60,6 +60,18 @@ def safe_get_relationship_count(obj, relationship_attr):
     except (DetachedInstanceError, AttributeError):
         return 0
 
+def safe_count_workorders(machine, workorder_type):
+    try:
+        return sum(1 for wo in (machine.work_orders or []) if getattr(wo, 'type', None) == workorder_type)
+    except DetachedInstanceError:
+        return "N/A"
+
+def safe_has_workorder(machine, workorder_type):
+    try:
+        return "Yes" if any(getattr(wo, 'type', None) == workorder_type for wo in (machine.work_orders or [])) else "No"
+    except DetachedInstanceError:
+        return "N/A"
+
 class UserAdmin(ModelView, model=User):
     column_list = [User.id, User.username, User.email, User.is_active]
     column_details_exclude_list = [User.hashed_password]
@@ -98,7 +110,18 @@ class RoomAdmin(ModelView, model=Room):
     icon = "fa-solid fa-door-open"
 
 class MachineAdmin(ModelView, model=Machine):
-    column_list = [Machine.id, Machine.name, Machine.status, "property.name", "room.name", "procedures", "has_pm", "has_issue"]
+    column_list = [
+        Machine.id,
+        Machine.name,
+        Machine.status,
+        "property.name",
+        "room.name",
+        "procedures",
+        "pm_workorder_count",   # New: count of PM work orders
+        "issue_workorder_count",# New: count of Issue work orders
+        "has_pm",
+        "has_issue"
+    ]
     form_columns = [Machine.property, Machine.name, Machine.status, Machine.room, Machine.procedures]
     column_searchable_list = [Machine.name, Machine.status]
     column_sortable_list = [Machine.id, Machine.name, Machine.status]
@@ -115,10 +138,27 @@ class MachineAdmin(ModelView, model=Machine):
             selectinload(Machine.room)
         )
 
+    def get_list_query(self, request):
+        return super().get_list_query(request).options(
+            selectinload(Machine.procedures),
+            selectinload(Machine.work_orders),
+            selectinload(Machine.property),
+            selectinload(Machine.room)
+        )
+
     column_formatters = {
         'procedures': lambda m, a: f"{len(m.procedures)} procedures" if m.procedures else "No procedures",
-        'has_pm': lambda m, a: "Yes" if safe_has_work_order_type(m, 'pm') else "No",
-        'has_issue': lambda m, a: "Yes" if safe_has_work_order_type(m, 'issue') else "No",
+        'pm_workorder_count': lambda m, a: safe_count_workorders(m, 'pm'),
+        'issue_workorder_count': lambda m, a: safe_count_workorders(m, 'issue'),
+        'has_pm': lambda m, a: safe_has_workorder(m, 'pm'),
+        'has_issue': lambda m, a: safe_has_workorder(m, 'issue'),
+    }
+
+    column_labels = {
+        'pm_workorder_count': 'PM Work Orders',
+        'issue_workorder_count': 'Issue Work Orders',
+        'has_pm': 'Has PM',
+        'has_issue': 'Has Issue',
     }
 
 class ProcedureAdmin(ModelView, model=Procedure):
@@ -146,30 +186,31 @@ class ProcedureAdmin(ModelView, model=Procedure):
     icon = "fa-solid fa-list"
 
 class WorkOrderAdmin(ModelView, model=WorkOrder):
-    column_list = [WorkOrder.id, WorkOrder.task, WorkOrder.status, WorkOrder.priority, WorkOrder.due_date,
+    column_list = [WorkOrder.id, WorkOrder.status, WorkOrder.priority, WorkOrder.due_date,
                    "property_name", "machine_name", "room_name", "assigned_to_name",
                    'before_images', 'after_images', WorkOrder.pdf_file_path, "topic_name", WorkOrder.type]
-    
-    # Use relationship objects for dropdown selections
     form_columns = [
-        WorkOrder.property,         # Property dropdown (shows property names)
-        WorkOrder.machine,          # Machine dropdown (shows machine names)
-        WorkOrder.room,             # Room dropdown (shows room names)
-        WorkOrder.task,
-        WorkOrder.description,
+        WorkOrder.property_id,
+        WorkOrder.machine_id,
+        WorkOrder.room_id,
         WorkOrder.type,
+        WorkOrder.description,
         WorkOrder.status,
         WorkOrder.priority,
         WorkOrder.due_date,
-        WorkOrder.assigned_to,      # User dropdown (shows usernames)
-        WorkOrder.topic,            # Topic dropdown (shows topic titles)
+        WorkOrder.assigned_to_id,
+        WorkOrder.topic_id,
         WorkOrder.pdf_file_path,
         WorkOrder.before_images,
         WorkOrder.after_images
     ]
-    
-    # Same labels and formatters as above...
     column_labels = {
+        'property_id': 'Property',
+        'machine_id': 'Machine', 
+        'room_id': 'Room',
+        'type': 'Work Order Type',
+        'assigned_to_id': 'Assigned To',
+        'topic_id': 'Topic',
         'due_date': 'Due Date',
         'pdf_file_path': 'PDF File',
         'before_images': 'Before Images',
@@ -180,11 +221,19 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         'assigned_to_name': 'Assigned To',
         'topic_name': 'Topic'
     }
-    
-    column_searchable_list = [WorkOrder.task, WorkOrder.description, WorkOrder.status, WorkOrder.priority]
-    column_sortable_list = [WorkOrder.id, WorkOrder.task, WorkOrder.status, WorkOrder.priority, WorkOrder.due_date, WorkOrder.created_at]
-    column_filters = ["status", "priority", "type"]
-    
+    form_args = {
+        'type': {
+            'label': 'Work Order Type',
+            'choices': [
+                ('pm', 'Preventive Maintenance (PM)'),
+                ('issue', 'Issue')
+            ],
+            'description': 'Select "pm" for Preventive Maintenance or "issue" for Repairs/Problems'
+        }
+    }
+    column_searchable_list = [WorkOrder.description, WorkOrder.status, WorkOrder.priority]
+    column_sortable_list = [WorkOrder.id, WorkOrder.status, WorkOrder.priority, WorkOrder.due_date, WorkOrder.created_at]
+    column_filters = ["status", "priority", "type", "property_id", "machine_id"]
     column_formatters = {
         'before_images': lambda m, a: format_image_array(m, 'before_images'),
         'after_images': lambda m, a: format_image_array(m, 'after_images'),
@@ -196,11 +245,9 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
         'pdf_file_path': lambda m, a: Markup(f'<a href="/uploads/{m.pdf_file_path.strip("/")}" target="_blank" class="pdf-link">📄 View PDF</a>') if m.pdf_file_path else Markup('<span style="color: #ccc; font-size: 12px;">No PDF</span>'),
         'type': lambda m, a: f'<span class="badge badge-{"success" if m.type == "pm" else "warning"}">{m.type.upper()}</span>' if m.type else "N/A"
     }
-    
     name = "Work Order"
     name_plural = "Work Orders"
     icon = "fa-solid fa-list-check"
-
     def get_query(self, request):
         return super().get_query(request).options(
             selectinload(WorkOrder.assigned_to),
@@ -209,6 +256,8 @@ class WorkOrderAdmin(ModelView, model=WorkOrder):
             selectinload(WorkOrder.room),
             selectinload(WorkOrder.topic)
         )
+    create_template = 'work_order_create.html'
+    edit_template = 'work_order_edit.html'
 
 class WorkOrderFileAdmin(ModelView, model=WorkOrderFile):
     column_list = [WorkOrderFile.id, WorkOrderFile.file_path, WorkOrderFile.file_name, WorkOrderFile.file_size,
