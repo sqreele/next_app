@@ -1,3 +1,4 @@
+
 # File: backend/my_app/schemas.py (UPDATED FOR MANY-TO-MANY)
 from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict
 from typing import List, Optional, Literal
@@ -130,7 +131,7 @@ class Room(RoomBase):
     
     model_config = ConfigDict(from_attributes=True)
 
-# --- Machine Schemas (Forward declaration) ---
+# --- Machine Schemas ---
 class MachineBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     status: MachineStatus = Field(MachineStatus.OPERATIONAL)
@@ -149,14 +150,13 @@ class Machine(MachineBase):
     property_id: int
     model_config = ConfigDict(from_attributes=True)
 
-# --- UPDATED: Procedure Schemas for Many-to-Many ---
+# --- Procedure Schemas ---
 class ProcedureBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     remark: Optional[str] = Field(None, max_length=500)
     frequency: Optional[str] = Field(None, max_length=50)
 
 class ProcedureCreate(ProcedureBase):
-    # CHANGED: Now accepts multiple machine IDs
     machine_ids: Optional[List[int]] = Field(default_factory=list, description="List of machine IDs")
     
     @field_validator('machine_ids', mode='before')
@@ -172,7 +172,6 @@ class ProcedureUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=200)
     remark: Optional[str] = Field(None, max_length=500)
     frequency: Optional[str] = Field(None, max_length=50)
-    # CHANGED: Now accepts multiple machine IDs for updates
     machine_ids: Optional[List[int]] = Field(None, description="List of machine IDs")
 
     @field_validator('machine_ids', mode='before')
@@ -188,13 +187,11 @@ class Procedure(ProcedureBase):
     id: int
     model_config = ConfigDict(from_attributes=True)
 
-# UPDATED: Procedure with machines details
 class ProcedureWithMachines(ProcedureBase):
     id: int
     machines: List[Machine] = Field(default_factory=list)
     model_config = ConfigDict(from_attributes=True)
 
-# Machine with procedures
 class MachineWithProcedures(MachineBase):
     id: int
     property_id: int
@@ -227,9 +224,10 @@ class WorkOrderCreate(BaseModel):
     before_images: Optional[List[str]] = Field(default_factory=list)
     after_images: Optional[List[str]] = Field(default_factory=list)
     pdf_file_path: Optional[str] = Field(None, max_length=500)
-    type: Literal['pm', 'issue'] = Field(...)
+    type: Literal['pm', 'issue', 'workorder'] = Field(...)  # UPDATED: Added 'workorder'
     topic_id: Optional[int] = None
     procedure_id: Optional[int] = None
+    frequency: Optional[str] = Field(None, max_length=50)  # NEW: Added frequency
 
     @field_validator('due_date', mode='before')
     @classmethod
@@ -258,7 +256,6 @@ class WorkOrderCreate(BaseModel):
         return [img for img in v if img and isinstance(img, str)]
 
 class WorkOrderUpdate(BaseModel):
-    """Schema for partial updates to work orders (PATCH method)"""
     description: Optional[str] = Field(None, max_length=2000)
     status: Optional[WorkOrderStatus] = None
     priority: Optional[WorkOrderPriority] = None
@@ -272,7 +269,7 @@ class WorkOrderUpdate(BaseModel):
     before_images: Optional[List[str]] = Field(default_factory=list)
     after_images: Optional[List[str]] = Field(default_factory=list)
     pdf_file_path: Optional[str] = Field(None, max_length=500)
-    type: Optional[Literal['pm', 'issue']] = None
+    type: Optional embarrassing[Literal['pm', 'issue', 'workorder']] = None  # UPDATED: Added 'workorder'
     frequency: Optional[str] = Field(None, max_length=50)
     procedure_id: Optional[int] = None
 
@@ -319,10 +316,10 @@ class WorkOrder(BaseModel):
     before_images: Optional[List[str]] = Field(default_factory=list)
     after_images: Optional[List[str]] = Field(default_factory=list)
     pdf_file_path: Optional[str] = None
-    type: Literal['pm', 'issue']
+    type: Literal['pm', 'issue', 'workorder']  # UPDATED: Added 'workorder'
     procedure_id: Optional[int] = None
     topic_id: Optional[int] = None
-    frequency: Optional[str] = Field(None, max_length=50)
+    frequency: Optional[str] = Field(None, max_length=50)  # NEW: Added frequency
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -352,7 +349,7 @@ class WorkOrderFile(WorkOrderFileBase):
     
     model_config = ConfigDict(from_attributes=True)
 
-# --- UPDATED: Procedure Execution Schemas ---
+# --- Procedure Execution Schemas ---
 class ProcedureExecutionBase(BaseModel):
     scheduled_date: date
     status: Literal['Scheduled', 'In Progress', 'Completed', 'Skipped'] = 'Scheduled'
@@ -361,7 +358,6 @@ class ProcedureExecutionBase(BaseModel):
 
 class ProcedureExecutionCreate(ProcedureExecutionBase):
     procedure_id: int
-    # NEW: Added machine_id for specific machine execution
     machine_id: Optional[int] = None
 
 class ProcedureExecutionUpdate(BaseModel):
@@ -373,14 +369,12 @@ class ProcedureExecutionUpdate(BaseModel):
     completed_by_id: Optional[int] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
-    # NEW: Allow updating machine assignment
     machine_id: Optional[int] = None
 
 class ProcedureExecution(ProcedureExecutionBase):
     id: int
     procedure_id: int
     work_order_id: Optional[int] = None
-    # NEW: Added machine_id
     machine_id: Optional[int] = None
     completed_date: Optional[date] = None
     before_images: List[str] = Field(default_factory=list)
@@ -394,19 +388,17 @@ class ProcedureExecution(ProcedureExecutionBase):
 
 class ProcedureExecutionWithDetails(ProcedureExecution):
     procedure: Optional[ProcedureWithMachines] = None
-    machine: Optional[Machine] = None  # NEW: Direct machine reference
+    machine: Optional[Machine] = None
     assigned_to: Optional[UserSimple] = None
     completed_by: Optional[UserSimple] = None
     work_order: Optional[WorkOrder] = None
 
-# --- NEW: Machine-Procedure Association Schemas ---
+# --- Machine-Procedure Association Schemas ---
 class MachineProcedureAssignment(BaseModel):
-    """Schema for assigning procedures to machines"""
     machine_id: int
     procedure_ids: List[int]
 
 class ProcedureMachineAssignment(BaseModel):
-    """Schema for assigning machines to procedures"""
     procedure_id: int
     machine_ids: List[int]
 
@@ -457,15 +449,5 @@ class CalendarEvent(BaseModel):
     backgroundColor: str = "#007bff"
     borderColor: str = "#007bff"
     extendedProps: dict = Field(default_factory=dict)
-# Add to schemas.py if missing
-class CalendarEvent(BaseModel):
-    id: str
-    title: str
-    start: str  # ISO date string
-    end: Optional[str] = None
-    backgroundColor: str = "#007bff"
-    borderColor: str = "#007bff"
-    extendedProps: dict = Field(default_factory=dict)
     
     model_config = ConfigDict(from_attributes=True)
-

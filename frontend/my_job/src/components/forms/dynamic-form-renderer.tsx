@@ -27,9 +27,10 @@ export function DynamicFormRenderer({
   const [showAutocomplete, setShowAutocomplete] = React.useState(false)
   const [searchTerm, setSearchTerm] = React.useState('')
 
-  const filteredItems = autocompleteItems.filter(item =>
-    item.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.number?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredItems = autocompleteItems.filter(
+    (item) =>
+      item.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.number?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   const renderField = () => {
@@ -78,7 +79,7 @@ export function DynamicFormRenderer({
               error ? 'border-red-500' : 'border-gray-300'
             }`}
           >
-            <option value="">Select {field.label}</option>
+            <option value="">{field.placeholder || `Select ${field.label}`}</option>
             {options.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
@@ -136,26 +137,18 @@ export function DynamicFormRenderer({
             />
             {showAutocomplete && filteredItems.length > 0 && (
               <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
-                {filteredItems.map((item, index) => (
-                  <button
-                    key={index}
-                    type="button"
-                    className="w-full px-3 py-2 text-left hover:bg-gray-100 focus:bg-gray-100"
-                    onClick={() => {
-                      if (onAutocompleteSelect) {
-                        onAutocompleteSelect(item)
-                        setSearchTerm(`${item.name} (${item.number})`)
-                      } else {
-                        onChange(item.value || item.name)
-                      }
+                {filteredItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
+                    onMouseDown={() => {
+                      onAutocompleteSelect?.(item)
+                      setSearchTerm(item.name || item.number || '')
                       setShowAutocomplete(false)
                     }}
                   >
-                    <div className="font-medium">{item.name}</div>
-                    <div className="text-sm text-gray-500">
-                      {item.number} - {item.room_type}
-                    </div>
-                  </button>
+                    {item.name || item.number}
+                  </div>
                 ))}
               </div>
             )}
@@ -163,109 +156,53 @@ export function DynamicFormRenderer({
         )
 
       case 'image-upload':
-        console.log(`📸 [DynamicFormRenderer] Rendering image upload for ${field.name}:`, {
-          value: value,
-          label: field.name,
-          uploadType: field.name === 'beforePhotos' ? 'before' : 'after'
-        })
         return (
           <ImageUpload
-            value={value || []}
+            value={value}
             onChange={onChange}
             accept={field.accept}
             multiple={field.multiple}
             maxFiles={field.maxFiles}
             maxSize={field.maxSize}
-            minSize={field.minSize}
             maxTotalSize={field.maxTotalSize}
             allowedFormats={field.allowedFormats}
             maxWidth={field.maxWidth}
             maxHeight={field.maxHeight}
             minWidth={field.minWidth}
             minHeight={field.minHeight}
-            label={field.name}
-            error={error}
-            required={field.required}
-            uploadType={field.name === 'beforePhotos' ? 'before' : 'after'}
           />
         )
 
       case 'file':
         return (
-          <div className="space-y-2">
-            <input
-              type="file"
-              accept={field.accept}
-              multiple={field.multiple}
-              onChange={(e) => {
-                if (field.multiple) {
-                  const files = Array.from(e.target.files || [])
-                  onChange(files)
-                } else {
-                  const file = e.target.files?.[0] || null
-                  onChange(file)
-                }
-              }}
-              onBlur={onBlur}
-              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-            />
-            {field.multiple && value && Array.isArray(value) && (
-              <div className="text-sm text-gray-600">
-                {value.length} file(s) selected
-              </div>
-            )}
-          </div>
-        )
-
-      default:
-        return (
           <Input
-            type="text"
-            value={value || ''}
-            onChange={(e) => onChange(e.target.value)}
+            type="file"
+            onChange={(e) => onChange(e.target.files)}
             onBlur={onBlur}
-            placeholder={field.placeholder}
+            accept={field.accept}
+            multiple={field.multiple}
             className={error ? 'border-red-500' : ''}
           />
         )
-    }
-  }
 
-  if (field.type === 'checkbox') {
-    return (
-      <div>
-        {renderField()}
-        {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
-      </div>
-    )
+      default:
+        return null
+    }
   }
 
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">
-        {field.label}
-        {field.required && <span className="text-red-500 ml-1">*</span>}
-      </label>
-      {renderField()}
-      {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
-      
-      {field.validation && !error && (
-        <div className="mt-1 text-xs text-gray-500">
-          {field.validation.minLength && field.validation.maxLength && (
-            <div>Length: {field.validation.minLength}-{field.validation.maxLength} characters</div>
-          )}
-          {field.validation.min !== undefined && field.validation.max !== undefined && (
-            <div>Range: {field.validation.min}-{field.validation.max}</div>
-          )}
-          {field.type === 'image-upload' && (
-            <div>
-              {field.maxFiles && <span>Max {field.maxFiles} files • </span>}
-              {field.maxSize && <span>{field.maxSize}MB per file • </span>}
-              {field.allowedFormats && <span>Formats: {field.allowedFormats.join(', ')}</span>}
-            </div>
-          )}
-        </div>
+      {field.label && field.type !== 'checkbox' && (
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          {field.label}
+          {field.required && <span className="text-red-500"> *</span>}
+        </label>
       )}
+      {renderField()}
+      {field.description && (
+        <p className="mt-1 text-sm text-gray-500">{field.description}</p>
+      )}
+      {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
     </div>
   )
 }

@@ -20,8 +20,6 @@ export interface WorkOrder {
   pdf_file_path: string | null
   type: 'pm' | 'issue' | 'workorder'
   topic_id: number | null
-  has_pm?: boolean
-  has_issue?: boolean
 }
 
 export interface CreateWorkOrderData {
@@ -38,10 +36,8 @@ export interface CreateWorkOrderData {
   before_images: string[]
   after_images: string[]
   pdf_file_path?: string | null
-  type: 'pm' | 'cm' | 'inspection' | 'repair' | 'emergency' | 'upgrade' | 'other' | 'issue' | 'workorder'
+  type: 'pm'  | 'issue' | 'workorder'
   topic_id?: number | null
-  has_pm?: boolean
-  has_issue?: boolean
   procedure_id?: number | string
   frequency?: string
 }

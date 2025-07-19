@@ -1,3 +1,4 @@
+
 # ==============================================================================
 # File: backend/my_app/models.py (WITH MACHINE-PROCEDURE MANY-TO-MANY)
 # Description: Defines the database schema using the imported Base.
@@ -66,7 +67,7 @@ class UserProfile(Base):
     role = Column(String(50), default='Technician')
     position = Column(String(100), nullable=True)
     user = relationship("User", back_populates="profile")
-    properties = relationship("Property", secondary=user_property_association, back_populates="user_profiles")
+    properties = relationship("Property", secondary=user_property_association, back_populates="properties")
     
     def __str__(self):
         return f"Profile {self.id} - {self.role}"
@@ -157,6 +158,8 @@ class WorkOrder(Base):
     
     # Work order type
     type = Column(String(50), nullable=False, default='pm')
+    # NEW: Add frequency column
+    frequency = Column(String(50), nullable=True)
     
     # Relationships
     property = relationship("Property", back_populates="work_orders")
@@ -168,11 +171,12 @@ class WorkOrder(Base):
     procedure = relationship("Procedure")
     procedure_execution = relationship("ProcedureExecution", back_populates="work_order", uselist=False)
     
-    # Your requested performance indexes
+    # Performance indexes
     __table_args__ = (
         Index('idx_workorder_status', 'status'),
         Index('idx_workorder_due_date', 'due_date'),
         Index('idx_workorder_property', 'property_id'),
+        Index('idx_workorder_type', 'type'),  # NEW: Index for type
     )
     
     def __str__(self):
@@ -200,21 +204,17 @@ class Procedure(Base):
     remark = Column(String(500), nullable=True)
     frequency = Column(String(50), nullable=True, index=True)  # Daily, Weekly, Monthly, Quarterly, Yearly
     
-    # REMOVED: machine_id foreign key (now many-to-many)
-    # machine_id = Column(Integer, ForeignKey('machines.id'), nullable=True)
-    
     # CHANGED: Many-to-many relationship with machines
     machines = relationship("Machine", secondary=machine_procedure_association, back_populates="procedures")
     procedure_executions = relationship("ProcedureExecution", back_populates="procedure", cascade="all, delete-orphan")
 
-    # UPDATED: Performance indexes (removed idx_procedure_machine since no machine_id column)
+    # Performance indexes
     __table_args__ = (
         Index('idx_procedure_frequency', 'frequency'),
         Index('idx_procedure_title', 'title'),
     )
 
     def __str__(self):
-        # UPDATED: Show count of machines instead of single machine
         try:
             machine_count = len(self.machines) if self.machines else 0
             return f"{self.title} ({machine_count} machines)"
@@ -259,7 +259,7 @@ class ProcedureExecution(Base):
     # UPDATED: Performance indexes (added machine_id)
     __table_args__ = (
         Index('idx_procedure_execution_date', 'scheduled_date'),
-        Index('idx_procedure_execution_machine', 'machine_id'),  # NEW: Index for machine
+        Index('idx_procedure_execution_machine', 'machine_id'),
         Index('idx_procedure_execution_procedure', 'procedure_id'),
         Index('idx_procedure_execution_status', 'status'),
     )

@@ -40,7 +40,7 @@ export interface FormField {
   maxHeight?: number
   minWidth?: number
   minHeight?: number
-  conditional?: string
+  conditional?: (formData: any) => boolean
   validation?: {
     minLength?: number
     maxLength?: number
@@ -136,6 +136,8 @@ export const workOrderFormSections: FormSection[] = [
           { value: 'emergency', label: 'Emergency' },
           { value: 'upgrade', label: 'Upgrade' },
           { value: 'other', label: 'Other' },
+          { value: 'issue', label: 'Issue' },
+          { value: 'workorder', label: 'Work Order' },
         ],
       },
       {
@@ -159,10 +161,32 @@ export const workOrderFormSections: FormSection[] = [
       },
       {
         name: 'has_issue',
-        label: 'Has Issue/Problem', 
+        label: 'Has Issue/Problem',
         type: 'checkbox',
         description: 'This work order addresses a specific issue or problem',
         required: false,
+      },
+      {
+        name: 'frequency',
+        label: 'Maintenance Frequency',
+        type: 'select',
+        required: false,
+        conditional: (formData: any) => !!formData.has_pm,
+        options: [
+          { value: 'daily', label: 'Daily' },
+          { value: 'weekly', label: 'Weekly' },
+          { value: 'monthly', label: 'Monthly' },
+          { value: 'quarterly', label: 'Quarterly' },
+          { value: 'yearly', label: 'Yearly' },
+        ],
+        validation: {
+          custom: (value: any, formData: any) => {
+            if (formData.has_pm && !value) {
+              return 'Frequency is required for Preventive Maintenance';
+            }
+            return true;
+          },
+        },
       },
       {
         name: 'priority',
@@ -201,9 +225,9 @@ export const workOrderFormSections: FormSection[] = [
         required: true,
         validation: {
           custom: (value: string) => {
-            const selectedDate = new Date(value)
-            const now = new Date()
-            return selectedDate > now || 'Due date must be in the future'
+            const selectedDate = new Date(value);
+            const now = new Date();
+            return selectedDate > now || 'Due date must be in the future';
           },
         },
       },
@@ -223,16 +247,15 @@ export const workOrderFormSections: FormSection[] = [
         name: 'machine_id',
         label: 'Machine',
         type: 'select',
-        required: false, // Will be conditionally required in validation
+        required: false,
         validation: {
           custom: (value: any, formData?: any) => {
-            // Make machine required for PM work orders
             if (formData?.type === 'pm' && (!value || value === '')) {
-              return 'Machine selection is required for Preventive Maintenance work orders'
+              return 'Machine selection is required for Preventive Maintenance work orders';
             }
-            return true
-          }
-        }
+            return true;
+          },
+        },
       },
       {
         name: 'assigned_to_id',

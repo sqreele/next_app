@@ -1,3 +1,4 @@
+
 # ==============================================================================
 # File: backend/my_app/crud.py (UPDATED FOR MANY-TO-MANY PROCEDURES)
 # Description: Fully asynchronous CRUD operations with proper relationship loading.
@@ -8,6 +9,62 @@ from sqlalchemy.orm import selectinload
 from . import models, schemas
 from .security import get_password_hash
 from typing import List, Optional
+from fastapi import HTTPException
+
+# --- Validation Function for Work Orders ---
+async def validate_work_order_data(db: AsyncSession, work_order: schemas.WorkOrderCreate):
+    """Validate work order data based on type"""
+    errors = []
+
+    # Common validations
+    if not work_order.property_id:
+        errors.append("Property ID is required")
+    if not work_order.description:
+        errors.append("Description is required")
+
+    # Type-specific validations
+    if work_order.type == "pm":
+        if not work_order.procedure_id:
+            errors.append("Procedure ID is required for PM work orders")
+        if not work_order.machine_id:
+            errors.append("Machine ID is required for PM work orders")
+        if not work_order.frequency:
+            errors.append("Frequency is required for PM work orders")
+        # Verify machine exists and has PM capability
+        machine = await db.get(models.Machine, work_order.machine_id)
+        if not machine:
+            errors.append("Invalid machine ID")
+        elif not machine.procedures:
+            errors.append("Selected machine does not support Preventive Maintenance")
+        # Verify procedure exists
+        procedure = await db.get(models.Procedure, work_order.procedure_id)
+        if not procedure:
+            errors.append("Invalid procedure ID")
+    elif work_order.type == "issue":
+        if not work_order.machine_id:
+            errors.append("Machine ID is required for Issue work orders")
+        if work_order.procedure_id:
+            errors.append("Procedure ID is not allowed for Issue work orders")
+        if work_order.frequency:
+            errors.append("Frequency is not allowed for Issue work orders")
+        # Verify machine exists
+        machine = await db.get(models.Machine, work_order.machine_id)
+        if not machine:
+            errors.append("Invalid machine ID")
+    elif work_order.type == "workorder":
+        if work_order.procedure_id:
+            errors.append("Procedure ID is not allowed for Workorder type")
+        if work_order.machine_id:
+            errors.append("Machine ID is not allowed for Workorder type")
+        if work_order.frequency:
+            errors.append("Frequency is not allowed for Workorder type")
+        # Ensure priority is set to High if not provided
+        if not work_order.priority:
+            work_order.priority = "High"
+
+    if errors:
+        raise HTTPException(status_code=422, detail={"errors": errors})
+
 # --- User CRUD ---
 async def get_user(db: AsyncSession, user_id: int):
     result = await db.execute(
@@ -167,7 +224,7 @@ async def get_machine_with_procedures(db: AsyncSession, machine_id: int):
     )
     return result.scalars().first()
 
-# --- UPDATED: Procedure CRUD for Many-to-Many ---
+# --- Procedure CRUD ---
 async def get_procedures(db: AsyncSession, skip: int = 0, limit: int = 100):
     """Get all procedures"""
     result = await db.execute(
@@ -207,71 +264,95 @@ async def get_procedures_by_machine(db: AsyncSession, machine_id: int):
     return machine.procedures if machine else []
 
 async def create_procedure(db: AsyncSession, procedure: schemas.ProcedureCreate):
-    """Create a procedure and assign it to machines"""
-    db_procedure = models.Procedure(
-        title=procedure.title,
-        remark=procedure.remark,
-        frequency=procedure.frequency
-    )
-    db.add(db_procedure)
-    await db.flush()
-    
-    # Assign to machines if provided
-    if procedure.machine_ids:
-        machines = await db.execute(
-            select(models.Machine).where(models.Machine.id.in_(procedure.machine_ids))
+    """Create a procedure and assign it to machines with proper transaction management"""
+    try:
+        db_procedure = models.Procedure(
+            title=procedure.title,
+            remark=procedure.remark,
+            frequency=procedure.frequency
         )
-        machine_objects = machines.scalars().all()
-        db_procedure.machines.extend(machine_objects)
-    
-    await db.commit()
-    await db.refresh(db_procedure)
-    
-    # Reload with machines relationship
-    result = await db.execute(
-        select(models.Procedure)
-        .options(selectinload(models.Procedure.machines))
-        .filter(models.Procedure.id == db_procedure.id)
-    )
-    return result.scalars().first()
-
-async def update_procedure(db: AsyncSession, procedure_id: int, procedure: schemas.ProcedureUpdate):
-    """Update a procedure and its machine assignments"""
-    db_procedure = await db.get(models.Procedure, procedure_id)
-    if not db_procedure:
-        return None
-    
-    # Update basic fields
-    if procedure.title is not None:
-        db_procedure.title = procedure.title
-    if procedure.remark is not None:
-        db_procedure.remark = procedure.remark
-    if procedure.frequency is not None:
-        db_procedure.frequency = procedure.frequency
-    
-    # Update machine assignments if provided
-    if procedure.machine_ids is not None:
-        # Clear existing assignments
-        db_procedure.machines.clear()
+        db.add(db_procedure)
+        await db.flush()  # Get the ID before adding machines
         
-        # Add new assignments
+        # Assign to machines if provided
         if procedure.machine_ids:
             machines = await db.execute(
                 select(models.Machine).where(models.Machine.id.in_(procedure.machine_ids))
             )
             machine_objects = machines.scalars().all()
+            
+            # Validate all machines exist
+            if len(machine_objects) != len(procedure.machine_ids):
+                await db.rollback()
+                return None
+            
             db_procedure.machines.extend(machine_objects)
-    
-    await db.commit()
-    await db.refresh(db_procedure)
-    
-    # Reload with machines relationship
-    result = await db.execute(
-        select(models.Procedure)
-        .options(selectinload(models.Procedure.machines))
-        .filter(models.Procedure.id == procedure_id)
-    )
-    return result.scalars().first()
+        
+        await db.commit()
+        await db.refresh(db_procedure)
+        
+        # Reload with machines relationship
+        result = await db.execute(
+            select(models.Procedure)
+            .options(selectinload(models.Procedure.machines))
+            .filter(models.Procedure.id == db_procedure.id)
+        )
+        return result.scalars().first()
+        
+    except Exception as e:
+        await db.rollback()
+        print(f"Error creating procedure: {e}")
+        raise e
+
+async def update_procedure(db: AsyncSession, procedure_id: int, procedure: schemas.ProcedureUpdate):
+    """Update a procedure and its machine assignments with proper validation"""
+    try:
+        db_procedure = await db.get(models.Procedure, procedure_id)
+        if not db_procedure:
+            return None
+        
+        # Update basic fields
+        if procedure.title is not None:
+            db_procedure.title = procedure.title
+        if procedure.remark is not None:
+            db_procedure.remark = procedure.remark
+        if procedure.frequency is not None:
+            db_procedure.frequency = procedure.frequency
+        
+        # Update machine assignments if provided
+        if procedure.machine_ids is not None:
+            # Clear existing assignments
+            db_procedure.machines.clear()
+            
+            # Add new assignments
+            if procedure.machine_ids:
+                machines = await db.execute(
+                    select(models.Machine).where(models.Machine.id.in_(procedure.machine_ids))
+                )
+                machine_objects = machines.scalars().all()
+                
+                # Validate all machines exist
+                if len(machine_objects) != len(procedure.machine_ids):
+                    await db.rollback()
+                    return None
+                
+                db_procedure.machines.extend(machine_objects)
+        
+        await db.commit()
+        await db.refresh(db_procedure)
+        
+        # Reload with machines relationship
+        result = await db.execute(
+            select(models.Procedure)
+            .options(selectinload(models.Procedure.machines))
+            .filter(models.Procedure.id == procedure_id)
+        )
+        return result.scalars().first()
+        
+    except Exception as e:
+        await db.rollback()
+        print(f"Error updating procedure: {e}")
+        raise e
 
 async def delete_procedure(db: AsyncSession, procedure_id: int):
     """Delete a procedure"""
@@ -283,7 +364,7 @@ async def delete_procedure(db: AsyncSession, procedure_id: int):
     await db.commit()
     return db_procedure
 
-# --- NEW: Machine-Procedure Assignment CRUD ---
+# --- Machine-Procedure Assignment CRUD ---
 async def assign_procedures_to_machine(db: AsyncSession, machine_id: int, procedure_ids: list[int]):
     """Assign multiple procedures to a machine"""
     machine = await db.get(models.Machine, machine_id)
@@ -326,7 +407,7 @@ async def assign_machines_to_procedure(db: AsyncSession, procedure_id: int, mach
     await db.refresh(procedure)
     return procedure
 
-# --- UPDATED: Procedure Execution CRUD ---
+# --- Procedure Execution CRUD ---
 async def create_procedure_execution(db: AsyncSession, execution: schemas.ProcedureExecutionCreate):
     """Create a procedure execution for a specific machine"""
     # Verify procedure exists
@@ -358,7 +439,7 @@ async def create_procedure_execution(db: AsyncSession, execution: schemas.Proced
     )
     return result.scalars().first()
 
-# --- WorkOrder CRUD (unchanged) ---
+# --- WorkOrder CRUD ---
 async def get_work_orders(db: AsyncSession, skip: int = 0, limit: int = 100):
     """Get work orders with all relationships properly loaded"""
     try:
@@ -373,13 +454,12 @@ async def get_work_orders(db: AsyncSession, skip: int = 0, limit: int = 100):
             )
             .offset(skip)
             .limit(limit)
-            .order_by(models.WorkOrder.created_at.desc())  # Add ordering
+            .order_by(models.WorkOrder.created_at.desc())
         )
         work_orders = result.scalars().all()
         
         # Ensure all relationships are accessible
         for wo in work_orders:
-            # Touch relationships to ensure they're loaded
             _ = wo.property
             _ = wo.room  
             _ = wo.machine
@@ -391,16 +471,17 @@ async def get_work_orders(db: AsyncSession, skip: int = 0, limit: int = 100):
         print(f"Error in get_work_orders CRUD: {e}")
         raise e
 
-
-
 async def create_work_order(db: AsyncSession, work_order: schemas.WorkOrderCreate):
+    """Create a work order with type-specific validation"""
     print(f"🔍 [CRUD] Creating work order with data:")
-    print(f"   - Task: {work_order.task}")
-    print(f"   - Before image path: '{work_order.before_image_path}'")
-    print(f"   - After image path: '{work_order.after_image_path}'")
-    print(f"   - Before images array: {work_order.before_images}")
-    print(f"   - After images array: {work_order.after_images}")
-    print(f"   - PDF file path: '{work_order.pdf_file_path}'")
+    print(f"   - Type: {work_order.type}")
+    print(f"   - Priority: {work_order.priority}")
+    print(f"   - Machine ID: {work_order.machine_id}")
+    print(f"   - Procedure ID: {work_order.procedure_id}")
+    print(f"   - Frequency: {work_order.frequency}")
+    
+    # Validate work order data
+    await validate_work_order_data(db, work_order)
     
     work_order_data = work_order.model_dump()
     
@@ -423,9 +504,8 @@ async def create_work_order(db: AsyncSession, work_order: schemas.WorkOrderCreat
     
     print(f"✅ [CRUD] Work order created successfully!")
     print(f"   - ID: {db_work_order.id}")
-    print(f"   - Before image path: '{db_work_order.before_image_path}'")
-    print(f"   - After image path: '{db_work_order.after_image_path}'")
-    print(f"   - PDF file path: '{db_work_order.pdf_file_path}'")
+    print(f"   - Type: {db_work_order.type}")
+    print(f"   - Priority: {db_work_order.priority}")
     
     result = await db.execute(
         select(models.WorkOrder)
@@ -505,98 +585,7 @@ async def update_user_password(db: AsyncSession, user: models.User, new_password
     user.hashed_password = get_password_hash(new_password)
     await db.commit()
     return user
-    # Add this improved create_procedure function to crud.py
-async def create_procedure(db: AsyncSession, procedure: schemas.ProcedureCreate):
-    """Create a procedure and assign it to machines with proper transaction management"""
-    try:
-        db_procedure = models.Procedure(
-            title=procedure.title,
-            remark=procedure.remark,
-            frequency=procedure.frequency
-        )
-        db.add(db_procedure)
-        await db.flush()  # Get the ID before adding machines
-        
-        # Assign to machines if provided
-        if procedure.machine_ids:
-            machines = await db.execute(
-                select(models.Machine).where(models.Machine.id.in_(procedure.machine_ids))
-            )
-            machine_objects = machines.scalars().all()
-            
-            # Validate all machines exist
-            if len(machine_objects) != len(procedure.machine_ids):
-                await db.rollback()
-                return None
-            
-            db_procedure.machines.extend(machine_objects)
-        
-        await db.commit()
-        await db.refresh(db_procedure)
-        
-        # Reload with machines relationship
-        result = await db.execute(
-            select(models.Procedure)
-            .options(selectinload(models.Procedure.machines))
-            .filter(models.Procedure.id == db_procedure.id)
-        )
-        return result.scalars().first()
-        
-    except Exception as e:
-        await db.rollback()
-        print(f"Error creating procedure: {e}")
-        raise e
 
-# Improved update_procedure function
-async def update_procedure(db: AsyncSession, procedure_id: int, procedure: schemas.ProcedureUpdate):
-    """Update a procedure and its machine assignments with proper validation"""
-    try:
-        db_procedure = await db.get(models.Procedure, procedure_id)
-        if not db_procedure:
-            return None
-        
-        # Update basic fields
-        if procedure.title is not None:
-            db_procedure.title = procedure.title
-        if procedure.remark is not None:
-            db_procedure.remark = procedure.remark
-        if procedure.frequency is not None:
-            db_procedure.frequency = procedure.frequency
-        
-        # Update machine assignments if provided
-        if procedure.machine_ids is not None:
-            # Clear existing assignments
-            db_procedure.machines.clear()
-            
-            # Add new assignments
-            if procedure.machine_ids:
-                machines = await db.execute(
-                    select(models.Machine).where(models.Machine.id.in_(procedure.machine_ids))
-                )
-                machine_objects = machines.scalars().all()
-                
-                # Validate all machines exist
-                if len(machine_objects) != len(procedure.machine_ids):
-                    await db.rollback()
-                    return None
-                
-                db_procedure.machines.extend(machine_objects)
-        
-        await db.commit()
-        await db.refresh(db_procedure)
-        
-        # Reload with machines relationship
-        result = await db.execute(
-            select(models.Procedure)
-            .options(selectinload(models.Procedure.machines))
-            .filter(models.Procedure.id == procedure_id)
-        )
-        return result.scalars().first()
-        
-    except Exception as e:
-        await db.rollback()
-        print(f"Error updating procedure: {e}")
-        raise e
 async def get_machines_by_work_order_type(
     db: AsyncSession, 
     work_order_type: str, 
@@ -606,19 +595,21 @@ async def get_machines_by_work_order_type(
     """
     Retrieve machines that have work orders of the specified type ('pm' or 'issue').
     """
-    if work_order_type not in ['pm', 'issue']:
-        raise ValueError("work_order_type must be 'pm' or 'issue'")
-
+    if work_order_type not in ['pm', 'issue', 'workorder']:  # UPDATED: Added 'workorder'
+        raise ValueError("work_order_type must be 'pm', 'issue', or 'workorder'")
+    
+    if work_order_type == 'workorder':
+        return []  # No machines for workorder type
+    
     # Query machines with joined work orders filtered by type
     result = await db.execute(
         select(models.Machine)
         .join(models.WorkOrder, models.Machine.id == models.WorkOrder.machine_id)
         .filter(models.WorkOrder.type == work_order_type)
-        .options(selectinload(models.Machine.work_orders))  # Eagerly load work orders
+        .options(selectinload(models.Machine.work_orders))
         .offset(skip)
         .limit(limit)
-        .distinct()  # Ensure unique machines
+        .distinct()
     )
     machines = result.scalars().all()
-
     return machines
