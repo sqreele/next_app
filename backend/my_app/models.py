@@ -1,17 +1,37 @@
-
-# ==============================================================================
-# File: backend/my_app/models.py (WITH MACHINE-PROCEDURE MANY-TO-MANY)
-# Description: Defines the database schema using the imported Base.
-# ==============================================================================
+# File: backend/my_app/models.py (UPDATED FOR FORM SUPPORT)
 from sqlalchemy import (
     Column, Integer, String, ForeignKey, DateTime, Date,
-    Boolean, Table, Text, Index
+    Boolean, Table, Text, Index, Enum
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.orm.exc import DetachedInstanceError
 from .database import Base
 from sqlalchemy.dialects.postgresql import JSONB
+import enum
+
+# Define Enums
+class WorkOrderType(enum.Enum):
+    PM = "pm"
+    ISSUE = "issue"
+    WORKORDER = "workorder"
+
+class WorkOrderStatus(enum.Enum):
+    PENDING = "Pending"
+    IN_PROGRESS = "In Progress"
+    COMPLETED = "Completed"
+    SCHEDULED = "Scheduled"
+
+class WorkOrderPriority(enum.Enum):
+    LOW = "Low"
+    MEDIUM = "Medium"
+    HIGH = "High"
+
+class Frequency(enum.Enum):
+    DAILY = "Daily"
+    WEEKLY = "Weekly"
+    MONTHLY = "Monthly"
+    YEARLY = "Yearly"
 
 # Association table for user-property
 user_property_association = Table(
@@ -20,7 +40,7 @@ user_property_association = Table(
     Column('property_id', Integer, ForeignKey('properties.id'))
 )
 
-# NEW: Association table for machine-procedure many-to-many
+# Association table for machine-procedure many-to-many
 machine_procedure_association = Table(
     'machine_procedure_association', Base.metadata,
     Column('machine_id', Integer, ForeignKey('machines.id')),
@@ -67,7 +87,7 @@ class UserProfile(Base):
     role = Column(String(50), default='Technician')
     position = Column(String(100), nullable=True)
     user = relationship("User", back_populates="profile")
-    properties = relationship("Property", secondary=user_property_association, back_populates="properties")
+    properties = relationship("Property", secondary=user_property_association, back_populates="user_profiles")
     
     def __str__(self):
         return f"Profile {self.id} - {self.role}"
@@ -86,7 +106,7 @@ class Property(Base):
 
 class Room(Base):
     __tablename__ = 'rooms'
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, Cancelled = False, primary_key=True, index=True)
     name = Column(String(100), index=True, nullable=False)
     number = Column(String(20), nullable=True)
     room_type = Column(String(50), nullable=True)
@@ -110,12 +130,9 @@ class Machine(Base):
     property_id = Column(Integer, ForeignKey('properties.id'), nullable=False)
     room_id = Column(Integer, ForeignKey('rooms.id'), nullable=True)
     
-    # Relationships
     property = relationship("Property", back_populates="machines")
     room = relationship("Room", back_populates="machines")
     work_orders = relationship("WorkOrder", back_populates="machine")
-    
-    # CHANGED: Many-to-many relationship with procedures
     procedures = relationship("Procedure", secondary=machine_procedure_association, back_populates="machines")
     
     def __str__(self):
@@ -134,18 +151,18 @@ class Topic(Base):
 class WorkOrder(Base):
     __tablename__ = 'workorders'
     id = Column(Integer, primary_key=True, index=True)
-    description = Column(Text, nullable=True)
-    status = Column(String(50), default='Pending')
-    priority = Column(String(50), default='Medium')
+    description = Column(Text, nullable=False)
+    status = Column(Enum(WorkOrderStatus), default=WorkOrderStatus.PENDING, nullable=False)
+    priority = Column(Enum(WorkOrderPriority), nullable=True)
     due_date = Column(Date, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
     
-    # Image columns
-    before_images = Column(JSONB, nullable=True, server_default='[]')
-    after_images = Column(JSONB, nullable=True, server_default='[]')
-    before_image_path = Column(String(500), nullable=True)
-    after_image_path = Column(String(500), nullable=True)
+    # Image columns (JSONB for multiple images, deprecated single-path fields)
+    before_images = Column(JSONB, nullable=False, server_default='[]')
+    after_images = Column(JSONB, nullable=False, server_default='[]')
+    before_image_path = Column(String(500), nullable=True)  # Deprecated
+    after_image_path = Column(String(500), nullable=True)   # Deprecated
     pdf_file_path = Column(String(500), nullable=True)
     
     # Foreign keys
@@ -157,9 +174,8 @@ class WorkOrder(Base):
     procedure_id = Column(Integer, ForeignKey('procedures.id'), nullable=True)
     
     # Work order type
-    type = Column(String(50), nullable=False, default='pm')
-    # NEW: Add frequency column
-    frequency = Column(String(50), nullable=True)
+    type = Column(Enum(WorkOrderType), nullable=False, default=WorkOrderType.PM)
+    frequency = Column(Enum(Frequency), nullable=True)
     
     # Relationships
     property = relationship("Property", back_populates="work_orders")
@@ -171,16 +187,18 @@ class WorkOrder(Base):
     procedure = relationship("Procedure")
     procedure_execution = relationship("ProcedureExecution", back_populates="work_order", uselist=False)
     
-    # Performance indexes
+    # Updated indexes
     __table_args__ = (
         Index('idx_workorder_status', 'status'),
         Index('idx_workorder_due_date', 'due_date'),
         Index('idx_workorder_property', 'property_id'),
-        Index('idx_workorder_type', 'type'),  # NEW: Index for type
+        Index('idx_workorder_machine', 'machine_id'),
+        Index('idx_workorder_procedure', 'procedure_id'),
+        Index('idx_workorder_topic', 'topic_id'),
     )
     
     def __str__(self):
-        return f"WorkOrder {self.id} - {self.status}"
+        return f"WorkOrder {self.id} - {self.status.value}"
 
 class WorkOrderFile(Base):
     __tablename__ = 'workorderfiles'
@@ -202,13 +220,11 @@ class Procedure(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(200), nullable=False)
     remark = Column(String(500), nullable=True)
-    frequency = Column(String(50), nullable=True, index=True)  # Daily, Weekly, Monthly, Quarterly, Yearly
+    frequency = Column(Enum(Frequency), nullable=True)
     
-    # CHANGED: Many-to-many relationship with machines
     machines = relationship("Machine", secondary=machine_procedure_association, back_populates="procedures")
     procedure_executions = relationship("ProcedureExecution", back_populates="procedure", cascade="all, delete-orphan")
 
-    # Performance indexes
     __table_args__ = (
         Index('idx_procedure_frequency', 'frequency'),
         Index('idx_procedure_title', 'title'),
@@ -226,37 +242,26 @@ class ProcedureExecution(Base):
     id = Column(Integer, primary_key=True, index=True)
     procedure_id = Column(Integer, ForeignKey('procedures.id'), nullable=False)
     work_order_id = Column(Integer, ForeignKey('workorders.id'), nullable=True)
-    
-    # NEW: Add machine_id to specify which machine this execution is for
     machine_id = Column(Integer, ForeignKey('machines.id'), nullable=True)
     
-    # Execution details
     scheduled_date = Column(Date, nullable=False)
     completed_date = Column(Date, nullable=True)
-    status = Column(String(50), default='Scheduled')  # Scheduled, In Progress, Completed, Skipped
-    
-    # Images for this execution
-    before_images = Column(JSONB, nullable=True, server_default='[]')
-    after_images = Column(JSONB, nullable=True, server_default='[]')
+    status = Column(String(50), default='Scheduled')
+    before_images = Column(JSONB, nullable=False, server_default='[]')
+    after_images = Column(JSONB, nullable=False, server_default='[]')
     execution_notes = Column(Text, nullable=True)
-    
-    # Who performed it
     assigned_to_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     completed_by_id = Column(Integer, ForeignKey('users.id'), nullable=True)
-    
-    # Timing
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     started_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     
-    # Relationships
     procedure = relationship("Procedure", back_populates="procedure_executions")
     work_order = relationship("WorkOrder", back_populates="procedure_execution")
-    machine = relationship("Machine")  # NEW: Direct relationship to machine
+    machine = relationship("Machine")
     assigned_to = relationship("User", foreign_keys=[assigned_to_id])
     completed_by = relationship("User", foreign_keys=[completed_by_id])
     
-    # UPDATED: Performance indexes (added machine_id)
     __table_args__ = (
         Index('idx_procedure_execution_date', 'scheduled_date'),
         Index('idx_procedure_execution_machine', 'machine_id'),

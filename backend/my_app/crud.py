@@ -1,6 +1,6 @@
 
 # ==============================================================================
-# File: backend/my_app/crud.py (UPDATED FOR MANY-TO-MANY PROCEDURES)
+# File: backend/my_app/crud.py (UPDATED FOR MANY-TO-MANY PROCEDURES AND WORK ORDER)
 # Description: Fully asynchronous CRUD operations with proper relationship loading.
 # ==============================================================================
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,61 +9,8 @@ from sqlalchemy.orm import selectinload
 from . import models, schemas
 from .security import get_password_hash
 from typing import List, Optional
+from .models import WorkOrderType
 from fastapi import HTTPException
-
-# --- Validation Function for Work Orders ---
-async def validate_work_order_data(db: AsyncSession, work_order: schemas.WorkOrderCreate):
-    """Validate work order data based on type"""
-    errors = []
-
-    # Common validations
-    if not work_order.property_id:
-        errors.append("Property ID is required")
-    if not work_order.description:
-        errors.append("Description is required")
-
-    # Type-specific validations
-    if work_order.type == "pm":
-        if not work_order.procedure_id:
-            errors.append("Procedure ID is required for PM work orders")
-        if not work_order.machine_id:
-            errors.append("Machine ID is required for PM work orders")
-        if not work_order.frequency:
-            errors.append("Frequency is required for PM work orders")
-        # Verify machine exists and has PM capability
-        machine = await db.get(models.Machine, work_order.machine_id)
-        if not machine:
-            errors.append("Invalid machine ID")
-        elif not machine.procedures:
-            errors.append("Selected machine does not support Preventive Maintenance")
-        # Verify procedure exists
-        procedure = await db.get(models.Procedure, work_order.procedure_id)
-        if not procedure:
-            errors.append("Invalid procedure ID")
-    elif work_order.type == "issue":
-        if not work_order.machine_id:
-            errors.append("Machine ID is required for Issue work orders")
-        if work_order.procedure_id:
-            errors.append("Procedure ID is not allowed for Issue work orders")
-        if work_order.frequency:
-            errors.append("Frequency is not allowed for Issue work orders")
-        # Verify machine exists
-        machine = await db.get(models.Machine, work_order.machine_id)
-        if not machine:
-            errors.append("Invalid machine ID")
-    elif work_order.type == "workorder":
-        if work_order.procedure_id:
-            errors.append("Procedure ID is not allowed for Workorder type")
-        if work_order.machine_id:
-            errors.append("Machine ID is not allowed for Workorder type")
-        if work_order.frequency:
-            errors.append("Frequency is not allowed for Workorder type")
-        # Ensure priority is set to High if not provided
-        if not work_order.priority:
-            work_order.priority = "High"
-
-    if errors:
-        raise HTTPException(status_code=422, detail={"errors": errors})
 
 # --- User CRUD ---
 async def get_user(db: AsyncSession, user_id: int):
@@ -272,33 +219,27 @@ async def create_procedure(db: AsyncSession, procedure: schemas.ProcedureCreate)
             frequency=procedure.frequency
         )
         db.add(db_procedure)
-        await db.flush()  # Get the ID before adding machines
+        await db.flush()
         
-        # Assign to machines if provided
         if procedure.machine_ids:
             machines = await db.execute(
                 select(models.Machine).where(models.Machine.id.in_(procedure.machine_ids))
             )
             machine_objects = machines.scalars().all()
-            
-            # Validate all machines exist
             if len(machine_objects) != len(procedure.machine_ids):
                 await db.rollback()
-                return None
-            
+                raise HTTPException(status_code=400, detail="One or more machine IDs are invalid")
             db_procedure.machines.extend(machine_objects)
         
         await db.commit()
         await db.refresh(db_procedure)
         
-        # Reload with machines relationship
         result = await db.execute(
             select(models.Procedure)
             .options(selectinload(models.Procedure.machines))
             .filter(models.Procedure.id == db_procedure.id)
         )
         return result.scalars().first()
-        
     except Exception as e:
         await db.rollback()
         print(f"Error creating procedure: {e}")
@@ -311,7 +252,6 @@ async def update_procedure(db: AsyncSession, procedure_id: int, procedure: schem
         if not db_procedure:
             return None
         
-        # Update basic fields
         if procedure.title is not None:
             db_procedure.title = procedure.title
         if procedure.remark is not None:
@@ -319,36 +259,27 @@ async def update_procedure(db: AsyncSession, procedure_id: int, procedure: schem
         if procedure.frequency is not None:
             db_procedure.frequency = procedure.frequency
         
-        # Update machine assignments if provided
         if procedure.machine_ids is not None:
-            # Clear existing assignments
             db_procedure.machines.clear()
-            
-            # Add new assignments
             if procedure.machine_ids:
                 machines = await db.execute(
                     select(models.Machine).where(models.Machine.id.in_(procedure.machine_ids))
                 )
                 machine_objects = machines.scalars().all()
-                
-                # Validate all machines exist
                 if len(machine_objects) != len(procedure.machine_ids):
                     await db.rollback()
-                    return None
-                
+                    raise HTTPException(status_code=400, detail="One or more machine IDs are invalid")
                 db_procedure.machines.extend(machine_objects)
         
         await db.commit()
         await db.refresh(db_procedure)
         
-        # Reload with machines relationship
         result = await db.execute(
             select(models.Procedure)
             .options(selectinload(models.Procedure.machines))
             .filter(models.Procedure.id == procedure_id)
         )
         return result.scalars().first()
-        
     except Exception as e:
         await db.rollback()
         print(f"Error updating procedure: {e}")
@@ -371,15 +302,15 @@ async def assign_procedures_to_machine(db: AsyncSession, machine_id: int, proced
     if not machine:
         return None
     
-    # Clear existing assignments
     machine.procedures.clear()
     
-    # Add new assignments
     if procedure_ids:
         procedures = await db.execute(
             select(models.Procedure).where(models.Procedure.id.in_(procedure_ids))
         )
         procedure_objects = procedures.scalars().all()
+        if len(procedure_objects) != len(procedure_ids):
+            raise HTTPException(status_code=400, detail="One or more procedure IDs are invalid")
         machine.procedures.extend(procedure_objects)
     
     await db.commit()
@@ -392,15 +323,15 @@ async def assign_machines_to_procedure(db: AsyncSession, procedure_id: int, mach
     if not procedure:
         return None
     
-    # Clear existing assignments
     procedure.machines.clear()
     
-    # Add new assignments
     if machine_ids:
         machines = await db.execute(
             select(models.Machine).where(models.Machine.id.in_(machine_ids))
         )
         machine_objects = machines.scalars().all()
+        if len(machine_objects) != len(machine_ids):
+            raise HTTPException(status_code=400, detail="One or more machine IDs are invalid")
         procedure.machines.extend(machine_objects)
     
     await db.commit()
@@ -410,23 +341,20 @@ async def assign_machines_to_procedure(db: AsyncSession, procedure_id: int, mach
 # --- Procedure Execution CRUD ---
 async def create_procedure_execution(db: AsyncSession, execution: schemas.ProcedureExecutionCreate):
     """Create a procedure execution for a specific machine"""
-    # Verify procedure exists
     procedure = await db.get(models.Procedure, execution.procedure_id)
     if not procedure:
-        return None
+        raise HTTPException(status_code=400, detail="Procedure not found")
     
-    # Verify machine exists if provided
     if execution.machine_id:
         machine = await db.get(models.Machine, execution.machine_id)
         if not machine:
-            return None
+            raise HTTPException(status_code=400, detail="Machine not found")
     
     db_execution = models.ProcedureExecution(**execution.model_dump())
     db.add(db_execution)
     await db.commit()
     await db.refresh(db_execution)
     
-    # Load with relationships
     result = await db.execute(
         select(models.ProcedureExecution)
         .options(
@@ -458,7 +386,6 @@ async def get_work_orders(db: AsyncSession, skip: int = 0, limit: int = 100):
         )
         work_orders = result.scalars().all()
         
-        # Ensure all relationships are accessible
         for wo in work_orders:
             _ = wo.property
             _ = wo.room  
@@ -472,59 +399,133 @@ async def get_work_orders(db: AsyncSession, skip: int = 0, limit: int = 100):
         raise e
 
 async def create_work_order(db: AsyncSession, work_order: schemas.WorkOrderCreate):
-    """Create a work order with type-specific validation"""
-    print(f"🔍 [CRUD] Creating work order with data:")
-    print(f"   - Type: {work_order.type}")
-    print(f"   - Priority: {work_order.priority}")
-    print(f"   - Machine ID: {work_order.machine_id}")
-    print(f"   - Procedure ID: {work_order.procedure_id}")
-    print(f"   - Frequency: {work_order.frequency}")
-    
-    # Validate work order data
-    await validate_work_order_data(db, work_order)
-    
-    work_order_data = work_order.model_dump()
-    
-    if work_order_data.get('before_image_path') == "":
-        work_order_data['before_image_path'] = None
-    if work_order_data.get('after_image_path') == "":
-        work_order_data['after_image_path'] = None
-    if work_order_data.get('pdf_file_path') == "":
-        work_order_data['pdf_file_path'] = None
-    
-    print(f"🔍 [CRUD] Processed data:")
-    print(f"   - Before image path: '{work_order_data.get('before_image_path')}'")
-    print(f"   - After image path: '{work_order_data.get('after_image_path')}'")
-    print(f"   - PDF file path: '{work_order_data.get('pdf_file_path')}'")
-    
-    db_work_order = models.WorkOrder(**work_order_data)
-    db.add(db_work_order)
-    await db.commit()
-    await db.refresh(db_work_order)
-    
-    print(f"✅ [CRUD] Work order created successfully!")
-    print(f"   - ID: {db_work_order.id}")
-    print(f"   - Type: {db_work_order.type}")
-    print(f"   - Priority: {db_work_order.priority}")
-    
-    result = await db.execute(
-        select(models.WorkOrder)
-        .options(
-            selectinload(models.WorkOrder.room),
-            selectinload(models.WorkOrder.property),
-            selectinload(models.WorkOrder.machine),
-            selectinload(models.WorkOrder.assigned_to)
+    """Create a work order with validation and procedure execution for PM"""
+    try:
+        # Validate based on WorkOrderType
+        if work_order.type == WorkOrderType.PM:
+            if not work_order.machine_id or not work_order.procedure_id:
+                raise HTTPException(status_code=400, detail="machine_id and procedure_id are required for PM")
+            if not work_order.frequency:
+                raise HTTPException(status_code=400, detail="frequency is required for PM")
+            if not work_order.priority:
+                raise HTTPException(status_code=400, detail="priority is required for PM")
+            # Validate machine-procedure association
+            machine = await get_machine_with_procedures(db, work_order.machine_id)
+            if not machine or not any(p.id == work_order.procedure_id for p in machine.procedures):
+                raise HTTPException(status_code=400, detail="Invalid machine-procedure combination")
+        elif work_order.type == WorkOrderType.ISSUE:
+            if not work_order.machine_id:
+                raise HTTPException(status_code=400, detail="machine_id is required for ISSUE")
+            if work_order.procedure_id or work_order.frequency:
+                raise HTTPException(status_code=400, detail="procedure_id and frequency are not allowed for ISSUE")
+            if not work_order.priority:
+                raise HTTPException(status_code=400, detail="priority is required for ISSUE")
+        elif work_order.type == WorkOrderType.WORKORDER:
+            if work_order.procedure_id or work_order.frequency or work_order.machine_id or work_order.priority:
+                raise HTTPException(status_code=400, detail="procedure_id, frequency, machine_id, and priority are not allowed for WORKORDER")
+
+        # Set default status if not provided
+        work_order_data = work_order.model_dump()
+        if not work_order_data.get('status'):
+            work_order_data['status'] = 'Pending' if work_order.type in [WorkOrderType.PM, WorkOrderType.ISSUE] else 'Scheduled'
+        
+        # Handle nullable fields
+        if work_order_data.get('pdf_file_path') == "":
+            work_order_data['pdf_file_path'] = None
+        if not work_order_data.get('before_images'):
+            work_order_data['before_images'] = []
+        if not work_order_data.get('after_images'):
+            work_order_data['after_images'] = []
+        
+        print(f"🔍 [CRUD] Creating work order with data:")
+        print(f"   - Description: {work_order.description}")
+        print(f"   - Type: {work_order.type}")
+        print(f"   - Before images: {work_order_data['before_images']}")
+        print(f"   - After images: {work_order_data['after_images']}")
+        print(f"   - PDF file path: '{work_order_data['pdf_file_path']}'")
+        
+        db_work_order = models.WorkOrder(**work_order_data)
+        db.add(db_work_order)
+        await db.flush()
+
+        # Create ProcedureExecution for PM
+        if work_order.type == WorkOrderType.PM:
+            execution = schemas.ProcedureExecutionCreate(
+                procedure_id=work_order.procedure_id,
+                machine_id=work_order.machine_id,
+                work_order_id=db_work_order.id,
+                assigned_to_id=work_order.assigned_to_id,
+                due_date=work_order.due_date
+            )
+            await create_procedure_execution(db, execution)
+
+        await db.commit()
+        await db.refresh(db_work_order)
+        
+        print(f"✅ [CRUD] Work order created successfully!")
+        print(f"   - ID: {db_work_order.id}")
+        print(f"   - Before images: {db_work_order.before_images}")
+        print(f"   - After images: {db_work_order.after_images}")
+        print(f"   - PDF file path: '{db_work_order.pdf_file_path}'")
+        
+        result = await db.execute(
+            select(models.WorkOrder)
+            .options(
+                selectinload(models.WorkOrder.room),
+                selectinload(models.WorkOrder.property),
+                selectinload(models.WorkOrder.machine),
+                selectinload(models.WorkOrder.assigned_to),
+                selectinload(models.WorkOrder.topic)
+            )
+            .filter(models.WorkOrder.id == db_work_order.id)
         )
-        .filter(models.WorkOrder.id == db_work_order.id)
-    )
-    return result.scalars().first()
+        return result.scalars().first()
+    except Exception as e:
+        await db.rollback()
+        print(f"Error creating work order: {e}")
+        raise e
 
 async def update_work_order(db: AsyncSession, work_order_id: int, work_order: schemas.WorkOrderCreate):
-    result = await db.execute(select(models.WorkOrder).filter(models.WorkOrder.id == work_order_id))
-    db_work_order = result.scalars().first()
-    if db_work_order:
-        for key, value in work_order.dict().items():
+    """Update a work order with full replacement"""
+    try:
+        result = await db.execute(select(models.WorkOrder).filter(models.WorkOrder.id == work_order_id))
+        db_work_order = result.scalars().first()
+        if not db_work_order:
+            return None
+        
+        # Validate based on WorkOrderType
+        if work_order.type == WorkOrderType.PM:
+            if not work_order.machine_id or not work_order.procedure_id:
+                raise HTTPException(status_code=400, detail="machine_id and procedure_id are required for PM")
+            if not work_order.frequency:
+                raise HTTPException(status_code=400, detail="frequency is required for PM")
+            if not work_order.priority:
+                raise HTTPException(status_code=400, detail="priority is required for PM")
+            machine = await get_machine_with_procedures(db, work_order.machine_id)
+            if not machine or not any(p.id == work_order.procedure_id for p in machine.procedures):
+                raise HTTPException(status_code=400, detail="Invalid machine-procedure combination")
+        elif work_order.type == WorkOrderType.ISSUE:
+            if not work_order.machine_id:
+                raise HTTPException(status_code=400, detail="machine_id is required for ISSUE")
+            if work_order.procedure_id or work_order.frequency:
+                raise HTTPException(status_code=400, detail="procedure_id and frequency are not allowed for ISSUE")
+            if not work_order.priority:
+                raise HTTPException(status_code=400, detail="priority is required for ISSUE")
+        elif work_order.type == WorkOrderType.WORKORDER:
+            if work_order.procedure_id or work_order.frequency or work_order.machine_id or work_order.priority:
+                raise HTTPException(status_code=400, detail="procedure_id, frequency, machine_id, and priority are not allowed for WORKORDER")
+
+        work_order_data = work_order.dict()
+        if work_order_data.get('pdf_file_path') == "":
+            work_order_data['pdf_file_path'] = None
+        if not work_order_data.get('before_images'):
+            work_order_data['before_images'] = []
+        if not work_order_data.get('after_images'):
+            work_order_data['after_images'] = []
+
+        for key, value in work_order_data.items():
             setattr(db_work_order, key, value)
+        
         await db.commit()
         await db.refresh(db_work_order)
         
@@ -534,21 +535,60 @@ async def update_work_order(db: AsyncSession, work_order_id: int, work_order: sc
                 selectinload(models.WorkOrder.room),
                 selectinload(models.WorkOrder.property),
                 selectinload(models.WorkOrder.machine),
-                selectinload(models.WorkOrder.assigned_to)
+                selectinload(models.WorkOrder.assigned_to),
+                selectinload(models.WorkOrder.topic)
             )
             .filter(models.WorkOrder.id == work_order_id)
         )
         return result.scalars().first()
-    return None
+    except Exception as e:
+        await db.rollback()
+        print(f"Error updating work order: {e}")
+        raise e
 
 async def patch_work_order(db: AsyncSession, work_order_id: int, work_order_update: schemas.WorkOrderUpdate):
     """Update work order with partial data (PATCH method)"""
-    result = await db.execute(select(models.WorkOrder).filter(models.WorkOrder.id == work_order_id))
-    db_work_order = result.scalars().first()
-    if db_work_order:
+    try:
+        result = await db.execute(select(models.WorkOrder).filter(models.WorkOrder.id == work_order_id))
+        db_work_order = result.scalars().first()
+        if not db_work_order:
+            return None
+        
         update_data = work_order_update.model_dump(exclude_unset=True)
+        
+        # Validate if type is being updated
+        if 'type' in update_data:
+            if update_data['type'] == WorkOrderType.PM:
+                if not update_data.get('machine_id', db_work_order.machine_id) or not update_data.get('procedure_id', db_work_order.procedure_id):
+                    raise HTTPException(status_code=400, detail="machine_id and procedure_id are required for PM")
+                if not update_data.get('frequency', db_work_order.frequency):
+                    raise HTTPException(status_code=400, detail="frequency is required for PM")
+                if not update_data.get('priority', db_work_order.priority):
+                    raise HTTPException(status_code=400, detail="priority is required for PM")
+                machine = await get_machine_with_procedures(db, update_data.get('machine_id', db_work_order.machine_id))
+                if not machine or not any(p.id == update_data.get('procedure_id', db_work_order.procedure_id) for p in machine.procedures):
+                    raise HTTPException(status_code=400, detail="Invalid machine-procedure combination")
+            elif update_data['type'] == WorkOrderType.ISSUE:
+                if not update_data.get('machine_id', db_work_order.machine_id):
+                    raise HTTPException(status_code=400, detail="machine_id is required for ISSUE")
+                if update_data.get('procedure_id') or update_data.get('frequency') or db_work_order.procedure_id or db_work_order.frequency:
+                    raise HTTPException(status_code=400, detail="procedure_id and frequency are not allowed for ISSUE")
+                if not update_data.get('priority', db_work_order.priority):
+                    raise HTTPException(status_code=400, detail="priority is required for ISSUE")
+            elif update_data['type'] == WorkOrderType.WORKORDER:
+                if update_data.get('procedure_id') or update_data.get('frequency') or update_data.get('machine_id') or update_data.get('priority') or \
+                   db_work_order.procedure_id or db_work_order.frequency or db_work_order.machine_id or db_work_order.priority:
+                    raise HTTPException(status_code=400, detail="procedure_id, frequency, machine_id, and priority are not allowed for WORKORDER")
+        
         for key, value in update_data.items():
+            if key == 'pdf_file_path' and value == "":
+                value = None
+            if key == 'before_images' and not value:
+                value = []
+            if key == 'after_images' and not value:
+                value = []
             setattr(db_work_order, key, value)
+        
         await db.commit()
         await db.refresh(db_work_order)
         
@@ -558,12 +598,16 @@ async def patch_work_order(db: AsyncSession, work_order_id: int, work_order_upda
                 selectinload(models.WorkOrder.room),
                 selectinload(models.WorkOrder.property),
                 selectinload(models.WorkOrder.machine),
-                selectinload(models.WorkOrder.assigned_to)
+                selectinload(models.WorkOrder.assigned_to),
+                selectinload(models.WorkOrder.topic)
             )
             .filter(models.WorkOrder.id == work_order_id)
         )
         return result.scalars().first()
-    return None
+    except Exception as e:
+        await db.rollback()
+        print(f"Error patching work order: {e}")
+        raise e
 
 async def delete_work_order(db: AsyncSession, work_order_id: int):
     result = await db.execute(select(models.WorkOrder).filter(models.WorkOrder.id == work_order_id))
@@ -588,28 +632,36 @@ async def update_user_password(db: AsyncSession, user: models.User, new_password
 
 async def get_machines_by_work_order_type(
     db: AsyncSession, 
-    work_order_type: str, 
+    work_order_type: WorkOrderType, 
     skip: int = 0, 
     limit: int = 100
 ) -> List[models.Machine]:
     """
-    Retrieve machines that have work orders of the specified type ('pm' or 'issue').
+    Retrieve machines suitable for the specified work order type.
+    For 'pm', return machines with associated procedures.
+    For 'issue', return all machines.
+    For 'workorder', return no machines (as machine_id is not allowed).
     """
-    if work_order_type not in ['pm', 'issue', 'workorder']:  # UPDATED: Added 'workorder'
-        raise ValueError("work_order_type must be 'pm', 'issue', or 'workorder'")
-    
-    if work_order_type == 'workorder':
+    if work_order_type == WorkOrderType.PM:
+        result = await db.execute(
+            select(models.Machine)
+            .options(selectinload(models.Machine.procedures))
+            .filter(models.Machine.procedures.any())  # Only machines with procedures
+            .offset(skip)
+            .limit(limit)
+            .distinct()
+        )
+    elif work_order_type == WorkOrderType.ISSUE:
+        result = await db.execute(
+            select(models.Machine)
+            .options(selectinload(models.Machine.work_orders))
+            .offset(skip)
+            .limit(limit)
+            .distinct()
+        )
+    else:  # WorkOrderType.WORKORDER
         return []  # No machines for workorder type
     
-    # Query machines with joined work orders filtered by type
-    result = await db.execute(
-        select(models.Machine)
-        .join(models.WorkOrder, models.Machine.id == models.WorkOrder.machine_id)
-        .filter(models.WorkOrder.type == work_order_type)
-        .options(selectinload(models.Machine.work_orders))
-        .offset(skip)
-        .limit(limit)
-        .distinct()
-    )
-    machines = result.scalars().all()
-    return machines
+    return result.scalars().all()
+
+

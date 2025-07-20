@@ -19,32 +19,32 @@ async def get_procedure_schedule(
     try:
         query = select(models.ProcedureExecution).options(
             selectinload(models.ProcedureExecution.procedure).selectinload(models.Procedure.machines),
-            selectinload(models.ProcedureExecution.machine),  # FIXED: Load machine directly
+            selectinload(models.ProcedureExecution.machine),
+            selectinload(models.ProcedureExecution.work_order),
             selectinload(models.ProcedureExecution.assigned_to)
         ).filter(
             models.ProcedureExecution.scheduled_date >= start_date,
             models.ProcedureExecution.scheduled_date <= end_date
         )
-        
+
         if machine_id:
             query = query.filter(models.ProcedureExecution.machine_id == machine_id)
-        
+
         result = await db.execute(query)
         executions = result.scalars().all()
-        
+
         events = []
         for execution in executions:
             color = {
                 'Scheduled': '#007bff',
-                'In Progress': '#ffc107', 
+                'In Progress': '#ffc107',
                 'Completed': '#28a745',
                 'Skipped': '#6c757d'
             }.get(execution.status, '#007bff')
-            
-            # FIXED: Handle machine display properly
+
             machine_name = execution.machine.name if execution.machine else 'No Machine'
             procedure_title = execution.procedure.title if execution.procedure else 'Unknown Procedure'
-            
+
             events.append(schemas.CalendarEvent(
                 id=f"procedure-{execution.id}",
                 title=f"{procedure_title} - {machine_name}",
@@ -56,11 +56,12 @@ async def get_procedure_schedule(
                     "procedureId": execution.procedure.id if execution.procedure else None,
                     "executionId": execution.id,
                     "machineId": execution.machine_id,
+                    "workOrderId": execution.work_order_id,
                     "status": execution.status,
                     "estimatedDuration": getattr(execution.procedure, 'estimated_duration_minutes', 30) if execution.procedure else 30
                 }
             ))
-        
+
         return events
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch schedule: {str(e)}")
@@ -76,24 +77,32 @@ async def create_procedure_execution(
         procedure = await db.get(models.Procedure, execution.procedure_id)
         if not procedure:
             raise HTTPException(status_code=404, detail="Procedure not found")
-        
+
         # Verify machine exists if provided
         if execution.machine_id:
             machine = await db.get(models.Machine, execution.machine_id)
             if not machine:
                 raise HTTPException(status_code=404, detail="Machine not found")
-        
+
+        # Verify work order exists if provided
+        if execution.work_order_id:
+            work_order = await db.get(models.WorkOrder, execution.work_order_id)
+            if not work_order:
+                raise HTTPException(status_code=404, detail="Work order not found")
+            if work_order.type != models.WorkOrderType.PM:
+                raise HTTPException(status_code=400, detail="Work order must be of type 'pm'")
+
         db_execution = models.ProcedureExecution(**execution.model_dump())
         db.add(db_execution)
         await db.commit()
         await db.refresh(db_execution)
-        
-        # Load with relationships
+
         result = await db.execute(
             select(models.ProcedureExecution)
             .options(
                 selectinload(models.ProcedureExecution.procedure).selectinload(models.Procedure.machines),
                 selectinload(models.ProcedureExecution.machine),
+                selectinload(models.ProcedureExecution.work_order),
                 selectinload(models.ProcedureExecution.assigned_to),
                 selectinload(models.ProcedureExecution.completed_by)
             )
@@ -116,36 +125,32 @@ async def update_procedure_execution(
         db_execution = await db.get(models.ProcedureExecution, execution_id)
         if not db_execution:
             raise HTTPException(status_code=404, detail="Procedure execution not found")
-        
+
         update_data = execution_update.model_dump(exclude_unset=True)
-        
-        # Handle image arrays properly
+
         for field, value in update_data.items():
             if field in ['before_images', 'after_images'] and value is not None:
-                # Ensure we're working with a list
                 if not isinstance(value, list):
                     value = [value] if value else []
                 setattr(db_execution, field, value)
-                # Mark as modified for SQLAlchemy JSONB
                 from sqlalchemy.orm.attributes import flag_modified
                 flag_modified(db_execution, field)
             else:
                 setattr(db_execution, field, value)
-        
-        # If marking as completed, update related data
+
         if execution_update.status == 'Completed' and execution_update.completed_date:
             if not db_execution.completed_at:
                 db_execution.completed_at = datetime.utcnow()
-        
+
         await db.commit()
         await db.refresh(db_execution)
-        
-        # Load with relationships
+
         result = await db.execute(
             select(models.ProcedureExecution)
             .options(
                 selectinload(models.ProcedureExecution.procedure).selectinload(models.Procedure.machines),
                 selectinload(models.ProcedureExecution.machine),
+                selectinload(models.ProcedureExecution.work_order),
                 selectinload(models.ProcedureExecution.assigned_to),
                 selectinload(models.ProcedureExecution.completed_by)
             )
@@ -166,29 +171,25 @@ async def generate_procedure_schedule(
 ):
     """Generate scheduled procedure executions for a date range"""
     try:
-        # Get active procedures with machines
         query = select(models.Procedure).options(
             selectinload(models.Procedure.machines)
         ).filter(models.Procedure.frequency.isnot(None))
-        
+
         result = await db.execute(query)
         procedures = result.scalars().all()
-        
+
         created_count = 0
         for procedure in procedures:
-            # Filter by machine if specified
             target_machines = procedure.machines
             if machine_id:
                 target_machines = [m for m in procedure.machines if m.id == machine_id]
-            
+
             if not target_machines:
                 continue
-            
-            # Generate schedule for each machine
+
             for machine in target_machines:
                 current_date = start_date
                 while current_date <= end_date:
-                    # Check if execution already exists for this date and machine
                     existing = await db.execute(
                         select(models.ProcedureExecution).filter(
                             models.ProcedureExecution.procedure_id == procedure.id,
@@ -205,35 +206,27 @@ async def generate_procedure_schedule(
                         )
                         db.add(execution)
                         created_count += 1
-                    
-                    # Calculate next occurrence
+
                     current_date = calculate_next_due_date(current_date, procedure.frequency)
                     if current_date is None or current_date > end_date:
                         break
-        
+
         await db.commit()
         return {"message": f"Created {created_count} scheduled procedure executions"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate schedule: {str(e)}")
 
-def calculate_next_due_date(last_date: date, frequency: str) -> Optional[date]:
+def calculate_next_due_date(last_date: date, frequency: models.Frequency) -> Optional[date]:
     """Calculate next due date based on frequency"""
-    if frequency == "Daily":
+    if frequency == models.Frequency.DAILY:
         return last_date + timedelta(days=1)
-    elif frequency == "Weekly":
+    elif frequency == models.Frequency.WEEKLY:
         return last_date + timedelta(weeks=1)
-    elif frequency == "Monthly":
-        # Add roughly a month
-        if last_date.month == 12:
-            return last_date.replace(year=last_date.year + 1, month=1)
-        else:
-            try:
-                return last_date.replace(month=last_date.month + 1)
-            except ValueError:
-                # Handle month-end edge cases
-                return last_date.replace(month=last_date.month + 1, day=28)
-    elif frequency == "Quarterly":
-        return last_date + timedelta(days=90)
-    elif frequency == "Yearly":
+    elif frequency == models.Frequency.MONTHLY:
+        try:
+            return last_date.replace(month=last_date.month + 1)
+        except ValueError:
+            return last_date.replace(month=last_date.month + 1, day=28)
+    elif frequency == models.Frequency.YEARLY:
         return last_date.replace(year=last_date.year + 1)
     return None

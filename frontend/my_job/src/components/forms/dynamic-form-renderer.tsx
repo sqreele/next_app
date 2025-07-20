@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useRef } from 'react'
 import { Input } from '@/components/ui/input'
 import { ImageUpload } from '@/components/ui/image-upload'
 import { FormField, FormFieldOption } from '@/config/work-order-form-config'
@@ -26,6 +26,16 @@ export function DynamicFormRenderer({
 }: DynamicFormRendererProps) {
   const [showAutocomplete, setShowAutocomplete] = React.useState(false)
   const [searchTerm, setSearchTerm] = React.useState('')
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Cleanup timeout on unmount
+  React.useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
+    }
+  }, [])
 
   const filteredItems = autocompleteItems.filter(
     (item) =>
@@ -129,7 +139,14 @@ export function DynamicFormRenderer({
               }}
               onFocus={() => setShowAutocomplete(true)}
               onBlur={() => {
-                setTimeout(() => setShowAutocomplete(false), 200)
+                // Clear any existing timeout
+                if (timeoutRef.current) {
+                  clearTimeout(timeoutRef.current)
+                }
+                // Set new timeout with ref
+                timeoutRef.current = setTimeout(() => {
+                  setShowAutocomplete(false)
+                }, 200)
                 onBlur?.()
               }}
               placeholder={field.placeholder}
@@ -142,6 +159,10 @@ export function DynamicFormRenderer({
                     key={item.id}
                     className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
                     onMouseDown={() => {
+                      // Clear timeout when selecting
+                      if (timeoutRef.current) {
+                        clearTimeout(timeoutRef.current)
+                      }
                       onAutocompleteSelect?.(item)
                       setSearchTerm(item.name || item.number || '')
                       setShowAutocomplete(false)

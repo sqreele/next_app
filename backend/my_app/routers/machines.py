@@ -1,19 +1,19 @@
 # ==============================================================================
-# File: backend/my_app/routers/machines.py (Enhanced with procedures)
+# File: backend/my_app/routers/machines.py
 # Description: Async machine routes with procedure relationships.
 # ==============================================================================
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
-from .. import crud, schemas, dependencies
+from .. import crud, schemas, dependencies, models
 from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/machines", tags=["machines"])
 
 @router.post("/property/{property_id}", response_model=schemas.Machine)
 async def create_machine(
-    property_id: int, 
-    machine: schemas.MachineCreate, 
+    property_id: int,
+    machine: schemas.MachineCreate,
     db: AsyncSession = Depends(dependencies.get_db)
 ):
     return await crud.create_machine(db=db, machine=machine, property_id=property_id)
@@ -25,14 +25,15 @@ async def read_machines(
     db: AsyncSession = Depends(dependencies.get_db),
 ):
     machines = await crud.get_machines(db, skip=skip, limit=limit)
-    # Annotate with has_pm and has_issue
     result = []
     for m in machines:
-        has_pm = any(getattr(wo, 'type', None) == 'pm' for wo in getattr(m, 'work_orders', []))
-        has_issue = any(getattr(wo, 'type', None) == 'issue' for wo in getattr(m, 'work_orders', []))
+        has_pm = any(getattr(wo, 'type', None) == models.WorkOrderType.PM for wo in getattr(m, 'work_orders', []))
+        has_issue = any(getattr(wo, 'type', None) == models.WorkOrderType.ISSUE for wo in getattr(m, 'work_orders', []))
+        has_workorder = any(getattr(wo, 'type', None) == models.WorkOrderType.WORKORDER for wo in getattr(m, 'work_orders', []))
         m_dict = m.__dict__.copy()
         m_dict['has_pm'] = has_pm
         m_dict['has_issue'] = has_issue
+        m_dict['has_workorder'] = has_workorder
         result.append(m_dict)
     return result
 
@@ -44,14 +45,15 @@ async def read_machines_by_property(
     db: AsyncSession = Depends(dependencies.get_db),
 ):
     machines = await crud.get_machines_by_property(db, property_id=property_id, skip=skip, limit=limit)
-    # Annotate with has_pm and has_issue
     result = []
     for m in machines:
-        has_pm = any(getattr(wo, 'type', None) == 'pm' for wo in getattr(m, 'work_orders', []))
-        has_issue = any(getattr(wo, 'type', None) == 'issue' for wo in getattr(m, 'work_orders', []))
+        has_pm = any(getattr(wo, 'type', None) == models.WorkOrderType.PM for wo in getattr(m, 'work_orders', []))
+        has_issue = any(getattr(wo, 'type', None) == models.WorkOrderType.ISSUE for wo in getattr(m, 'work_orders', []))
+        has_workorder = any(getattr(wo, 'type', None) == models.WorkOrderType.WORKORDER for wo in getattr(m, 'work_orders', []))
         m_dict = m.__dict__.copy()
         m_dict['has_pm'] = has_pm
         m_dict['has_issue'] = has_issue
+        m_dict['has_workorder'] = has_workorder
         result.append(m_dict)
     return result
 
@@ -63,14 +65,15 @@ async def read_machine(
     machine = await crud.get_machine(db, machine_id=machine_id)
     if machine is None:
         raise HTTPException(status_code=404, detail="Machine not found")
-    has_pm = any(getattr(wo, 'type', None) == 'pm' for wo in getattr(machine, 'work_orders', []))
-    has_issue = any(getattr(wo, 'type', None) == 'issue' for wo in getattr(machine, 'work_orders', []))
+    has_pm = any(getattr(wo, 'type', None) == models.WorkOrderType.PM for wo in getattr(machine, 'work_orders', []))
+    has_issue = any(getattr(wo, 'type', None) == models.WorkOrderType.ISSUE for wo in getattr(machine, 'work_orders', []))
+    has_workorder = any(getattr(wo, 'type', None) == models.WorkOrderType.WORKORDER for wo in getattr(machine, 'work_orders', []))
     m_dict = machine.__dict__.copy()
     m_dict['has_pm'] = has_pm
     m_dict['has_issue'] = has_issue
+    m_dict['has_workorder'] = has_workorder
     return m_dict
 
-# New endpoints for procedure management
 @router.get("/{machine_id}/procedures", response_model=List[schemas.Procedure])
 async def get_machine_procedures(
     machine_id: int,
@@ -80,7 +83,7 @@ async def get_machine_procedures(
     machine = await crud.get_machine(db, machine_id=machine_id)
     if machine is None:
         raise HTTPException(status_code=404, detail="Machine not found")
-    
+
     procedures = await crud.get_procedures_by_machine(db, machine_id)
     return procedures
 
@@ -97,34 +100,28 @@ async def get_machine_with_procedures(
 
 @router.get("/by-work-order-type/{work_order_type}", response_model=List[schemas.Machine])
 async def read_machines_by_work_order_type(
-    work_order_type: str,
+    work_order_type: models.WorkOrderType,
     skip: int = 0,
     limit: int = 100,
     db: AsyncSession = Depends(dependencies.get_db),
 ):
-    """
-    Get machines that have work orders of the specified type ('pm' or 'issue').
-    """
-    if work_order_type not in ['pm', 'issue']:
-        raise HTTPException(status_code=400, detail="work_order_type must be 'pm' or 'issue'")
-    
+    """Get machines that have work orders of the specified type"""
     machines = await crud.get_machines_by_work_order_type(
-        db=db, 
-        work_order_type=work_order_type, 
-        skip=skip, 
+        db=db,
+        work_order_type=work_order_type,
+        skip=skip,
         limit=limit
     )
-    
-    # Annotate with has_pm and has_issue
+
     result = []
     for m in machines:
-        has_pm = any(getattr(wo, 'type', None) == 'pm' for wo in getattr(m, 'work_orders', []))
-        has_issue = any(getattr(wo, 'type', None) == 'issue' for wo in getattr(m, 'work_orders', []))
+        has_pm = any(getattr(wo, 'type', None) == models.WorkOrderType.PM for wo in getattr(m, 'work_orders', []))
+        has_issue = any(getattr(wo, 'type', None) == models.WorkOrderType.ISSUE for wo in getattr(m, 'work_orders', []))
+        has_workorder = any(getattr(wo, 'type', None) == models.WorkOrderType.WORKORDER for wo in getattr(m, 'work_orders', []))
         m_dict = m.__dict__.copy()
         m_dict['has_pm'] = has_pm
         m_dict['has_issue'] = has_issue
+        m_dict['has_workorder'] = has_workorder
         result.append(m_dict)
-    
+
     return result
-
-

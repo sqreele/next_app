@@ -1,5 +1,4 @@
-
-# File: backend/my_app/schemas.py (UPDATED FOR MANY-TO-MANY)
+# File: backend/my_app/schemas.py (UPDATED FOR FORM SUPPORT)
 from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict
 from typing import List, Optional, Literal
 from datetime import date, datetime
@@ -10,13 +9,17 @@ class WorkOrderStatus(str, Enum):
     PENDING = "Pending"
     IN_PROGRESS = "In Progress"
     COMPLETED = "Completed"
-    CANCELLED = "Cancelled"
+    SCHEDULED = "Scheduled"
 
 class WorkOrderPriority(str, Enum):
     LOW = "Low"
     MEDIUM = "Medium"
     HIGH = "High"
-    URGENT = "Urgent"
+
+class WorkOrderType(str, Enum):
+    PM = "pm"
+    ISSUE = "issue"
+    WORKORDER = "workorder"
 
 class MachineStatus(str, Enum):
     OPERATIONAL = "Operational"
@@ -56,7 +59,6 @@ class PropertyUpdate(BaseModel):
 
 class Property(PropertyBase):
     id: int
-    
     model_config = ConfigDict(from_attributes=True)
 
 # --- UserProfile Schemas ---
@@ -76,7 +78,6 @@ class UserProfile(UserProfileBase):
     id: int
     user_id: int
     properties: List[Property] = Field(default_factory=list)
-    
     model_config = ConfigDict(from_attributes=True)
 
 # --- User Schemas ---
@@ -99,14 +100,11 @@ class User(UserBase):
     id: int
     is_active: bool = True
     profile: Optional[UserProfile] = None
-    
     model_config = ConfigDict(from_attributes=True)
 
 class UserSimple(UserBase):
-    """Simplified User schema for nested relationships"""
     id: int
     is_active: bool = True
-    
     model_config = ConfigDict(from_attributes=True)
 
 # --- Room Schemas ---
@@ -128,7 +126,6 @@ class RoomUpdate(BaseModel):
 class Room(RoomBase):
     id: int
     property_id: int
-    
     model_config = ConfigDict(from_attributes=True)
 
 # --- Machine Schemas ---
@@ -157,8 +154,8 @@ class ProcedureBase(BaseModel):
     frequency: Optional[str] = Field(None, max_length=50)
 
 class ProcedureCreate(ProcedureBase):
-    machine_ids: Optional[List[int]] = Field(default_factory=list, description="List of machine IDs")
-    
+    machine_ids: Optional[List[int]] = Field(default_factory=list)
+
     @field_validator('machine_ids', mode='before')
     @classmethod
     def validate_machine_ids(cls, v):
@@ -172,7 +169,7 @@ class ProcedureUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=200)
     remark: Optional[str] = Field(None, max_length=500)
     frequency: Optional[str] = Field(None, max_length=50)
-    machine_ids: Optional[List[int]] = Field(None, description="List of machine IDs")
+    machine_ids: Optional[List[int]] = None
 
     @field_validator('machine_ids', mode='before')
     @classmethod
@@ -211,23 +208,20 @@ class Topic(TopicBase):
 
 # --- WorkOrder Schemas ---
 class WorkOrderCreate(BaseModel):
-    description: Optional[str] = Field(None, max_length=2000)
+    description: str = Field(..., min_length=1, max_length=2000)
     status: WorkOrderStatus = Field(default=WorkOrderStatus.PENDING)
-    priority: WorkOrderPriority = Field(default=WorkOrderPriority.MEDIUM)
+    priority: Optional[WorkOrderPriority] = Field(default=WorkOrderPriority.LOW)
     due_date: Optional[date] = None
     machine_id: Optional[int] = None
     room_id: Optional[int] = None
     assigned_to_id: Optional[int] = None
     property_id: int = Field(..., gt=0)
-    before_image_path: Optional[str] = Field(None, max_length=500)
-    after_image_path: Optional[str] = Field(None, max_length=500)
     before_images: Optional[List[str]] = Field(default_factory=list)
     after_images: Optional[List[str]] = Field(default_factory=list)
-    pdf_file_path: Optional[str] = Field(None, max_length=500)
-    type: Literal['pm', 'issue', 'workorder'] = Field(...)  # UPDATED: Added 'workorder'
+    type: WorkOrderType = Field(...)
     topic_id: Optional[int] = None
     procedure_id: Optional[int] = None
-    frequency: Optional[str] = Field(None, max_length=50)  # NEW: Added frequency
+    frequency: Optional[str] = None
 
     @field_validator('due_date', mode='before')
     @classmethod
@@ -255,8 +249,42 @@ class WorkOrderCreate(BaseModel):
             return []
         return [img for img in v if img and isinstance(img, str)]
 
+    @field_validator('status')
+    def set_status_default(cls, v, values):
+        if 'type' in values and values['type'] == WorkOrderType.WORKORDER:
+            return WorkOrderStatus.SCHEDULED
+        return v
+
+    @field_validator('priority')
+    def set_priority_default(cls, v, values):
+        if 'type' in values and values['type'] in [WorkOrderType.ISSUE, WorkOrderType.WORKORDER]:
+            return WorkOrderPriority.HIGH
+        return v
+
+    @field_validator('procedure_id', 'frequency')
+    def validate_pm_fields(cls, v, values, field):
+        if 'type' in values:
+            type_value = values['type']
+            if type_value != WorkOrderType.PM and v is not None:
+                raise ValueError(f"{field.name} should not be provided for type {type_value}")
+        return v
+
+    @field_validator('machine_id')
+    def validate_machine_id(cls, v, values):
+        if 'type' in values and values['type'] == WorkOrderType.WORKORDER and v is not None:
+            raise ValueError("machine_id should not be provided for type workorder")
+        return v
+
+    @field_validator('frequency')
+    def validate_frequency_format(cls, v, values):
+        if v and 'type' in values and values['type'] == WorkOrderType.PM:
+            valid_frequencies = ['Daily', 'Weekly', 'Monthly', 'Yearly']
+            if v not in valid_frequencies:
+                raise ValueError(f"frequency must be one of: {', '.join(valid_frequencies)}")
+        return v
+
 class WorkOrderUpdate(BaseModel):
-    description: Optional[str] = Field(None, max_length=2000)
+    description: Optional[str] = Field(None, min_length=1, max_length=2000)
     status: Optional[WorkOrderStatus] = None
     priority: Optional[WorkOrderPriority] = None
     due_date: Optional[date] = None
@@ -264,14 +292,12 @@ class WorkOrderUpdate(BaseModel):
     room_id: Optional[int] = None
     assigned_to_id: Optional[int] = None
     property_id: Optional[int] = Field(None, gt=0)
-    before_image_path: Optional[str] = Field(None, max_length=500)
-    after_image_path: Optional[str] = Field(None, max_length=500)
     before_images: Optional[List[str]] = Field(default_factory=list)
     after_images: Optional[List[str]] = Field(default_factory=list)
-    pdf_file_path: Optional[str] = Field(None, max_length=500)
-    type: Optional embarrassing[Literal['pm', 'issue', 'workorder']] = None  # UPDATED: Added 'workorder'
-    frequency: Optional[str] = Field(None, max_length=50)
+    type: Optional[WorkOrderType] = None
+    topic_id: Optional[int] = None
     procedure_id: Optional[int] = None
+    frequency: Optional[str] = None
 
     @field_validator('due_date', mode='before')
     @classmethod
@@ -299,11 +325,19 @@ class WorkOrderUpdate(BaseModel):
             return []
         return [img for img in v if img and isinstance(img, str)]
 
+    @field_validator('frequency')
+    def validate_frequency_format(cls, v, values):
+        if v and 'type' in values and values.get('type') == WorkOrderType.PM:
+            valid_frequencies = ['Daily', 'Weekly', 'Monthly', 'Yearly']
+            if v not in valid_frequencies:
+                raise ValueError(f"frequency must be one of: {', '.join(valid_frequencies)}")
+        return v
+
 class WorkOrder(BaseModel):
     id: int
     description: Optional[str] = None
     status: WorkOrderStatus
-    priority: WorkOrderPriority
+    priority: Optional[WorkOrderPriority] = None
     due_date: Optional[date] = None
     machine_id: Optional[int] = None
     room_id: Optional[int] = None
@@ -311,25 +345,21 @@ class WorkOrder(BaseModel):
     property_id: int
     created_at: datetime
     completed_at: Optional[datetime] = None
-    before_image_path: Optional[str] = None
-    after_image_path: Optional[str] = None
-    before_images: Optional[List[str]] = Field(default_factory=list)
-    after_images: Optional[List[str]] = Field(default_factory=list)
-    pdf_file_path: Optional[str] = None
-    type: Literal['pm', 'issue', 'workorder']  # UPDATED: Added 'workorder'
-    procedure_id: Optional[int] = None
+    before_images: List[str] = Field(default_factory=list)
+    after_images: List[str] = Field(default_factory=list)
+    type: WorkOrderType
     topic_id: Optional[int] = None
-    frequency: Optional[str] = Field(None, max_length=50)  # NEW: Added frequency
-    
+    procedure_id: Optional[int] = None
+    frequency: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
 class WorkOrderWithRelations(WorkOrder):
-    """WorkOrder schema with nested relationships loaded"""
     property: Optional[Property] = None
     room: Optional[Room] = None
     machine: Optional[Machine] = None
     assigned_to: Optional[UserSimple] = None
     topic: Optional[Topic] = None
+    procedure: Optional[Procedure] = None
 
 # --- WorkOrderFile Schemas ---
 class WorkOrderFileBase(BaseModel):
@@ -346,7 +376,6 @@ class WorkOrderFile(WorkOrderFileBase):
     id: int
     work_order_id: int
     uploaded_at: datetime
-    
     model_config = ConfigDict(from_attributes=True)
 
 # --- Procedure Execution Schemas ---
@@ -359,6 +388,7 @@ class ProcedureExecutionBase(BaseModel):
 class ProcedureExecutionCreate(ProcedureExecutionBase):
     procedure_id: int
     machine_id: Optional[int] = None
+    work_order_id: Optional[int] = None
 
 class ProcedureExecutionUpdate(BaseModel):
     status: Optional[Literal['Scheduled', 'In Progress', 'Completed', 'Skipped']] = None
@@ -383,7 +413,6 @@ class ProcedureExecution(ProcedureExecutionBase):
     created_at: datetime
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
-    
     model_config = ConfigDict(from_attributes=True)
 
 class ProcedureExecutionWithDetails(ProcedureExecution):
@@ -414,7 +443,6 @@ class WorkOrdersResponse(BaseModel):
     limit: Optional[int] = None
     message: Optional[str] = None
 
-# --- Error Response Models ---
 class ApiError(BaseModel):
     error: str
     message: str
@@ -424,7 +452,6 @@ class MessageResponse(BaseModel):
     message: str
     detail: Optional[str] = None
 
-# --- File Upload Response ---
 class FileUploadResponse(BaseModel):
     file_path: str
     url: str
@@ -440,14 +467,12 @@ class TechnicianStatus(BaseModel):
     utilization: int
     location: Optional[str] = None
 
-# Calendar Event Schema
 class CalendarEvent(BaseModel):
     id: str
     title: str
-    start: str  # ISO date string
+    start: str
     end: Optional[str] = None
     backgroundColor: str = "#007bff"
     borderColor: str = "#007bff"
     extendedProps: dict = Field(default_factory=dict)
-    
     model_config = ConfigDict(from_attributes=True)
