@@ -249,39 +249,48 @@ class WorkOrderCreate(BaseModel):
             return []
         return [img for img in v if img and isinstance(img, str)]
 
-    @field_validator('status')
-    def set_status_default(cls, v, values):
-        if 'type' in values and values['type'] == WorkOrderType.WORKORDER:
-            return WorkOrderStatus.SCHEDULED
-        return v
+    @model_validator(mode='after')
+    def validate_work_order_fields(self):
+        """Cross-field validation for work order types"""
+        
+        # Set default status based on type
+        if self.type == WorkOrderType.WORKORDER and self.status == WorkOrderStatus.PENDING:
+            self.status = WorkOrderStatus.SCHEDULED
+        
+        # Set default priority for certain types
+        if self.type in [WorkOrderType.ISSUE, WorkOrderType.WORKORDER] and self.priority == WorkOrderPriority.LOW:
+            self.priority = WorkOrderPriority.HIGH
 
-    @field_validator('priority')
-    def set_priority_default(cls, v, values):
-        if 'type' in values and values['type'] in [WorkOrderType.ISSUE, WorkOrderType.WORKORDER]:
-            return WorkOrderPriority.HIGH
-        return v
+        # Validate PM requirements
+        if self.type == WorkOrderType.PM:
+            if not self.machine_id or not self.procedure_id:
+                raise ValueError("machine_id and procedure_id are required for PM work orders")
+            if not self.frequency:
+                raise ValueError("frequency is required for PM work orders")
+            if not self.priority:
+                raise ValueError("priority is required for PM work orders")
 
-    @field_validator('procedure_id', 'frequency')
-    def validate_pm_fields(cls, v, values, field):
-        if 'type' in values:
-            type_value = values['type']
-            if type_value != WorkOrderType.PM and v is not None:
-                raise ValueError(f"{field.name} should not be provided for type {type_value}")
-        return v
+        # Validate ISSUE requirements  
+        elif self.type == WorkOrderType.ISSUE:
+            if not self.machine_id:
+                raise ValueError("machine_id is required for ISSUE work orders")
+            if self.procedure_id or self.frequency:
+                raise ValueError("procedure_id and frequency are not allowed for ISSUE work orders")
+            if not self.priority:
+                raise ValueError("priority is required for ISSUE work orders")
 
-    @field_validator('machine_id')
-    def validate_machine_id(cls, v, values):
-        if 'type' in values and values['type'] == WorkOrderType.WORKORDER and v is not None:
-            raise ValueError("machine_id should not be provided for type workorder")
-        return v
+        # Validate WORKORDER requirements
+        elif self.type == WorkOrderType.WORKORDER:
+            if self.procedure_id or self.frequency or self.machine_id or self.priority:
+                raise ValueError("procedure_id, frequency, machine_id, and priority are not allowed for WORKORDER type")
 
-    @field_validator('frequency')
-    def validate_frequency_format(cls, v, values):
-        if v and 'type' in values and values['type'] == WorkOrderType.PM:
+        # Validate frequency format for PM
+        if self.frequency and self.type == WorkOrderType.PM:
             valid_frequencies = ['Daily', 'Weekly', 'Monthly', 'Yearly']
-            if v not in valid_frequencies:
+            if self.frequency not in valid_frequencies:
                 raise ValueError(f"frequency must be one of: {', '.join(valid_frequencies)}")
-        return v
+
+        return self
 
 class WorkOrderUpdate(BaseModel):
     description: Optional[str] = Field(None, min_length=1, max_length=2000)
@@ -325,13 +334,14 @@ class WorkOrderUpdate(BaseModel):
             return []
         return [img for img in v if img and isinstance(img, str)]
 
-    @field_validator('frequency')
-    def validate_frequency_format(cls, v, values):
-        if v and 'type' in values and values.get('type') == WorkOrderType.PM:
+    @model_validator(mode='after')
+    def validate_frequency_format(self):
+        """Validate frequency format for PM types"""
+        if self.frequency and self.type and self.type == WorkOrderType.PM:
             valid_frequencies = ['Daily', 'Weekly', 'Monthly', 'Yearly']
-            if v not in valid_frequencies:
+            if self.frequency not in valid_frequencies:
                 raise ValueError(f"frequency must be one of: {', '.join(valid_frequencies)}")
-        return v
+        return self
 
 class WorkOrder(BaseModel):
     id: int
