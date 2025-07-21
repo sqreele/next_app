@@ -2,6 +2,8 @@ import json
 import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import select
+
 from my_app.database import SessionLocal, sync_engine
 from my_app.models import Base, Room, Property
 from datetime import datetime
@@ -1783,17 +1785,19 @@ room_data_json = """
 ]
 """
 
+def create_tables_sync():
+    """Create tables using synchronous engine"""
+    try:
+        Base.metadata.create_all(sync_engine)
+        print("Tables created successfully using sync engine.")
+    except Exception as e:
+        print(f"Error creating tables: {e}")
+        raise
+
 async def seed_rooms():
     async with SessionLocal() as db:
         try:
-            # Create tables if they don't exist
-            async with sync_engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-
             # Ensure properties exist
-            from sqlalchemy import select
-            
-            # Check if properties exist and create them if they don't
             prop1 = await db.get(Property, 1)
             if not prop1:
                 prop1 = Property(id=1, name="MaintenancePro Thailand")
@@ -1849,6 +1853,12 @@ async def seed_rooms():
 
 async def main():
     print("Seeding database with initial room data...")
+    
+    # Create tables first using sync engine
+    print("Creating tables...")
+    create_tables_sync()
+    
+    # Then seed the rooms
     await seed_rooms()
     print("Seeding finished.")
 
