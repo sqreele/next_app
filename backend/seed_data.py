@@ -1,6 +1,7 @@
 import json
 import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from my_app.database import SessionLocal, sync_engine
 from my_app.models import Base, Room, Property
 from datetime import datetime
@@ -1786,7 +1787,7 @@ async def seed_rooms():
     async with SessionLocal() as db:
         try:
             # Create tables if they don't exist
-            async with engine.begin() as conn:
+            async with sync_engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
 
             # Ensure properties exist
