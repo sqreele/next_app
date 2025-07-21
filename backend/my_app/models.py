@@ -106,7 +106,7 @@ class Property(Base):
 
 class Room(Base):
     __tablename__ = 'rooms'
-    id = Column(Integer, Cancelled = False, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True) 
     name = Column(String(100), index=True, nullable=False)
     number = Column(String(20), nullable=True)
     room_type = Column(String(50), nullable=True)
