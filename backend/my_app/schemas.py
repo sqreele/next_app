@@ -4,7 +4,7 @@ from typing import List, Optional, Literal
 from datetime import date, datetime
 from enum import Enum
 import re
-from ..models import Frequency  # Import Frequency enum from models.py
+from my_app.models import Frequency  # Use absolute import
 
 # --- Enums ---
 class WorkOrderStatus(str, Enum):
@@ -153,8 +153,8 @@ class Machine(MachineBase):
 class ProcedureBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     remark: Optional[str] = Field(None, max_length=500)
-    frequency: Optional[Frequency] = None  # Use Frequency enum
-    estimated_time: Optional[str] = Field(None, max_length=50)  # New field for duration
+    frequency: Optional[Frequency] = None
+    estimated_time: Optional[str] = Field(None, max_length=50)
 
     @field_validator('frequency', mode='before')
     @classmethod
@@ -168,7 +168,6 @@ class ProcedureBase(BaseModel):
             if match:
                 freq, duration = match.groups()
                 if freq in [f.value for f in Frequency]:
-                    # Set estimated_time if provided in the input
                     if duration and 'estimated_time' in values and values['estimated_time'] is None:
                         values['estimated_time'] = duration
                     return Frequency(freq)
@@ -207,7 +206,6 @@ class ProcedureUpdate(BaseModel):
             if match:
                 freq, duration = match.groups()
                 if freq in [f.value for f in Frequency]:
-                    # Set estimated_time if provided in the input
                     if duration and 'estimated_time' in values and values['estimated_time'] is None:
                         values['estimated_time'] = duration
                     return Frequency(freq)
@@ -256,8 +254,8 @@ class WorkOrderCreate(BaseModel):
     type: WorkOrderType = Field(...)
     topic_id: Optional[int] = None
     procedure_id: Optional[int] = None
-    frequency: Optional[Frequency] = None  # Use Frequency enum
-    estimated_time: Optional[str] = Field(None, max_length=50)  # New field
+    frequency: Optional[Frequency] = None
+    estimated_time: Optional[str] = Field(None, max_length=50)
 
     @field_validator('frequency', mode='before')
     @classmethod
@@ -271,7 +269,6 @@ class WorkOrderCreate(BaseModel):
             if match:
                 freq, duration = match.groups()
                 if freq in [f.value for f in Frequency]:
-                    # Set estimated_time if provided in the input
                     if duration and 'estimated_time' in values and values['estimated_time'] is None:
                         values['estimated_time'] = duration
                     return Frequency(freq)
@@ -308,15 +305,10 @@ class WorkOrderCreate(BaseModel):
     @model_validator(mode='after')
     def validate_work_order_fields(self):
         """Cross-field validation for work order types"""
-        # Set default status based on type
         if self.type == WorkOrderType.WORKORDER and self.status == WorkOrderStatus.PENDING:
             self.status = WorkOrderStatus.SCHEDULED
-        
-        # Set default priority for certain types
         if self.type in [WorkOrderType.ISSUE, WorkOrderType.WORKORDER] and self.priority == WorkOrderPriority.LOW:
             self.priority = WorkOrderPriority.HIGH
-
-        # Validate PM requirements
         if self.type == WorkOrderType.PM:
             if not self.machine_id or not self.procedure_id:
                 raise ValueError("machine_id and procedure_id are required for PM work orders")
@@ -324,8 +316,6 @@ class WorkOrderCreate(BaseModel):
                 raise ValueError("frequency is required for PM work orders")
             if not self.priority:
                 raise ValueError("priority is required for PM work orders")
-
-        # Validate ISSUE requirements  
         elif self.type == WorkOrderType.ISSUE:
             if not self.machine_id:
                 raise ValueError("machine_id is required for ISSUE work orders")
@@ -333,12 +323,9 @@ class WorkOrderCreate(BaseModel):
                 raise ValueError("procedure_id and frequency are not allowed for ISSUE work orders")
             if not self.priority:
                 raise ValueError("priority is required for ISSUE work orders")
-
-        # Validate WORKORDER requirements
         elif self.type == WorkOrderType.WORKORDER:
             if self.procedure_id or self.frequency or self.machine_id or self.priority:
                 raise ValueError("procedure_id, frequency, machine_id, and priority are not allowed for WORKORDER type")
-
         return self
 
 class WorkOrderUpdate(BaseModel):
@@ -370,7 +357,6 @@ class WorkOrderUpdate(BaseModel):
             if match:
                 freq, duration = match.groups()
                 if freq in [f.value for f in Frequency]:
-                    # Set estimated_time if provided in the input
                     if duration and 'estimated_time' in values and values['estimated_time'] is None:
                         values['estimated_time'] = duration
                     return Frequency(freq)
