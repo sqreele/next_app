@@ -1,5 +1,5 @@
 # File: backend/my_app/schemas.py (UPDATED FOR FORM SUPPORT)
-from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator, ConfigDict
 from typing import List, Optional, Literal
 from datetime import date, datetime
 from enum import Enum
