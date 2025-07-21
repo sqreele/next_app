@@ -1,8 +1,10 @@
-# File: backend/my_app/schemas.py (UPDATED FOR FORM SUPPORT)
+# File: backend/my_app/schemas.py
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator, ConfigDict
 from typing import List, Optional, Literal
 from datetime import date, datetime
 from enum import Enum
+import re
+from ..models import Frequency  # Import Frequency enum from models.py
 
 # --- Enums ---
 class WorkOrderStatus(str, Enum):
@@ -151,7 +153,28 @@ class Machine(MachineBase):
 class ProcedureBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     remark: Optional[str] = Field(None, max_length=500)
-    frequency: Optional[str] = Field(None, max_length=50)
+    frequency: Optional[Frequency] = None  # Use Frequency enum
+    estimated_time: Optional[str] = Field(None, max_length=50)  # New field for duration
+
+    @field_validator('frequency', mode='before')
+    @classmethod
+    def parse_frequency(cls, v, values, **kwargs):
+        if v is None:
+            return None
+        if isinstance(v, Frequency):
+            return v
+        if isinstance(v, str):
+            match = re.match(r"(\w+)(?:\s*\((.*?)\))?", v.strip())
+            if match:
+                freq, duration = match.groups()
+                if freq in [f.value for f in Frequency]:
+                    # Set estimated_time if provided in the input
+                    if duration and 'estimated_time' in values and values['estimated_time'] is None:
+                        values['estimated_time'] = duration
+                    return Frequency(freq)
+            if v in [f.value for f in Frequency]:
+                return Frequency(v)
+        raise ValueError(f"frequency must be one of: {', '.join(f.value for f in Frequency)}")
 
 class ProcedureCreate(ProcedureBase):
     machine_ids: Optional[List[int]] = Field(default_factory=list)
@@ -168,17 +191,29 @@ class ProcedureCreate(ProcedureBase):
 class ProcedureUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=200)
     remark: Optional[str] = Field(None, max_length=500)
-    frequency: Optional[str] = Field(None, max_length=50)
+    frequency: Optional[Frequency] = None
+    estimated_time: Optional[str] = Field(None, max_length=50)
     machine_ids: Optional[List[int]] = None
 
-    @field_validator('machine_ids', mode='before')
+    @field_validator('frequency', mode='before')
     @classmethod
-    def validate_machine_ids(cls, v):
+    def parse_frequency(cls, v, values, **kwargs):
         if v is None:
             return None
-        if not isinstance(v, list):
-            return []
-        return [mid for mid in v if isinstance(mid, int) and mid > 0]
+        if isinstance(v, Frequency):
+            return v
+        if isinstance(v, str):
+            match = re.match(r"(\w+)(?:\s*\((.*?)\))?", v.strip())
+            if match:
+                freq, duration = match.groups()
+                if freq in [f.value for f in Frequency]:
+                    # Set estimated_time if provided in the input
+                    if duration and 'estimated_time' in values and values['estimated_time'] is None:
+                        values['estimated_time'] = duration
+                    return Frequency(freq)
+            if v in [f.value for f in Frequency]:
+                return Frequency(v)
+        raise ValueError(f"frequency must be one of: {', '.join(f.value for f in Frequency)}")
 
 class Procedure(ProcedureBase):
     id: int
@@ -221,7 +256,28 @@ class WorkOrderCreate(BaseModel):
     type: WorkOrderType = Field(...)
     topic_id: Optional[int] = None
     procedure_id: Optional[int] = None
-    frequency: Optional[str] = None
+    frequency: Optional[Frequency] = None  # Use Frequency enum
+    estimated_time: Optional[str] = Field(None, max_length=50)  # New field
+
+    @field_validator('frequency', mode='before')
+    @classmethod
+    def parse_frequency(cls, v, values, **kwargs):
+        if v is None:
+            return None
+        if isinstance(v, Frequency):
+            return v
+        if isinstance(v, str):
+            match = re.match(r"(\w+)(?:\s*\((.*?)\))?", v.strip())
+            if match:
+                freq, duration = match.groups()
+                if freq in [f.value for f in Frequency]:
+                    # Set estimated_time if provided in the input
+                    if duration and 'estimated_time' in values and values['estimated_time'] is None:
+                        values['estimated_time'] = duration
+                    return Frequency(freq)
+            if v in [f.value for f in Frequency]:
+                return Frequency(v)
+        raise ValueError(f"frequency must be one of: {', '.join(f.value for f in Frequency)}")
 
     @field_validator('due_date', mode='before')
     @classmethod
@@ -252,7 +308,6 @@ class WorkOrderCreate(BaseModel):
     @model_validator(mode='after')
     def validate_work_order_fields(self):
         """Cross-field validation for work order types"""
-        
         # Set default status based on type
         if self.type == WorkOrderType.WORKORDER and self.status == WorkOrderStatus.PENDING:
             self.status = WorkOrderStatus.SCHEDULED
@@ -284,12 +339,6 @@ class WorkOrderCreate(BaseModel):
             if self.procedure_id or self.frequency or self.machine_id or self.priority:
                 raise ValueError("procedure_id, frequency, machine_id, and priority are not allowed for WORKORDER type")
 
-        # Validate frequency format for PM
-        if self.frequency and self.type == WorkOrderType.PM:
-            valid_frequencies = ['Daily', 'Weekly', 'Monthly', 'Yearly']
-            if self.frequency not in valid_frequencies:
-                raise ValueError(f"frequency must be one of: {', '.join(valid_frequencies)}")
-
         return self
 
 class WorkOrderUpdate(BaseModel):
@@ -306,7 +355,28 @@ class WorkOrderUpdate(BaseModel):
     type: Optional[WorkOrderType] = None
     topic_id: Optional[int] = None
     procedure_id: Optional[int] = None
-    frequency: Optional[str] = None
+    frequency: Optional[Frequency] = None
+    estimated_time: Optional[str] = Field(None, max_length=50)
+
+    @field_validator('frequency', mode='before')
+    @classmethod
+    def parse_frequency(cls, v, values, **kwargs):
+        if v is None:
+            return None
+        if isinstance(v, Frequency):
+            return v
+        if isinstance(v, str):
+            match = re.match(r"(\w+)(?:\s*\((.*?)\))?", v.strip())
+            if match:
+                freq, duration = match.groups()
+                if freq in [f.value for f in Frequency]:
+                    # Set estimated_time if provided in the input
+                    if duration and 'estimated_time' in values and values['estimated_time'] is None:
+                        values['estimated_time'] = duration
+                    return Frequency(freq)
+            if v in [f.value for f in Frequency]:
+                return Frequency(v)
+        raise ValueError(f"frequency must be one of: {', '.join(f.value for f in Frequency)}")
 
     @field_validator('due_date', mode='before')
     @classmethod
@@ -334,15 +404,6 @@ class WorkOrderUpdate(BaseModel):
             return []
         return [img for img in v if img and isinstance(img, str)]
 
-    @model_validator(mode='after')
-    def validate_frequency_format(self):
-        """Validate frequency format for PM types"""
-        if self.frequency and self.type and self.type == WorkOrderType.PM:
-            valid_frequencies = ['Daily', 'Weekly', 'Monthly', 'Yearly']
-            if self.frequency not in valid_frequencies:
-                raise ValueError(f"frequency must be one of: {', '.join(valid_frequencies)}")
-        return self
-
 class WorkOrder(BaseModel):
     id: int
     description: Optional[str] = None
@@ -360,7 +421,8 @@ class WorkOrder(BaseModel):
     type: WorkOrderType
     topic_id: Optional[int] = None
     procedure_id: Optional[int] = None
-    frequency: Optional[str] = None
+    frequency: Optional[Frequency] = None
+    estimated_time: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
 class WorkOrderWithRelations(WorkOrder):
