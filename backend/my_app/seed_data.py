@@ -1795,7 +1795,7 @@ def seed_rooms():
     db: Session = SessionLocal()
     try:
         # Create tables if they don't exist
-        Base.metadata.create_all(bind=engine)
+        Base.metadata.create_all(bind=sync_engine)
 
         # Ensure properties exist
         prop1 = db.query(Property).filter(Property.id == 1).first()
