@@ -1,7 +1,7 @@
 import json
 import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
-from my_app.database import SessionLocal, engine
+from my_app.database import SessionLocal, sync_engine
 from my_app.models import Base, Room, Property
 from datetime import datetime
 
