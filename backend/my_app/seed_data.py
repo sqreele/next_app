@@ -1,6 +1,6 @@
 import json
 from sqlalchemy.orm import Session
-from my_app.database import SessionLocal, engine
+from my_app.database import SessionLocal, sync_engine
 from my_app.models import Base, Room, Property
 from datetime import datetime
 
