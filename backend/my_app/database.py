@@ -23,7 +23,7 @@ DB_NAME = os.getenv('DB_NAME', 'fullstack_db')
 SQLALCHEMY_DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 SQLALCHEMY_SYNC_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-# Async engine for FastAPI - RENAMED from 'engine' to 'async_engine'
+# Async engine for FastAPI
 async_engine = create_async_engine(
     SQLALCHEMY_DATABASE_URL, 
     echo=True,
@@ -36,14 +36,17 @@ sync_engine = create_engine(
     echo=True
 )
 
-# Use AsyncSession for the sessionmaker - RENAMED from 'SessionLocal' to 'AsyncSessionLocal'
+# Use AsyncSession for the sessionmaker
 AsyncSessionLocal = sessionmaker(
-    bind=async_engine,  # Updated to use async_engine
+    bind=async_engine,
     class_=AsyncSession,
     expire_on_commit=False
 )
 
-# ADDED: Dependency to get async database session
+# For backward compatibility with existing code that imports SessionLocal
+SessionLocal = AsyncSessionLocal
+
+# Dependency to get async database session
 async def get_db():
     async with AsyncSessionLocal() as session:
         try:
