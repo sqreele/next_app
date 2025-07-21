@@ -221,7 +221,7 @@ class Procedure(Base):
     title = Column(String(200), nullable=False)
     remark = Column(String(500), nullable=True)
     frequency = Column(Enum(Frequency), nullable=True)
-    
+    estimated_time = Column(String(50), nullable=True)
     machines = relationship("Machine", secondary=machine_procedure_association, back_populates="procedures")
     procedure_executions = relationship("ProcedureExecution", back_populates="procedure", cascade="all, delete-orphan")
 
