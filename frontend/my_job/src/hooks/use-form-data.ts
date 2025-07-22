@@ -1,16 +1,43 @@
 // frontend/my_job/src/hooks/use-form-data.ts
 import { useState, useEffect, useCallback } from 'react'
-import { machinesAPI, Machine } from '@/services/machines-api'
-import { roomsAPI, Room } from '@/services/rooms-api'
-import { usersAPI, User } from '@/services/users-api'
-import { propertiesAPI, Property } from '@/services/properties-api'
-import { topicsAPI, Topic } from '@/services/topics-api'
+import { machinesAPI } from '@/services/machines-api'
+import { roomsAPI } from '@/services/rooms-api'
+import { usersAPI } from '@/services/users-api'
+import { propertiesAPI } from '@/services/properties-api'
+import { topicsAPI } from '@/services/topics-api'
 
 export interface Procedure {
   id: number
   title: string
   remark?: string
   frequency?: string
+}
+
+interface Machine {
+  id: number
+  name: string
+  status: string
+}
+
+interface Room {
+  id: number
+  name: string
+  number: string
+}
+
+interface User {
+  id: number
+  username: string
+}
+
+interface Property {
+  id: number
+  name: string
+}
+
+interface Topic {
+  id: number
+  title: string
 }
 
 interface FormDataState {
@@ -65,14 +92,6 @@ export function useFormData() {
           properties: propResponse.status === 'fulfilled' ? propResponse.value : [],
           topics: topicResponse.status === 'fulfilled' ? topicResponse.value : [],
         }))
-
-        // Log any failed requests
-        const failed = [roomsResponse, techResponse, propResponse, topicResponse]
-          .filter(result => result.status === 'rejected')
-        
-        if (failed.length > 0) {
-          console.warn('Some data failed to load:', failed)
-        }
       } catch (error: any) {
         console.error('Error fetching initial data:', error)
         setError('Failed to load form data')
