@@ -26,12 +26,11 @@ import {
   workOrdersAPI, 
   isValidationError, 
   getValidationErrors, 
-  validateWorkOrderData,
-  CreateWorkOrderData 
+  validateWorkOrderData 
 } from '@/services/work-orders-api'
 import { useFormData } from '@/hooks/use-form-data'
 
-// Enhanced validation schema using Zod
+// Enhanced validation schema using Zod with better conditional validation
 const workOrderSchema = z.object({
   type: z.enum(['pm', 'issue', 'workorder'], {
     required_error: 'Work order type is required'
@@ -42,7 +41,7 @@ const workOrderSchema = z.object({
   procedure_id: z.string().optional(),
   machine_id: z.string().optional(),
   frequency: z.enum(['Daily', 'Weekly', 'Monthly', 'Yearly']).optional(),
-  priority: z.enum(['Low', 'Medium', 'High']).optional(),
+  priority: z.enum(['Low', 'Medium', 'High']).optional().nullable(),
   status: z.enum(['Pending', 'In Progress', 'Completed', 'Scheduled']),
   due_date: z.string().optional(),
   room_id: z.string().optional(),
@@ -50,16 +49,16 @@ const workOrderSchema = z.object({
   property_id: z.string().optional(),
   topic_id: z.string().optional(),
 }).superRefine((data, ctx) => {
-  // Conditional validation based on work order type
+  // Conditional validation based on work order type using superRefine for better validation control 
   if (data.type === 'pm') {
-    if (!data.procedure_id) {
+    if (!data.procedure_id || data.procedure_id === '') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['procedure_id'],
         message: 'Procedure is required for Preventive Maintenance'
       })
     }
-    if (!data.machine_id) {
+    if (!data.machine_id || data.machine_id === '') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['machine_id'],
@@ -83,7 +82,7 @@ const workOrderSchema = z.object({
   }
   
   if (data.type === 'issue') {
-    if (!data.machine_id) {
+    if (!data.machine_id || data.machine_id === '') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['machine_id'],
@@ -99,8 +98,8 @@ const workOrderSchema = z.object({
     }
   }
   
-  // Date validation
-  if (data.due_date) {
+  // Date validation with better error handling
+  if (data.due_date && data.due_date !== '') {
     const dueDate = new Date(data.due_date)
     const now = new Date()
     if (dueDate < now) {
@@ -179,7 +178,6 @@ export function ImprovedWorkOrderForm() {
     watch,
     setValue,
     reset,
-    setError,
     clearErrors,
     formState: { errors, isValid, isDirty }
   } = useForm<WorkOrderFormData>({
@@ -188,7 +186,7 @@ export function ImprovedWorkOrderForm() {
       type: undefined,
       description: '',
       status: 'Pending',
-      priority: undefined,
+      priority: null,
       procedure_id: '',
       machine_id: '',
       frequency: undefined,
@@ -208,7 +206,7 @@ export function ImprovedWorkOrderForm() {
   useEffect(() => {
     if (watchedType && watchedType !== 'workorder') {
       fetchMachinesByType(watchedType)
-      // Clear machine and procedure when type changes
+      // Clear machine selection when type changes
       setValue('machine_id', '')
       setValue('procedure_id', '')
     }
@@ -216,9 +214,9 @@ export function ImprovedWorkOrderForm() {
 
   // Load procedures when machine changes (for PM only)
   useEffect(() => {
-    if (watchedType === 'pm' && watchedMachineId) {
+    if (watchedType === 'pm' && watchedMachineId && watchedMachineId !== '') {
       fetchProceduresByMachine(parseInt(watchedMachineId))
-      // Clear procedure when machine changes
+      // Clear procedure selection when machine changes
       setValue('procedure_id', '')
     }
   }, [watchedType, watchedMachineId, fetchProceduresByMachine, setValue])
@@ -228,45 +226,62 @@ export function ImprovedWorkOrderForm() {
     if (watchedType === 'pm') {
       setValue('status', 'Pending')
       setValue('priority', 'Low')
+      // Clear fields that don't apply to PM
+      clearErrors(['priority'])
     } else if (watchedType === 'issue') {
       setValue('status', 'Pending')
       setValue('priority', 'High')
+      // Clear fields that don't apply to issues
+      setValue('procedure_id', '')
+      setValue('frequency', undefined)
+      clearErrors(['procedure_id', 'frequency'])
     } else if (watchedType === 'workorder') {
       setValue('status', 'Scheduled')
-      setValue('priority', undefined)
+      setValue('priority', null)
+      // Clear fields that don't apply to work orders
       setValue('procedure_id', '')
       setValue('frequency', undefined)
       setValue('machine_id', '')
+      clearErrors(['priority', 'procedure_id', 'frequency', 'machine_id'])
     }
-  }, [watchedType, setValue])
+  }, [watchedType, setValue, clearErrors])
 
-  // File handling functions
+  // File handling functions with better error handling
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return
 
     const newFiles = Array.from(e.target.files)
     
-    // Validate files
+    // Validate files with detailed feedback
     const validFiles = newFiles.filter(file => {
       if (file.size > 5 * 1024 * 1024) {
-        toast.error(`File ${file.name} is too large (max 5MB)`)
+        toast.error(`File "${file.name}" is too large (max 5MB)`)
         return false
       }
       if (!file.type.startsWith('image/')) {
-        toast.error(`File ${file.name} is not an image`)
+        toast.error(`File "${file.name}" is not an image`)
         return false
       }
       return true
     })
 
+    if (validFiles.length === 0 && newFiles.length > 0) {
+      toast.error('No valid files selected')
+      return
+    }
+
     const newFilesWithPreview: FileWithPreview[] = validFiles.map(file => ({
       file,
       preview: URL.createObjectURL(file),
-      id: Math.random().toString(36).substring(7),
+      id: crypto.randomUUID?.() || Math.random().toString(36).substring(7),
       uploadStatus: 'pending'
     }))
 
     setFiles(prev => [...prev, ...newFilesWithPreview])
+    
+    if (validFiles.length > 0) {
+      toast.success(`${validFiles.length} file(s) selected`)
+    }
   }, [])
 
   const removeFile = useCallback((id: string) => {
@@ -277,12 +292,15 @@ export function ImprovedWorkOrderForm() {
       }
       return prev.filter(f => f.id !== id)
     })
+    toast.info('File removed')
   }, [])
 
-  // Upload images function
+  // Enhanced upload images function with better error handling
   const uploadImages = useCallback(async (workOrderId: string): Promise<string[]> => {
     const pendingFiles = files.filter(f => f.uploadStatus === 'pending')
     if (pendingFiles.length === 0) return []
+
+    toast.info(`Uploading ${pendingFiles.length} image(s)...`)
 
     const uploadPromises = pendingFiles.map(async (fileWithPreview) => {
       try {
@@ -303,7 +321,8 @@ export function ImprovedWorkOrderForm() {
         })
 
         if (!response.ok) {
-          throw new Error('Upload failed')
+          const errorData = await response.json().catch(() => ({ message: 'Upload failed' }))
+          throw new Error(errorData.message || `HTTP ${response.status}`)
         }
 
         const result = await response.json()
@@ -314,11 +333,12 @@ export function ImprovedWorkOrderForm() {
             : f
         ))
 
-        return result.url
-      } catch (error) {
+        return result.url || result.file_path
+      } catch (error: any) {
+        console.error(`Upload failed for ${fileWithPreview.file.name}:`, error)
         setFiles(prev => prev.map(f => 
           f.id === fileWithPreview.id 
-            ? { ...f, uploadStatus: 'error', error: 'Upload failed' }
+            ? { ...f, uploadStatus: 'error', error: error.message }
             : f
         ))
         return null
@@ -326,46 +346,47 @@ export function ImprovedWorkOrderForm() {
     })
 
     const results = await Promise.all(uploadPromises)
-    return results.filter((url): url is string => url !== null)
+    const successfulUploads = results.filter((url): url is string => url !== null)
+    
+    if (successfulUploads.length > 0) {
+      toast.success(`${successfulUploads.length} image(s) uploaded successfully`)
+    }
+    
+    return successfulUploads
   }, [files])
 
-  // Enhanced form submission with better error handling
+  // Enhanced form submission with improved error handling
   const onSubmit = async (data: WorkOrderFormData) => {
     if (isSubmitting) return
     
     setIsSubmitting(true)
-    clearErrors() // Clear any previous errors
-
     try {
       // Transform data for API
-      const submitData: CreateWorkOrderData = {
+      const submitData = {
         type: data.type,
-        description: data.description,
-        procedure_id: data.procedure_id ? parseInt(data.procedure_id) : null,
-        machine_id: data.machine_id ? parseInt(data.machine_id) : null,
+        description: data.description.trim(),
+        procedure_id: data.procedure_id && data.procedure_id !== '' ? parseInt(data.procedure_id) : null,
+        machine_id: data.machine_id && data.machine_id !== '' ? parseInt(data.machine_id) : null,
         frequency: data.frequency || null,
         priority: data.priority || null,
         status: data.status,
-        due_date: data.due_date || undefined,
-        room_id: data.room_id ? parseInt(data.room_id) : undefined,
-        assigned_to_id: data.assigned_to_id ? parseInt(data.assigned_to_id) : undefined,
-        property_id: data.property_id ? parseInt(data.property_id) : undefined,
-        topic_id: data.topic_id ? parseInt(data.topic_id) : undefined,
+        due_date: data.due_date && data.due_date !== '' ? data.due_date : undefined,
+        room_id: data.room_id && data.room_id !== '' ? parseInt(data.room_id) : undefined,
+        assigned_to_id: data.assigned_to_id && data.assigned_to_id !== '' ? parseInt(data.assigned_to_id) : undefined,
+        property_id: data.property_id && data.property_id !== '' ? parseInt(data.property_id) : undefined,
+        topic_id: data.topic_id && data.topic_id !== '' ? parseInt(data.topic_id) : undefined,
         before_images: [],
         after_images: [],
-        before_image_path: null,
-        after_image_path: null,
-        pdf_file_path: null
       }
 
-      // Client-side validation first
+      // Client-side validation before submission
       const clientValidationErrors = validateWorkOrderData(submitData)
       if (clientValidationErrors.length > 0) {
         clientValidationErrors.forEach(error => toast.error(error))
         return
       }
 
-      // Create work order - error handling is now managed by the API client
+      // Create work order with enhanced error handling
       const workOrder = await workOrdersAPI.createWorkOrder(submitData)
 
       // Upload images if any
@@ -374,7 +395,7 @@ export function ImprovedWorkOrderForm() {
           await uploadImages(workOrder.id.toString())
           const failedUploads = files.filter(f => f.uploadStatus === 'error')
           if (failedUploads.length > 0) {
-            toast.warning(`Work order created, but ${failedUploads.length} images failed to upload`)
+            toast.warning(`Work order created, but ${failedUploads.length} image(s) failed to upload`)
           }
         } catch (error) {
           console.error('Image upload error:', error)
@@ -383,32 +404,22 @@ export function ImprovedWorkOrderForm() {
       }
 
       toast.success('Work order created successfully!')
+      
+      // Reset form and navigate
+      reset()
+      setFiles([])
       router.push('/work-orders')
+      
     } catch (error: any) {
       console.error('Error creating work order:', error)
       
-      // Handle validation errors specifically
+      // Enhanced error handling using the new API client
       if (isValidationError(error)) {
         const validationErrors = getValidationErrors(error)
-        
-        // Set form errors for specific fields if possible
-        // This is a simple mapping - you might want to make it more sophisticated
-        validationErrors.forEach(errMsg => {
-          if (errMsg.includes('description')) {
-            setError('description', { message: errMsg })
-          } else if (errMsg.includes('machine')) {
-            setError('machine_id', { message: errMsg })
-          } else if (errMsg.includes('procedure')) {
-            setError('procedure_id', { message: errMsg })
-          } else if (errMsg.includes('priority')) {
-            setError('priority', { message: errMsg })
-          } else {
-            toast.error(errMsg)
-          }
-        })
+        validationErrors.forEach(err => toast.error(err))
       } else {
-        // For non-validation errors, the API client already showed a toast
-        // but we can add additional form-specific handling here if needed
+        // Fallback for other types of errors
+        toast.error(error.message || 'Failed to create work order. Please try again.')
       }
     } finally {
       setIsSubmitting(false)
@@ -426,6 +437,25 @@ export function ImprovedWorkOrderForm() {
     }
   }, [files])
 
+  // Loading and error states
+  if (dataLoading && (!machines.length && !rooms.length && !technicians.length)) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+          <Card>
+            <CardContent className="p-6">
+              <div className="space-y-4">
+                <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+                <div className="h-10 bg-gray-200 rounded"></div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
   if (dataError) {
     return (
       <Card className="border-red-200 bg-red-50">
@@ -434,8 +464,8 @@ export function ImprovedWorkOrderForm() {
             <ExclamationTriangleIcon className="h-5 w-5" />
             <span>Error loading form data: {dataError}</span>
           </div>
-          <Button
-            onClick={() => window.location.reload()}
+          <Button 
+            onClick={() => window.location.reload()} 
             className="mt-4"
             variant="outline"
           >
@@ -495,7 +525,7 @@ export function ImprovedWorkOrderForm() {
             )}
           />
           {errors.type && (
-            <p className="mt-2 text-sm text-red-600">{errors.type.message}</p>
+            <p className="mt-2 text-sm text-red-600" role="alert">{errors.type.message}</p>
           )}
         </CardContent>
       </Card>
@@ -519,11 +549,14 @@ export function ImprovedWorkOrderForm() {
                   rows={3}
                   disabled={isSubmitting}
                   className={errors.description ? 'border-red-500' : ''}
+                  aria-describedby={errors.description ? "description-error" : undefined}
                 />
               )}
             />
             {errors.description && (
-              <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>
+              <p id="description-error" className="mt-1 text-sm text-red-600" role="alert">
+                {errors.description.message}
+              </p>
             )}
           </div>
 
@@ -539,11 +572,14 @@ export function ImprovedWorkOrderForm() {
                   type="datetime-local"
                   disabled={isSubmitting}
                   className={errors.due_date ? 'border-red-500' : ''}
+                  aria-describedby={errors.due_date ? "due_date-error" : undefined}
                 />
               )}
             />
             {errors.due_date && (
-              <p className="mt-1 text-sm text-red-600">{errors.due_date.message}</p>
+              <p id="due_date-error" className="mt-1 text-sm text-red-600" role="alert">
+                {errors.due_date.message}
+              </p>
             )}
           </div>
 
@@ -560,6 +596,7 @@ export function ImprovedWorkOrderForm() {
                   className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed ${
                     errors.status ? 'border-red-500' : 'border-gray-300'
                   }`}
+                  aria-describedby={errors.status ? "status-error" : undefined}
                 >
                   <option value="">Select status...</option>
                   <option value="Pending">Pending</option>
@@ -570,7 +607,9 @@ export function ImprovedWorkOrderForm() {
               )}
             />
             {errors.status && (
-              <p className="mt-1 text-sm text-red-600">{errors.status.message}</p>
+              <p id="status-error" className="mt-1 text-sm text-red-600" role="alert">
+                {errors.status.message}
+              </p>
             )}
           </div>
 
@@ -583,12 +622,12 @@ export function ImprovedWorkOrderForm() {
                 <select
                   {...field}
                   id="property_id"
+                  disabled={isSubmitting || dataLoading}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={dataLoading || isSubmitting}
                 >
                   <option value="">Select a property...</option>
                   {properties.map((property) => (
-                    <option key={property.id} value={property.id}>
+                    <option key={property.id} value={property.id.toString()}>
                       {property.name}
                     </option>
                   ))}
@@ -606,12 +645,12 @@ export function ImprovedWorkOrderForm() {
                 <select
                   {...field}
                   id="topic_id"
+                  disabled={isSubmitting || dataLoading}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={dataLoading || isSubmitting}
                 >
                   <option value="">Select a topic...</option>
                   {topics.map((topic) => (
-                    <option key={topic.id} value={topic.id}>
+                    <option key={topic.id} value={topic.id.toString()}>
                       {topic.title}
                     </option>
                   ))}
@@ -647,14 +686,15 @@ export function ImprovedWorkOrderForm() {
                     <select
                       {...field}
                       id="machine_id"
+                      disabled={isSubmitting || dataLoading}
                       className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed ${
                         errors.machine_id ? 'border-red-500' : 'border-gray-300'
                       }`}
-                      disabled={dataLoading || isSubmitting}
+                      aria-describedby={errors.machine_id ? "machine_id-error" : undefined}
                     >
                       <option value="">Select a machine...</option>
                       {machines.map((machine) => (
-                        <option key={machine.id} value={machine.id}>
+                        <option key={machine.id} value={machine.id.toString()}>
                           {machine.name}
                         </option>
                       ))}
@@ -662,7 +702,9 @@ export function ImprovedWorkOrderForm() {
                   )}
                 />
                 {errors.machine_id && (
-                  <p className="mt-1 text-sm text-red-600">{errors.machine_id.message}</p>
+                  <p id="machine_id-error" className="mt-1 text-sm text-red-600" role="alert">
+                    {errors.machine_id.message}
+                  </p>
                 )}
               </div>
             )}
@@ -677,16 +719,17 @@ export function ImprovedWorkOrderForm() {
                     <select
                       {...field}
                       id="procedure_id"
+                      disabled={isSubmitting || !watchedMachineId || watchedMachineId === '' || dataLoading}
                       className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed ${
                         errors.procedure_id ? 'border-red-500' : 'border-gray-300'
                       }`}
-                      disabled={!watchedMachineId || dataLoading || isSubmitting}
+                      aria-describedby={errors.procedure_id ? "procedure_id-error" : undefined}
                     >
                       <option value="">
-                        {!watchedMachineId ? 'Select a machine first...' : 'Select a procedure...'}
+                        {!watchedMachineId || watchedMachineId === '' ? 'Select a machine first...' : 'Select a procedure...'}
                       </option>
                       {procedures.map((procedure) => (
-                        <option key={procedure.id} value={procedure.id}>
+                        <option key={procedure.id} value={procedure.id.toString()}>
                           {procedure.title}
                         </option>
                       ))}
@@ -694,7 +737,9 @@ export function ImprovedWorkOrderForm() {
                   )}
                 />
                 {errors.procedure_id && (
-                  <p className="mt-1 text-sm text-red-600">{errors.procedure_id.message}</p>
+                  <p id="procedure_id-error" className="mt-1 text-sm text-red-600" role="alert">
+                    {errors.procedure_id.message}
+                  </p>
                 )}
               </div>
             )}
@@ -713,6 +758,7 @@ export function ImprovedWorkOrderForm() {
                       className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed ${
                         errors.frequency ? 'border-red-500' : 'border-gray-300'
                       }`}
+                      aria-describedby={errors.frequency ? "frequency-error" : undefined}
                     >
                       <option value="">Select frequency...</option>
                       <option value="Daily">Daily</option>
@@ -723,7 +769,9 @@ export function ImprovedWorkOrderForm() {
                   )}
                 />
                 {errors.frequency && (
-                  <p className="mt-1 text-sm text-red-600">{errors.frequency.message}</p>
+                  <p id="frequency-error" className="mt-1 text-sm text-red-600" role="alert">
+                    {errors.frequency.message}
+                  </p>
                 )}
               </div>
             )}
@@ -740,8 +788,8 @@ export function ImprovedWorkOrderForm() {
                         <button
                           key={option.value}
                           type="button"
-                          onClick={() => field.onChange(option.value)}
                           disabled={isSubmitting}
+                          onClick={() => field.onChange(option.value)}
                           className={`p-3 rounded-lg border-2 transition-all text-center disabled:opacity-50 disabled:cursor-not-allowed ${
                             field.value === option.value
                               ? `${option.color} border-current`
@@ -755,7 +803,7 @@ export function ImprovedWorkOrderForm() {
                   )}
                 />
                 {errors.priority && (
-                  <p className="mt-1 text-sm text-red-600">{errors.priority.message}</p>
+                  <p className="mt-1 text-sm text-red-600" role="alert">{errors.priority.message}</p>
                 )}
               </div>
             )}
@@ -778,12 +826,12 @@ export function ImprovedWorkOrderForm() {
                 <select
                   {...field}
                   id="room_id"
+                  disabled={isSubmitting || dataLoading}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={dataLoading || isSubmitting}
                 >
                   <option value="">Select a room...</option>
                   {rooms.map((room) => (
-                    <option key={room.id} value={room.id}>
+                    <option key={room.id} value={room.id.toString()}>
                       {room.name} ({room.number})
                     </option>
                   ))}
@@ -801,12 +849,12 @@ export function ImprovedWorkOrderForm() {
                 <select
                   {...field}
                   id="assigned_to_id"
+                  disabled={isSubmitting || dataLoading}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={dataLoading || isSubmitting}
                 >
                   <option value="">Select a technician...</option>
                   {technicians.map((technician) => (
-                    <option key={technician.id} value={technician.id}>
+                    <option key={technician.id} value={technician.id.toString()}>
                       {technician.username}
                     </option>
                   ))}
@@ -856,7 +904,7 @@ export function ImprovedWorkOrderForm() {
                         type="button"
                         onClick={() => removeFile(fileWithPreview.id)}
                         disabled={isSubmitting}
-                        className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
                       >
                         <XMarkIcon className="h-4 w-4" />
                       </button>
@@ -873,6 +921,11 @@ export function ImprovedWorkOrderForm() {
                       {fileWithPreview.uploadStatus === 'error' && (
                         <div className="absolute inset-0 bg-red-500 bg-opacity-50 flex items-center justify-center rounded-lg">
                           <span className="text-white text-xs">Failed</span>
+                        </div>
+                      )}
+                      {fileWithPreview.uploadStatus === 'success' && (
+                        <div className="absolute top-1 right-1 p-1 bg-green-500 text-white rounded-full">
+                          <CheckCircleIcon className="h-3 w-3" />
                         </div>
                       )}
                     </div>
