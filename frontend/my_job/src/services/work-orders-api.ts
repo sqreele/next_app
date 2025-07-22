@@ -262,3 +262,81 @@ export const getApiValidationErrors = (error: any): Record<string, string[]> | n
   }
   return null
 }
+// frontend/my_job/src/services/work-orders-api.ts (Updated to use new error handling)
+import apiClient, { makeWorkOrderRequest, retryRequest, ApiError } from '@/lib/api-client'
+import { AxiosResponse } from 'axios'
+
+// ... (keep your existing interfaces)
+
+class WorkOrdersAPI {
+  private readonly endpoint = '/api/v1/work_orders'
+
+  async getWorkOrders(filters?: WorkOrderFilters): Promise<WorkOrder[]> {
+    return makeWorkOrderRequest(() => {
+      const params = new URLSearchParams()
+      
+      if (filters) {
+        Object.entries(filters).forEach(([key, value]) => {
+          if (value !== undefined && value !== null && value !== '') {
+            params.append(key, value.toString())
+          }
+        })
+      }
+
+      return apiClient.get<WorkOrder[]>(
+        `${this.endpoint}${params.toString() ? `?${params.toString()}` : ''}`
+      )
+    })
+  }
+
+  async getWorkOrder(id: number): Promise<WorkOrder> {
+    return makeWorkOrderRequest(() => 
+      apiClient.get<WorkOrder>(`${this.endpoint}/${id}`)
+    )
+  }
+
+  async createWorkOrder(data: CreateWorkOrderData): Promise<WorkOrder> {
+    return retryRequest(
+      () => makeWorkOrderRequest(() => 
+        apiClient.post<WorkOrder>(this.endpoint, data)
+      ),
+      2 // Retry failed work order creation once
+    )
+  }
+
+  async updateWorkOrder(id: number, data: UpdateWorkOrderData): Promise<WorkOrder> {
+    return makeWorkOrderRequest(() => 
+      apiClient.patch<WorkOrder>(`${this.endpoint}/${id}`, data)
+    )
+  }
+
+  async deleteWorkOrder(id: number): Promise<void> {
+    return makeWorkOrderRequest(() => 
+      apiClient.delete(`${this.endpoint}/${id}`)
+    )
+  }
+
+  // Add more methods following the same pattern...
+}
+
+export const workOrdersAPI = new WorkOrdersAPI()
+
+// Helper function to check if error is validation related
+export const isValidationError = (error: any): error is ApiError => {
+  return error && error.status === 422
+}
+
+// Helper function to extract validation details
+export const getValidationErrors = (error: ApiError): string[] => {
+  if (!error.details) return []
+  
+  if (Array.isArray(error.details)) {
+    return error.details.map(err => err.msg || err.message || err.toString())
+  }
+  
+  if (typeof error.details === 'object') {
+    return Object.values(error.details).flat()
+  }
+  
+  return []
+}
