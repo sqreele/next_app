@@ -22,7 +22,13 @@ import {
   PhotoIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline'
-import { workOrdersAPI } from '@/services/work-orders-api'
+import { 
+  workOrdersAPI, 
+  isValidationError, 
+  getValidationErrors, 
+  validateWorkOrderData,
+  CreateWorkOrderData 
+} from '@/services/work-orders-api'
 import { useFormData } from '@/hooks/use-form-data'
 
 // Enhanced validation schema using Zod
@@ -120,21 +126,21 @@ interface FileWithPreview {
 
 const workOrderTypes = [
   { 
-    value: 'pm', 
+    value: 'pm' as const, 
     label: 'Preventive Maintenance', 
     icon: WrenchScrewdriverIcon, 
     description: 'Scheduled maintenance tasks',
     color: 'bg-green-100 text-green-800 border-green-200'
   },
   { 
-    value: 'issue', 
+    value: 'issue' as const, 
     label: 'Issue/Problem', 
     icon: ExclamationTriangleIcon, 
     description: 'Report and fix problems',
     color: 'bg-red-100 text-red-800 border-red-200'
   },
   { 
-    value: 'workorder', 
+    value: 'workorder' as const, 
     label: 'Work Order', 
     icon: DocumentIcon, 
     description: 'General work requests',
@@ -143,16 +149,15 @@ const workOrderTypes = [
 ]
 
 const priorityOptions = [
-  { value: 'Low', label: 'Low Priority', color: 'bg-gray-100 text-gray-800' },
-  { value: 'Medium', label: 'Medium Priority', color: 'bg-blue-100 text-blue-800' },
-  { value: 'High', label: 'High Priority', color: 'bg-orange-100 text-orange-800' },
+  { value: 'Low' as const, label: 'Low Priority', color: 'bg-gray-100 text-gray-800' },
+  { value: 'Medium' as const, label: 'Medium Priority', color: 'bg-blue-100 text-blue-800' },
+  { value: 'High' as const, label: 'High Priority', color: 'bg-orange-100 text-orange-800' },
 ]
 
 export function ImprovedWorkOrderForm() {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [files, setFiles] = useState<FileWithPreview[]>([])
-  const [formStep, setFormStep] = useState(0)
   
   // Use the form data hook for dropdowns
   const {
@@ -174,6 +179,8 @@ export function ImprovedWorkOrderForm() {
     watch,
     setValue,
     reset,
+    setError,
+    clearErrors,
     formState: { errors, isValid, isDirty }
   } = useForm<WorkOrderFormData>({
     resolver: zodResolver(workOrderSchema),
@@ -201,15 +208,20 @@ export function ImprovedWorkOrderForm() {
   useEffect(() => {
     if (watchedType && watchedType !== 'workorder') {
       fetchMachinesByType(watchedType)
+      // Clear machine and procedure when type changes
+      setValue('machine_id', '')
+      setValue('procedure_id', '')
     }
-  }, [watchedType, fetchMachinesByType])
+  }, [watchedType, fetchMachinesByType, setValue])
 
   // Load procedures when machine changes (for PM only)
   useEffect(() => {
     if (watchedType === 'pm' && watchedMachineId) {
       fetchProceduresByMachine(parseInt(watchedMachineId))
+      // Clear procedure when machine changes
+      setValue('procedure_id', '')
     }
-  }, [watchedType, watchedMachineId, fetchProceduresByMachine])
+  }, [watchedType, watchedMachineId, fetchProceduresByMachine, setValue])
 
   // Set default values based on work order type
   useEffect(() => {
@@ -317,14 +329,16 @@ export function ImprovedWorkOrderForm() {
     return results.filter((url): url is string => url !== null)
   }, [files])
 
-  // Form submission
+  // Enhanced form submission with better error handling
   const onSubmit = async (data: WorkOrderFormData) => {
     if (isSubmitting) return
     
     setIsSubmitting(true)
+    clearErrors() // Clear any previous errors
+
     try {
       // Transform data for API
-      const submitData = {
+      const submitData: CreateWorkOrderData = {
         type: data.type,
         description: data.description,
         procedure_id: data.procedure_id ? parseInt(data.procedure_id) : null,
@@ -332,16 +346,26 @@ export function ImprovedWorkOrderForm() {
         frequency: data.frequency || null,
         priority: data.priority || null,
         status: data.status,
-        due_date: data.due_date || null,
-        room_id: data.room_id ? parseInt(data.room_id) : null,
-        assigned_to_id: data.assigned_to_id ? parseInt(data.assigned_to_id) : null,
-        property_id: data.property_id ? parseInt(data.property_id) : null,
-        topic_id: data.topic_id ? parseInt(data.topic_id) : null,
+        due_date: data.due_date || undefined,
+        room_id: data.room_id ? parseInt(data.room_id) : undefined,
+        assigned_to_id: data.assigned_to_id ? parseInt(data.assigned_to_id) : undefined,
+        property_id: data.property_id ? parseInt(data.property_id) : undefined,
+        topic_id: data.topic_id ? parseInt(data.topic_id) : undefined,
         before_images: [],
         after_images: [],
+        before_image_path: null,
+        after_image_path: null,
+        pdf_file_path: null
       }
 
-      // Create work order
+      // Client-side validation first
+      const clientValidationErrors = validateWorkOrderData(submitData)
+      if (clientValidationErrors.length > 0) {
+        clientValidationErrors.forEach(error => toast.error(error))
+        return
+      }
+
+      // Create work order - error handling is now managed by the API client
       const workOrder = await workOrdersAPI.createWorkOrder(submitData)
 
       // Upload images if any
@@ -362,7 +386,30 @@ export function ImprovedWorkOrderForm() {
       router.push('/work-orders')
     } catch (error: any) {
       console.error('Error creating work order:', error)
-      toast.error(error.message || 'Failed to create work order')
+      
+      // Handle validation errors specifically
+      if (isValidationError(error)) {
+        const validationErrors = getValidationErrors(error)
+        
+        // Set form errors for specific fields if possible
+        // This is a simple mapping - you might want to make it more sophisticated
+        validationErrors.forEach(errMsg => {
+          if (errMsg.includes('description')) {
+            setError('description', { message: errMsg })
+          } else if (errMsg.includes('machine')) {
+            setError('machine_id', { message: errMsg })
+          } else if (errMsg.includes('procedure')) {
+            setError('procedure_id', { message: errMsg })
+          } else if (errMsg.includes('priority')) {
+            setError('priority', { message: errMsg })
+          } else {
+            toast.error(errMsg)
+          }
+        })
+      } else {
+        // For non-validation errors, the API client already showed a toast
+        // but we can add additional form-specific handling here if needed
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -377,7 +424,7 @@ export function ImprovedWorkOrderForm() {
         }
       })
     }
-  }, [])
+  }, [files])
 
   if (dataError) {
     return (
@@ -387,6 +434,13 @@ export function ImprovedWorkOrderForm() {
             <ExclamationTriangleIcon className="h-5 w-5" />
             <span>Error loading form data: {dataError}</span>
           </div>
+          <Button
+            onClick={() => window.location.reload()}
+            className="mt-4"
+            variant="outline"
+          >
+            Retry
+          </Button>
         </CardContent>
       </Card>
     )
@@ -422,7 +476,8 @@ export function ImprovedWorkOrderForm() {
                       key={type.value}
                       type="button"
                       onClick={() => field.onChange(type.value)}
-                      className={`p-4 rounded-lg border-2 transition-all text-left ${
+                      disabled={isSubmitting}
+                      className={`p-4 rounded-lg border-2 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed ${
                         isSelected
                           ? type.color
                           : 'border-gray-200 hover:border-gray-300'
@@ -462,6 +517,7 @@ export function ImprovedWorkOrderForm() {
                   id="description"
                   placeholder="Describe the work to be done..."
                   rows={3}
+                  disabled={isSubmitting}
                   className={errors.description ? 'border-red-500' : ''}
                 />
               )}
@@ -481,6 +537,7 @@ export function ImprovedWorkOrderForm() {
                   {...field}
                   id="due_date"
                   type="datetime-local"
+                  disabled={isSubmitting}
                   className={errors.due_date ? 'border-red-500' : ''}
                 />
               )}
@@ -499,7 +556,8 @@ export function ImprovedWorkOrderForm() {
                 <select
                   {...field}
                   id="status"
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  disabled={isSubmitting}
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed ${
                     errors.status ? 'border-red-500' : 'border-gray-300'
                   }`}
                 >
@@ -525,8 +583,8 @@ export function ImprovedWorkOrderForm() {
                 <select
                   {...field}
                   id="property_id"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={dataLoading}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={dataLoading || isSubmitting}
                 >
                   <option value="">Select a property...</option>
                   {properties.map((property) => (
@@ -548,8 +606,8 @@ export function ImprovedWorkOrderForm() {
                 <select
                   {...field}
                   id="topic_id"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={dataLoading}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={dataLoading || isSubmitting}
                 >
                   <option value="">Select a topic...</option>
                   {topics.map((topic) => (
@@ -589,10 +647,10 @@ export function ImprovedWorkOrderForm() {
                     <select
                       {...field}
                       id="machine_id"
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed ${
                         errors.machine_id ? 'border-red-500' : 'border-gray-300'
                       }`}
-                      disabled={dataLoading}
+                      disabled={dataLoading || isSubmitting}
                     >
                       <option value="">Select a machine...</option>
                       {machines.map((machine) => (
@@ -619,10 +677,10 @@ export function ImprovedWorkOrderForm() {
                     <select
                       {...field}
                       id="procedure_id"
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed ${
                         errors.procedure_id ? 'border-red-500' : 'border-gray-300'
                       }`}
-                      disabled={!watchedMachineId || dataLoading}
+                      disabled={!watchedMachineId || dataLoading || isSubmitting}
                     >
                       <option value="">
                         {!watchedMachineId ? 'Select a machine first...' : 'Select a procedure...'}
@@ -651,7 +709,8 @@ export function ImprovedWorkOrderForm() {
                     <select
                       {...field}
                       id="frequency"
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      disabled={isSubmitting}
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed ${
                         errors.frequency ? 'border-red-500' : 'border-gray-300'
                       }`}
                     >
@@ -682,7 +741,8 @@ export function ImprovedWorkOrderForm() {
                           key={option.value}
                           type="button"
                           onClick={() => field.onChange(option.value)}
-                          className={`p-3 rounded-lg border-2 transition-all text-center ${
+                          disabled={isSubmitting}
+                          className={`p-3 rounded-lg border-2 transition-all text-center disabled:opacity-50 disabled:cursor-not-allowed ${
                             field.value === option.value
                               ? `${option.color} border-current`
                               : 'border-gray-200 hover:border-gray-300'
@@ -718,8 +778,8 @@ export function ImprovedWorkOrderForm() {
                 <select
                   {...field}
                   id="room_id"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={dataLoading}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={dataLoading || isSubmitting}
                 >
                   <option value="">Select a room...</option>
                   {rooms.map((room) => (
@@ -741,8 +801,8 @@ export function ImprovedWorkOrderForm() {
                 <select
                   {...field}
                   id="assigned_to_id"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={dataLoading}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={dataLoading || isSubmitting}
                 >
                   <option value="">Select a technician...</option>
                   {technicians.map((technician) => (
@@ -774,6 +834,7 @@ export function ImprovedWorkOrderForm() {
               multiple
               accept="image/*"
               onChange={handleFileChange}
+              disabled={isSubmitting}
               className="w-full"
             />
             <p className="text-sm text-gray-500 mt-1">
@@ -794,7 +855,8 @@ export function ImprovedWorkOrderForm() {
                       <button
                         type="button"
                         onClick={() => removeFile(fileWithPreview.id)}
-                        className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        disabled={isSubmitting}
+                        className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <XMarkIcon className="h-4 w-4" />
                       </button>
@@ -804,7 +866,7 @@ export function ImprovedWorkOrderForm() {
                       {fileWithPreview.uploadStatus === 'uploading' && (
                         <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded-lg">
                           <span className="text-white text-xs">
-                            {fileWithPreview.uploadProgress}%
+                            {fileWithPreview.uploadProgress || 0}%
                           </span>
                         </div>
                       )}
@@ -848,7 +910,7 @@ export function ImprovedWorkOrderForm() {
             <>
               <CheckCircleIcon className="h-4 w-4 mr-2" />
               Create Work Order
-            <//>
+            </>
           )}
         </Button>
       </div>
