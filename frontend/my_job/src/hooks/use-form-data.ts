@@ -6,38 +6,41 @@ import { usersAPI } from '@/services/users-api'
 import { propertiesAPI } from '@/services/properties-api'
 import { topicsAPI } from '@/services/topics-api'
 
-export interface Procedure {
-  id: number
-  title: string
-  remark?: string
-  frequency?: string
-}
-
-interface Machine {
+export interface Machine {
   id: number
   name: string
-  status: string
+  status: 'Operational' | 'Maintenance' | 'Offline' | 'Decommissioned'
+  room_id: number
+  property_id: number
 }
 
-interface Room {
+export interface Room {
   id: number
   name: string
   number: string
 }
 
-interface User {
+export interface User {
   id: number
   username: string
+  email: string
+  is_active: boolean
 }
 
-interface Property {
+export interface Property {
   id: number
   name: string
 }
 
-interface Topic {
+export interface Topic {
   id: number
   title: string
+}
+
+export interface Procedure {
+  id: number
+  title: string
+  remark?: string
 }
 
 interface FormDataState {
@@ -71,14 +74,14 @@ export function useFormData() {
     setState(prev => ({ ...prev, error }))
   }, [])
 
-  // Fetch initial data
+  // Fetch initial data on mount
   useEffect(() => {
     const fetchInitialData = async () => {
       setLoading(true)
       setError(null)
 
       try {
-        const [roomsResponse, techResponse, propResponse, topicResponse] = await Promise.allSettled([
+        const [roomsResult, techResult, propResult, topicResult] = await Promise.allSettled([
           roomsAPI.getRooms(),
           usersAPI.getUsers({ role: 'Technician', is_active: true }),
           propertiesAPI.getProperties(),
@@ -87,11 +90,23 @@ export function useFormData() {
 
         setState(prev => ({
           ...prev,
-          rooms: roomsResponse.status === 'fulfilled' ? roomsResponse.value.data || [] : [],
-          technicians: techResponse.status === 'fulfilled' ? techResponse.value : [],
-          properties: propResponse.status === 'fulfilled' ? propResponse.value : [],
-          topics: topicResponse.status === 'fulfilled' ? topicResponse.value : [],
+          rooms: roomsResult.status === 'fulfilled' ? roomsResult.value.data || roomsResult.value : [],
+          technicians: techResult.status === 'fulfilled' ? techResult.value : [],
+          properties: propResult.status === 'fulfilled' ? propResult.value : [],
+          topics: topicResult.status === 'fulfilled' ? topicResult.value : [],
         }))
+
+        // Log any failed requests
+        const failures = [
+          { name: 'rooms', result: roomsResult },
+          { name: 'technicians', result: techResult },
+          { name: 'properties', result: propResult },
+          { name: 'topics', result: topicResult }
+        ].filter(item => item.result.status === 'rejected')
+
+        if (failures.length > 0) {
+          console.warn('Some data failed to load:', failures.map(f => f.name).join(', '))
+        }
       } catch (error: any) {
         console.error('Error fetching initial data:', error)
         setError('Failed to load form data')
@@ -104,10 +119,10 @@ export function useFormData() {
   }, [])
 
   // Fetch machines by work order type
-  const fetchMachinesByType = useCallback(async (type: string) => {
+  const fetchMachinesByType = useCallback(async (type: 'pm' | 'issue') => {
     try {
       setLoading(true)
-      const machines = await machinesAPI.getMachines({ type: type as 'pm' | 'issue' })
+      const machines = await machinesAPI.getMachines({ type })
       setState(prev => ({ ...prev, machines }))
     } catch (error: any) {
       console.error('Error fetching machines:', error)
@@ -123,7 +138,7 @@ export function useFormData() {
     try {
       setLoading(true)
       const response = await fetch(`/api/v1/procedures/machine/${machineId}`)
-      if (!response.ok) throw new Error('Failed to fetch procedures')
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
       
       const procedures = await response.json()
       setState(prev => ({ ...prev, procedures }))
