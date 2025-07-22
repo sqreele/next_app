@@ -1,5 +1,6 @@
-import apiClient from '@/lib/api-client'
-import { AxiosResponse, AxiosError } from 'axios'
+// frontend/my_job/src/services/work-orders-api.ts
+import apiClient, { makeWorkOrderRequest, retryRequest, ApiError } from '@/lib/api-client'
+import { AxiosResponse } from 'axios'
 
 export interface WorkOrder {
   id: number
@@ -25,21 +26,21 @@ export interface WorkOrder {
 export interface CreateWorkOrderData {
   description: string
   status: 'Pending' | 'In Progress' | 'Completed' | 'Cancelled'
-  priority: 'Low' | 'Medium' | 'High' | 'Urgent'
+  priority: 'Low' | 'Medium' | 'High' | 'Urgent' | null
   due_date?: string
   machine_id?: number | null
   room_id?: number
   assigned_to_id?: number
-  property_id: number
+  property_id?: number
   before_image_path?: string | null
   after_image_path?: string | null
   before_images: string[]
   after_images: string[]
   pdf_file_path?: string | null
-  type: 'pm'  | 'issue' | 'workorder'
+  type: 'pm' | 'issue' | 'workorder'
   topic_id?: number | null
-  procedure_id?: number | string
-  frequency?: string
+  procedure_id?: number | null
+  frequency?: string | null
 }
 
 export interface UpdateWorkOrderData extends Partial<CreateWorkOrderData> {}
@@ -73,17 +74,11 @@ export interface WorkOrderResponse {
   message?: string
 }
 
-export interface ApiError {
-  error: string
-  message: string
-  errors?: Record<string, string[]>
-}
-
 class WorkOrdersAPI {
   private readonly endpoint = '/api/v1/work_orders'
 
   async getWorkOrders(filters?: WorkOrderFilters): Promise<WorkOrder[]> {
-    try {
+    return makeWorkOrderRequest(() => {
       const params = new URLSearchParams()
       
       if (filters) {
@@ -94,171 +89,267 @@ class WorkOrdersAPI {
         })
       }
 
-      const response: AxiosResponse<WorkOrder[]> = await apiClient.get(
+      return apiClient.get<WorkOrder[]>(
         `${this.endpoint}${params.toString() ? `?${params.toString()}` : ''}`
       )
-      
-      return response.data
-    } catch (error) {
-      console.error('Error in getWorkOrders:', error)
-      throw error
-    }
+    })
   }
 
   async getWorkOrder(id: number): Promise<WorkOrder> {
-    try {
-      const response: AxiosResponse<WorkOrder> = await apiClient.get(`${this.endpoint}/${id}`)
-      return response.data
-    } catch (error) {
-      console.error('Error in getWorkOrder:', error)
-      throw error
-    }
+    return makeWorkOrderRequest(() => 
+      apiClient.get<WorkOrder>(`${this.endpoint}/${id}`)
+    )
   }
 
   async createWorkOrder(data: CreateWorkOrderData): Promise<WorkOrder> {
-    try {
-      const response: AxiosResponse<WorkOrder> = await apiClient.post(this.endpoint, data)
-      return response.data
-    } catch (error) {
-      console.error('Error in createWorkOrder:', error)
-      throw error
-    }
+    return retryRequest(
+      () => makeWorkOrderRequest(() => 
+        apiClient.post<WorkOrder>(this.endpoint, data)
+      ),
+      2 // Retry failed work order creation once
+    )
   }
 
   async updateWorkOrder(id: number, data: UpdateWorkOrderData): Promise<WorkOrder> {
-    try {
-      const response: AxiosResponse<WorkOrder> = await apiClient.patch(`${this.endpoint}/${id}`, data)
-      return response.data
-    } catch (error) {
-      console.error('Error in updateWorkOrder:', error)
-      throw error
-    }
+    return makeWorkOrderRequest(() => 
+      apiClient.patch<WorkOrder>(`${this.endpoint}/${id}`, data)
+    )
   }
 
   async deleteWorkOrder(id: number): Promise<void> {
-    try {
-      await apiClient.delete(`${this.endpoint}/${id}`)
-    } catch (error) {
-      console.error('Error in deleteWorkOrder:', error)
-      throw error
-    }
+    return makeWorkOrderRequest(() => 
+      apiClient.delete(`${this.endpoint}/${id}`)
+    )
   }
 
   async updateWorkOrderStatus(id: number, status: WorkOrder['status']): Promise<WorkOrder> {
-    try {
-      const updateData: UpdateWorkOrderData = { status }
-      return await this.updateWorkOrder(id, updateData)
-    } catch (error) {
-      console.error('Error in updateWorkOrderStatus:', error)
-      throw error
-    }
+    const updateData: UpdateWorkOrderData = { status }
+    return this.updateWorkOrder(id, updateData)
   }
 
   async getWorkOrdersByStatus(status: WorkOrder['status']): Promise<WorkOrder[]> {
-    try {
-      return await this.getWorkOrders({ status })
-    } catch (error) {
-      console.error('Error in getWorkOrdersByStatus:', error)
-      throw error
-    }
+    return this.getWorkOrders({ status })
   }
 
   async getWorkOrdersByPriority(priority: WorkOrder['priority']): Promise<WorkOrder[]> {
-    try {
-      return await this.getWorkOrders({ priority })
-    } catch (error) {
-      console.error('Error in getWorkOrdersByPriority:', error)
-      throw error
-    }
+    return this.getWorkOrders({ priority })
   }
 
   async getWorkOrdersByTechnician(assigned_to_id: number): Promise<WorkOrder[]> {
-    try {
-      return await this.getWorkOrders({ assigned_to_id })
-    } catch (error) {
-      console.error('Error in getWorkOrdersByTechnician:', error)
-      throw error
-    }
+    return this.getWorkOrders({ assigned_to_id })
   }
 
   async getWorkOrdersByMachine(machine_id: number): Promise<WorkOrder[]> {
-    try {
-      return await this.getWorkOrders({ machine_id })
-    } catch (error) {
-      console.error('Error in getWorkOrdersByMachine:', error)
-      throw error
-    }
+    return this.getWorkOrders({ machine_id })
   }
 
   async getWorkOrdersByRoom(room_id: number): Promise<WorkOrder[]> {
-    try {
-      return await this.getWorkOrders({ room_id })
-    } catch (error) {
-      console.error('Error in getWorkOrdersByRoom:', error)
-      throw error
-    }
+    return this.getWorkOrders({ room_id })
   }
 
   async getWorkOrdersByProperty(property_id: number): Promise<WorkOrder[]> {
-    try {
-      return await this.getWorkOrders({ property_id })
-    } catch (error) {
-      console.error('Error in getWorkOrdersByProperty:', error)
-      throw error
-    }
+    return this.getWorkOrders({ property_id })
   }
 
   async searchWorkOrders(query: string): Promise<WorkOrder[]> {
-    try {
-      return await this.getWorkOrders({ search: query })
-    } catch (error) {
-      console.error('Error in searchWorkOrders:', error)
-      throw error
-    }
+    return this.getWorkOrders({ search: query })
   }
 
   async getOverdueWorkOrders(): Promise<WorkOrder[]> {
-    try {
-      const today = new Date().toISOString().split('T')[0]
-      return await this.getWorkOrders({ 
-        due_date_to: today,
-        status: 'Pending'
-      })
-    } catch (error) {
-      console.error('Error in getOverdueWorkOrders:', error)
-      throw error
-    }
+    const today = new Date().toISOString().split('T')[0]
+    return this.getWorkOrders({ 
+      due_date_to: today,
+      status: 'Pending'
+    })
   }
 
   async getWorkOrdersByDateRange(from: string, to: string): Promise<WorkOrder[]> {
-    try {
-      return await this.getWorkOrders({ 
-        due_date_from: from,
-        due_date_to: to 
+    return this.getWorkOrders({ 
+      due_date_from: from,
+      due_date_to: to 
+    })
+  }
+
+  // Additional utility methods using the new error handling
+  async getWorkOrderStats(): Promise<{
+    total: number
+    byStatus: Record<WorkOrder['status'], number>
+    byPriority: Record<WorkOrder['priority'], number>
+  }> {
+    return makeWorkOrderRequest(async () => {
+      const workOrders = await this.getWorkOrders()
+      
+      const stats = {
+        total: workOrders.length,
+        byStatus: {
+          'Pending': 0,
+          'In Progress': 0,
+          'Completed': 0,
+          'Cancelled': 0
+        } as Record<WorkOrder['status'], number>,
+        byPriority: {
+          'Low': 0,
+          'Medium': 0,
+          'High': 0,
+          'Urgent': 0
+        } as Record<WorkOrder['priority'], number>
+      }
+
+      workOrders.forEach(wo => {
+        stats.byStatus[wo.status]++
+        stats.byPriority[wo.priority]++
       })
-    } catch (error) {
-      console.error('Error in getWorkOrdersByDateRange:', error)
-      throw error
-    }
+
+      return { data: stats } as AxiosResponse<typeof stats>
+    })
+  }
+
+  async bulkUpdateStatus(ids: number[], status: WorkOrder['status']): Promise<WorkOrder[]> {
+    return retryRequest(async () => {
+      const updatePromises = ids.map(id => this.updateWorkOrderStatus(id, status))
+      return Promise.all(updatePromises)
+    })
+  }
+
+  async duplicateWorkOrder(id: number, modifications?: Partial<CreateWorkOrderData>): Promise<WorkOrder> {
+    return makeWorkOrderRequest(async () => {
+      // First get the original work order
+      const original = await this.getWorkOrder(id)
+      
+      // Create new work order data based on original
+      const newData: CreateWorkOrderData = {
+        description: `Copy of: ${original.description}`,
+        status: 'Pending',
+        priority: original.priority,
+        due_date: undefined, // Don't copy due date
+        machine_id: original.machine_id,
+        room_id: original.room_id,
+        assigned_to_id: original.assigned_to_id,
+        property_id: original.property_id,
+        type: original.type,
+        topic_id: original.topic_id,
+        before_images: [], // Don't copy images
+        after_images: [],
+        before_image_path: null,
+        after_image_path: null,
+        pdf_file_path: null,
+        ...modifications // Allow overrides
+      }
+
+      return apiClient.post<WorkOrder>(this.endpoint, newData)
+    })
   }
 }
 
 export const workOrdersAPI = new WorkOrdersAPI()
 
-export const isApiError = (error: any): error is AxiosError<ApiError> => {
-  return error?.response?.data?.error !== undefined
+// Helper function to check if error is validation related
+export const isValidationError = (error: any): error is ApiError => {
+  return error && error.status === 422
 }
 
-export const getApiErrorMessage = (error: any): string => {
-  if (isApiError(error)) {
-    return error.response?.data?.message || 'An error occurred'
+// Helper function to extract validation details
+export const getValidationErrors = (error: ApiError): string[] => {
+  if (!error.details) return []
+  
+  if (Array.isArray(error.details)) {
+    return error.details.map(err => err.msg || err.message || err.toString())
   }
-  return error?.message || 'An unexpected error occurred'
+  
+  if (typeof error.details === 'object') {
+    return Object.values(error.details).flat()
+  }
+  
+  return []
 }
 
-export const getApiValidationErrors = (error: any): Record<string, string[]> | null => {
-  if (isApiError(error) && error.response?.data?.errors) {
-    return error.response.data.errors
+// Helper function for work order type-specific validation
+export const validateWorkOrderData = (data: CreateWorkOrderData): string[] => {
+  const errors: string[] = []
+
+  // Type-specific validation
+  if (data.type === 'pm') {
+    if (!data.procedure_id) {
+      errors.push('Procedure is required for Preventive Maintenance')
+    }
+    if (!data.machine_id) {
+      errors.push('Machine is required for Preventive Maintenance')
+    }
+    if (!data.frequency) {
+      errors.push('Frequency is required for Preventive Maintenance')
+    }
+    if (!data.priority) {
+      errors.push('Priority is required for Preventive Maintenance')
+    }
   }
-  return null
+
+  if (data.type === 'issue') {
+    if (!data.machine_id) {
+      errors.push('Machine is required for Issue reports')
+    }
+    if (!data.priority) {
+      errors.push('Priority is required for Issue reports')
+    }
+  }
+
+  // Common validation
+  if (!data.description || data.description.trim().length < 5) {
+    errors.push('Description must be at least 5 characters long')
+  }
+
+  if (data.due_date) {
+    const dueDate = new Date(data.due_date)
+    const now = new Date()
+    if (dueDate < now) {
+      errors.push('Due date cannot be in the past')
+    }
+  }
+
+  return errors
 }
+
+// Type guards for better type safety
+export const isWorkOrder = (obj: any): obj is WorkOrder => {
+  return (
+    typeof obj === 'object' &&
+    obj !== null &&
+    typeof obj.id === 'number' &&
+    typeof obj.description === 'string' &&
+    typeof obj.status === 'string' &&
+    typeof obj.type === 'string'
+  )
+}
+
+export const isCreateWorkOrderData = (obj: any): obj is CreateWorkOrderData => {
+  return (
+    typeof obj === 'object' &&
+    obj !== null &&
+    typeof obj.description === 'string' &&
+    typeof obj.type === 'string' &&
+    ['pm', 'issue', 'workorder'].includes(obj.type)
+  )
+}
+
+// Constants for work order management
+export const WORK_ORDER_STATUSES = ['Pending', 'In Progress', 'Completed', 'Cancelled'] as const
+export const WORK_ORDER_PRIORITIES = ['Low', 'Medium', 'High', 'Urgent'] as const
+export const WORK_ORDER_TYPES = ['pm', 'issue', 'workorder'] as const
+
+export const WORK_ORDER_STATUS_COLORS = {
+  'Pending': 'bg-yellow-100 text-yellow-800',
+  'In Progress': 'bg-blue-100 text-blue-800',
+  'Completed': 'bg-green-100 text-green-800',
+  'Cancelled': 'bg-red-100 text-red-800',
+} as const
+
+export const WORK_ORDER_PRIORITY_COLORS = {
+  'Low': 'bg-gray-100 text-gray-800',
+  'Medium': 'bg-blue-100 text-blue-800',
+  'High': 'bg-orange-100 text-orange-800',
+  'Urgent': 'bg-red-100 text-red-800',
+} as const
+
+// Export additional types for use in components
+export type WorkOrderStatus = WorkOrder['status']
+export type WorkOrderPriority = WorkOrder['priority']
+export type WorkOrderType = WorkOrder['type']
