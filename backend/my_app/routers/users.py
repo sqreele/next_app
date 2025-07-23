@@ -1,128 +1,196 @@
-# ==============================================================================
-# File: backend/my_app/routers/users.py (Add Properties Endpoint)
-# Description: Async user and authentication routes.
-# ==============================================================================
-from datetime import timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
+"""
+User management routes
+"""
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
-from .. import crud, schemas, dependencies, security
-from sqlalchemy.future import select
-from .. import models
+from typing import List, Optional
 
-router = APIRouter(prefix="/users", tags=["users"])
+from database import get_db
+from models import User, UserRole
+from schema import (
+    User as UserSchema, UserCreate, UserUpdate, UserSummary,
+    PaginationParams
+)
+import crud
+from crud import CRUDError
+from .auth import get_current_active_user, require_role
 
-@router.post("/", response_model=schemas.User)
+router = APIRouter()
+
+@router.post("/", response_model=UserSchema, status_code=status.HTTP_201_CREATED)
 async def create_user(
-    user: schemas.UserCreate, db: AsyncSession = Depends(dependencies.get_db)
+    user: UserCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.ADMIN))
 ):
-    db_user = await crud.get_user_by_username(db, username=user.username)
-    if db_user:
-        raise HTTPException(status_code=400, detail="Username already registered")
-    return await crud.create_user(db=db, user=user)
-
-@router.post("/token", response_model=schemas.Token)
-async def login_for_access_token(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: AsyncSession = Depends(dependencies.get_db),
-):
-    user = await security.authenticate_user(
-        db, form_data.username, form_data.password
-    )
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    access_token_expires = timedelta(minutes=security.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = security.create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
-
-@router.get("/me", response_model=schemas.User)  # Remove trailing slash
-async def read_users_me(
-    current_user: models.User = Depends(dependencies.get_current_active_user),
-):
-    return schemas.User.model_validate(current_user)
-
-@router.get("/", response_model=List[schemas.User])
-async def get_users(
-    skip: int = 0,
-    limit: int = 100,
-    role: str = None,
-    is_active: bool = None,
-    search: str = None,
-    property_id: int = None,
-    db: AsyncSession = Depends(dependencies.get_db)
-):
-    """Get all users with optional filtering"""
+    """Create a new user (Admin only)"""
     try:
-        users = await crud.get_users(db, skip=skip, limit=limit)
+        # Check if username or email already exists
+        existing_user = await crud.user.get_by_username(db, username=user.username)
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username already registered"
+            )
         
-        # Apply filters
-        filtered_users = users
+        existing_email = await crud.user.get_by_email(db, email=user.email)
+        if existing_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
         
-        if role:
-            filtered_users = [u for u in filtered_users if u.profile and u.profile.role == role]
-        
-        if is_active is not None:
-            filtered_users = [u for u in filtered_users if u.is_active == is_active]
-        
+        db_user = await crud.user.create(db, obj_in=user)
+        return db_user
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/", response_model=List[UserSchema])
+async def list_users(
+    pagination: PaginationParams = Depends(),
+    role: Optional[UserRole] = None,
+    is_active: Optional[bool] = None,
+    search: Optional[str] = Query(None, min_length=1),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """List users with filtering and pagination"""
+    try:
         if search:
-            search_lower = search.lower()
-            filtered_users = [u for u in filtered_users if 
-                search_lower in u.username.lower() or 
-                search_lower in u.email.lower() or
-                (u.profile and search_lower in u.profile.role.lower()) or
-                (u.profile and u.profile.position and search_lower in u.profile.position.lower())
-            ]
-        
-        if property_id is not None:
-            # Filter by property through the UserProfile properties relationship
-            filtered_users = [u for u in filtered_users if 
-                u.profile and any(prop.id == property_id for prop in u.profile.properties)
-            ]
-        
-        return filtered_users
-    except Exception as e:
-        print(f"Error fetching users: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch users")
+            users = await crud.user.search_users(db, search_term=search, limit=pagination.size)
+        else:
+            filters = {}
+            if role:
+                filters["role"] = role
+            if is_active is not None:
+                filters["is_active"] = is_active
+            
+            users = await crud.user.get_multi(
+                db, 
+                skip=pagination.offset, 
+                limit=pagination.size,
+                filters=filters,
+                order_by="first_name"
+            )
+        return users
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("/check-username/{username}")
-async def check_username_availability(
-    username: str, db: AsyncSession = Depends(dependencies.get_db)
+@router.get("/{user_id}", response_model=UserSchema)
+async def get_user(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
 ):
-    """Check if a username is available for registration."""
-    user = await crud.get_user_by_username(db, username=username)
-    return {"available": user is None}
-
-@router.get("/check-email/{email}")
-async def check_email_availability(
-    email: str, db: AsyncSession = Depends(dependencies.get_db)
-):
-    """Check if an email is available for registration."""
-    user = await crud.get_user_by_email(db, email=email)
-    return {"available": user is None}
-
-# ADD THIS ENDPOINT FOR PROPERTIES
-@router.get("/properties", response_model=List[schemas.Property])
-async def get_available_properties(
-    db: AsyncSession = Depends(dependencies.get_db)
-):
-    """Get all available properties for user registration"""
+    """Get user by ID"""
     try:
-        properties = await crud.get_properties(db)
-        return properties
-    except Exception as e:
-        print(f"Error fetching properties: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch properties")
-    
-@router.get("/{user_id}", response_model=schemas.User)
-async def read_user(user_id: int, db: AsyncSession = Depends(dependencies.get_db)):
-    db_user = await crud.get_user(db, user_id=user_id)
-    if db_user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    return db_user    
+        user = await crud.user.get(db, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Users can only see their own profile unless they're admin/manager
+        if (user_id != current_user.id and 
+            current_user.role not in [UserRole.ADMIN, UserRole.MANAGER]):
+            raise HTTPException(status_code=403, detail="Not enough permissions")
+        
+        return user
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.put("/{user_id}", response_model=UserSchema)
+async def update_user(
+    user_id: int,
+    user_update: UserUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Update user"""
+    try:
+        user = await crud.user.get(db, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Users can only update their own profile unless they're admin
+        if (user_id != current_user.id and current_user.role != UserRole.ADMIN):
+            raise HTTPException(status_code=403, detail="Not enough permissions")
+        
+        # Non-admin users can't change role
+        if (current_user.role != UserRole.ADMIN and 
+            user_update.role is not None):
+            user_update.role = None
+        
+        updated_user = await crud.user.update(db, db_obj=user, obj_in=user_update)
+        return updated_user
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.ADMIN))
+):
+    """Delete user (soft delete) - Admin only"""
+    try:
+        user = await crud.user.get(db, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Prevent self-deletion
+        if user_id == current_user.id:
+            raise HTTPException(status_code=400, detail="Cannot delete yourself")
+        
+        await crud.user.soft_delete(db, id=user_id)
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/role/{role}", response_model=List[UserSummary])
+async def get_users_by_role(
+    role: UserRole,
+    limit: int = Query(50, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get users by role"""
+    try:
+        users = await crud.user.get_by_role(db, role=role, limit=limit)
+        return [UserSummary.model_validate(user) for user in users]
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/{user_id}/assigned-issues")
+async def get_user_assigned_issues(
+    user_id: int,
+    limit: int = Query(50, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get issues assigned to a user"""
+    try:
+        # Check permissions
+        if (user_id != current_user.id and 
+            current_user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPERVISOR]):
+            raise HTTPException(status_code=403, detail="Not enough permissions")
+        
+        issues = await crud.issue.get_assigned_to_user(db, user_id=user_id, limit=limit)
+        return issues
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/{user_id}/pm-schedules")
+async def get_user_pm_schedules(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get PM schedules assigned to a user"""
+    try:
+        # Check permissions
+        if (user_id != current_user.id and 
+            current_user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPERVISOR]):
+            raise HTTPException(status_code=403, detail="Not enough permissions")
+        
+        schedules = await crud.pm_schedule.get_by_user(db, user_id=user_id)
+        return schedules
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
