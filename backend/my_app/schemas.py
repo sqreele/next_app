@@ -1,536 +1,340 @@
-# File: backend/my_app/schemas.py
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator, ConfigDict
-from typing import List, Optional, Literal
-from datetime import date, datetime
+"""
+Pydantic schemas for PM System API
+"""
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from typing import Optional, List
+from datetime import datetime
 from enum import Enum
-import re
-from my_app.models import Frequency  # Use absolute import
 
-# --- Enums ---
-class WorkOrderStatus(str, Enum):
-    PENDING = "Pending"
-    IN_PROGRESS = "In Progress"
-    COMPLETED = "Completed"
-    SCHEDULED = "Scheduled"
+# Import enums from models
+from models import (
+    UserRole, FrequencyType, PMStatus, IssueStatus, IssuePriority,
+    InspectionResult, ImageType, AccessLevel
+)
 
-class WorkOrderPriority(str, Enum):
-    LOW = "Low"
-    MEDIUM = "Medium"
-    HIGH = "High"
+# Base schemas
+class BaseSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
-class WorkOrderType(str, Enum):
-    PM = "pm"
-    ISSUE = "issue"
-    WORKORDER = "workorder"
+# User Schemas
+class UserBase(BaseSchema):
+    username: str = Field(..., min_length=3, max_length=50)
+    email: EmailStr
+    first_name: str = Field(..., min_length=1, max_length=50)
+    last_name: str = Field(..., min_length=1, max_length=50)
+    phone: Optional[str] = Field(None, max_length=20)
+    role: UserRole
+    is_active: bool = True
 
-class MachineStatus(str, Enum):
-    OPERATIONAL = "Operational"
-    MAINTENANCE = "Maintenance"
-    OFFLINE = "Offline"
-    DECOMMISSIONED = "Decommissioned"
+class UserCreate(UserBase):
+    pass
 
-class UserRole(str, Enum):
-    ADMIN = "Admin"
-    TECHNICIAN = "Technician"
-    MANAGER = "Manager"
-    SUPERVISOR = "Supervisor"
+class UserUpdate(BaseSchema):
+    username: Optional[str] = Field(None, min_length=3, max_length=50)
+    email: Optional[EmailStr] = None
+    first_name: Optional[str] = Field(None, min_length=1, max_length=50)
+    last_name: Optional[str] = Field(None, min_length=1, max_length=50)
+    phone: Optional[str] = Field(None, max_length=20)
+    role: Optional[UserRole] = None
+    is_active: Optional[bool] = None
 
-class UploadType(str, Enum):
-    BEFORE = "before"
-    AFTER = "after"
-    DOCUMENT = "document"
-    OTHER = "other"
+class User(UserBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
 
-# --- Token Schemas ---
-class Token(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-
-class TokenData(BaseModel):
-    username: Optional[str] = None
-
-# --- Property Schemas ---
-class PropertyBase(BaseModel):
+# Property Schemas
+class PropertyBase(BaseSchema):
     name: str = Field(..., min_length=1, max_length=100)
+    address: Optional[str] = None
+    is_active: bool = True
 
 class PropertyCreate(PropertyBase):
     pass
 
-class PropertyUpdate(BaseModel):
+class PropertyUpdate(BaseSchema):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
+    address: Optional[str] = None
+    is_active: Optional[bool] = None
 
 class Property(PropertyBase):
     id: int
-    model_config = ConfigDict(from_attributes=True)
+    created_at: datetime
+    updated_at: datetime
 
-# --- UserProfile Schemas ---
-class UserProfileBase(BaseModel):
-    role: UserRole = Field(UserRole.TECHNICIAN)
-    position: Optional[str] = Field(None, max_length=100)
-
-class UserProfileCreate(UserProfileBase):
-    property_ids: Optional[List[int]] = Field(default_factory=list)
-
-class UserProfileUpdate(BaseModel):
-    role: Optional[UserRole] = None
-    position: Optional[str] = Field(None, max_length=100)
-    property_ids: Optional[List[int]] = None
-
-class UserProfile(UserProfileBase):
-    id: int
-    user_id: int
-    properties: List[Property] = Field(default_factory=list)
-    model_config = ConfigDict(from_attributes=True)
-
-# --- User Schemas ---
-class UserBase(BaseModel):
-    username: str = Field(..., min_length=3, max_length=50)
-    email: EmailStr
-
-class UserCreate(UserBase):
-    password: str = Field(..., min_length=6, max_length=100)
-    profile: Optional[UserProfileCreate] = None
-
-class UserUpdate(BaseModel):
-    username: Optional[str] = Field(None, min_length=3, max_length=50)
-    email: Optional[EmailStr] = None
-    password: Optional[str] = Field(None, min_length=6, max_length=100)
-    is_active: Optional[bool] = None
-    profile: Optional[UserProfileUpdate] = None
-
-class User(UserBase):
-    id: int
-    is_active: bool = True
-    profile: Optional[UserProfile] = None
-    model_config = ConfigDict(from_attributes=True)
-
-class UserSimple(UserBase):
-    id: int
-    is_active: bool = True
-    model_config = ConfigDict(from_attributes=True)
-
-# --- Room Schemas ---
-class RoomBase(BaseModel):
+# Room Schemas
+class RoomBase(BaseSchema):
+    property_id: int
     name: str = Field(..., min_length=1, max_length=100)
-    number: Optional[str] = Field(None, max_length=20)
-    room_type: Optional[str] = Field(None, max_length=50)
-    is_active: bool = Field(True)
+    room_number: Optional[str] = Field(None, max_length=20)
+    is_active: bool = True
 
 class RoomCreate(RoomBase):
-    property_id: int = Field(..., gt=0)
+    pass
 
-class RoomUpdate(BaseModel):
+class RoomUpdate(BaseSchema):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
-    number: Optional[str] = Field(None, max_length=20)
-    room_type: Optional[str] = Field(None, max_length=50)
+    room_number: Optional[str] = Field(None, max_length=20)
     is_active: Optional[bool] = None
 
 class Room(RoomBase):
     id: int
-    property_id: int
-    model_config = ConfigDict(from_attributes=True)
+    created_at: datetime
+    updated_at: datetime
+    property: Optional[Property] = None
 
-# --- Machine Schemas ---
-class MachineBase(BaseModel):
+# Machine Schemas
+class MachineBase(BaseSchema):
+    room_id: int
     name: str = Field(..., min_length=1, max_length=100)
-    status: MachineStatus = Field(MachineStatus.OPERATIONAL)
-    room_id: Optional[int] = None
+    model: Optional[str] = Field(None, max_length=100)
+    serial_number: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+    is_active: bool = True
 
 class MachineCreate(MachineBase):
     pass
 
-class MachineUpdate(BaseModel):
+class MachineUpdate(BaseSchema):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
-    status: Optional[MachineStatus] = None
-    room_id: Optional[int] = None
+    model: Optional[str] = Field(None, max_length=100)
+    serial_number: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
 
 class Machine(MachineBase):
     id: int
-    property_id: int
-    model_config = ConfigDict(from_attributes=True)
+    created_at: datetime
+    updated_at: datetime
+    room: Optional[Room] = None
 
-# --- Procedure Schemas ---
-class ProcedureBase(BaseModel):
-    title: str = Field(..., min_length=1, max_length=200)
-    remark: Optional[str] = Field(None, max_length=500)
-    frequency: Optional[Frequency] = None
-    estimated_time: Optional[str] = Field(None, max_length=50)
-
-    @field_validator('frequency', mode='before')
-    @classmethod
-    def parse_frequency(cls, v, values, **kwargs):
-        if v is None:
-            return None
-        if isinstance(v, Frequency):
-            return v
-        if isinstance(v, str):
-            match = re.match(r"(\w+)(?:\s*\((.*?)\))?", v.strip())
-            if match:
-                freq, duration = match.groups()
-                if freq in [f.value for f in Frequency]:
-                    if duration and 'estimated_time' in values and values['estimated_time'] is None:
-                        values['estimated_time'] = duration
-                    return Frequency(freq)
-            if v in [f.value for f in Frequency]:
-                return Frequency(v)
-        raise ValueError(f"frequency must be one of: {', '.join(f.value for f in Frequency)}")
-
-class ProcedureCreate(ProcedureBase):
-    machine_ids: Optional[List[int]] = Field(default_factory=list)
-
-    @field_validator('machine_ids', mode='before')
-    @classmethod
-    def validate_machine_ids(cls, v):
-        if v is None:
-            return []
-        if not isinstance(v, list):
-            return []
-        return [mid for mid in v if isinstance(mid, int) and mid > 0]
-
-class ProcedureUpdate(BaseModel):
-    title: Optional[str] = Field(None, min_length=1, max_length=200)
-    remark: Optional[str] = Field(None, max_length=500)
-    frequency: Optional[Frequency] = None
-    estimated_time: Optional[str] = Field(None, max_length=50)
-    machine_ids: Optional[List[int]] = None
-
-    @field_validator('frequency', mode='before')
-    @classmethod
-    def parse_frequency(cls, v, values, **kwargs):
-        if v is None:
-            return None
-        if isinstance(v, Frequency):
-            return v
-        if isinstance(v, str):
-            match = re.match(r"(\w+)(?:\s*\((.*?)\))?", v.strip())
-            if match:
-                freq, duration = match.groups()
-                if freq in [f.value for f in Frequency]:
-                    if duration and 'estimated_time' in values and values['estimated_time'] is None:
-                        values['estimated_time'] = duration
-                    return Frequency(freq)
-            if v in [f.value for f in Frequency]:
-                return Frequency(v)
-        raise ValueError(f"frequency must be one of: {', '.join(f.value for f in Frequency)}")
-
-class Procedure(ProcedureBase):
-    id: int
-    model_config = ConfigDict(from_attributes=True)
-
-class ProcedureWithMachines(ProcedureBase):
-    id: int
-    machines: List[Machine] = Field(default_factory=list)
-    model_config = ConfigDict(from_attributes=True)
-
-class MachineWithProcedures(MachineBase):
-    id: int
-    property_id: int
-    procedures: List[Procedure] = Field(default_factory=list)
-    model_config = ConfigDict(from_attributes=True)
-
-# --- Topic Schemas ---
-class TopicBase(BaseModel):
-    title: str = Field(..., min_length=1, max_length=200)
+# Topic Schemas
+class TopicBase(BaseSchema):
+    title: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+    is_active: bool = True
 
 class TopicCreate(TopicBase):
     pass
 
+class TopicUpdate(BaseSchema):
+    title: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
 class Topic(TopicBase):
     id: int
-    model_config = ConfigDict(from_attributes=True)
-
-# --- WorkOrder Schemas ---
-class WorkOrderCreate(BaseModel):
-    description: str = Field(..., min_length=1, max_length=2000)
-    status: WorkOrderStatus = Field(default=WorkOrderStatus.PENDING)
-    priority: Optional[WorkOrderPriority] = Field(default=WorkOrderPriority.LOW)
-    due_date: Optional[date] = None
-    machine_id: Optional[int] = None
-    room_id: Optional[int] = None
-    assigned_to_id: Optional[int] = None
-    property_id: int = Field(..., gt=0)
-    before_images: Optional[List[str]] = Field(default_factory=list)
-    after_images: Optional[List[str]] = Field(default_factory=list)
-    type: WorkOrderType = Field(...)
-    topic_id: Optional[int] = None
-    procedure_id: Optional[int] = None
-    frequency: Optional[Frequency] = None
-    estimated_time: Optional[str] = Field(None, max_length=50)
-
-    @field_validator('frequency', mode='before')
-    @classmethod
-    def parse_frequency(cls, v, values, **kwargs):
-        if v is None:
-            return None
-        if isinstance(v, Frequency):
-            return v
-        if isinstance(v, str):
-            match = re.match(r"(\w+)(?:\s*\((.*?)\))?", v.strip())
-            if match:
-                freq, duration = match.groups()
-                if freq in [f.value for f in Frequency]:
-                    if duration and 'estimated_time' in values and values['estimated_time'] is None:
-                        values['estimated_time'] = duration
-                    return Frequency(freq)
-            if v in [f.value for f in Frequency]:
-                return Frequency(v)
-        raise ValueError(f"frequency must be one of: {', '.join(f.value for f in Frequency)}")
-
-    @field_validator('due_date', mode='before')
-    @classmethod
-    def parse_due_date(cls, v):
-        if v is None or v == '':
-            return None
-        if isinstance(v, date):
-            return v
-        if isinstance(v, str):
-            try:
-                parsed_date = datetime.strptime(v, '%Y-%m-%d').date()
-                return parsed_date
-            except ValueError as e:
-                if 'time data' in str(e):
-                    raise ValueError('Due date must be in YYYY-MM-DD format')
-                raise e
-        raise ValueError('Due date must be a valid date string in YYYY-MM-DD format')
-
-    @field_validator('before_images', 'after_images', mode='before')
-    @classmethod
-    def validate_image_arrays(cls, v):
-        if v is None:
-            return []
-        if not isinstance(v, list):
-            return []
-        return [img for img in v if img and isinstance(img, str)]
-
-    @model_validator(mode='after')
-    def validate_work_order_fields(self):
-        """Cross-field validation for work order types"""
-        if self.type == WorkOrderType.WORKORDER and self.status == WorkOrderStatus.PENDING:
-            self.status = WorkOrderStatus.SCHEDULED
-        if self.type in [WorkOrderType.ISSUE, WorkOrderType.WORKORDER] and self.priority == WorkOrderPriority.LOW:
-            self.priority = WorkOrderPriority.HIGH
-        if self.type == WorkOrderType.PM:
-            if not self.machine_id or not self.procedure_id:
-                raise ValueError("machine_id and procedure_id are required for PM work orders")
-            if not self.frequency:
-                raise ValueError("frequency is required for PM work orders")
-            if not self.priority:
-                raise ValueError("priority is required for PM work orders")
-        elif self.type == WorkOrderType.ISSUE:
-            if not self.machine_id:
-                raise ValueError("machine_id is required for ISSUE work orders")
-            if self.procedure_id or self.frequency:
-                raise ValueError("procedure_id and frequency are not allowed for ISSUE work orders")
-            if not self.priority:
-                raise ValueError("priority is required for ISSUE work orders")
-        elif self.type == WorkOrderType.WORKORDER:
-            if self.procedure_id or self.frequency or self.machine_id or self.priority:
-                raise ValueError("procedure_id, frequency, machine_id, and priority are not allowed for WORKORDER type")
-        return self
-
-class WorkOrderUpdate(BaseModel):
-    description: Optional[str] = Field(None, min_length=1, max_length=2000)
-    status: Optional[WorkOrderStatus] = None
-    priority: Optional[WorkOrderPriority] = None
-    due_date: Optional[date] = None
-    machine_id: Optional[int] = None
-    room_id: Optional[int] = None
-    assigned_to_id: Optional[int] = None
-    property_id: Optional[int] = Field(None, gt=0)
-    before_images: Optional[List[str]] = Field(default_factory=list)
-    after_images: Optional[List[str]] = Field(default_factory=list)
-    type: Optional[WorkOrderType] = None
-    topic_id: Optional[int] = None
-    procedure_id: Optional[int] = None
-    frequency: Optional[Frequency] = None
-    estimated_time: Optional[str] = Field(None, max_length=50)
-
-    @field_validator('frequency', mode='before')
-    @classmethod
-    def parse_frequency(cls, v, values, **kwargs):
-        if v is None:
-            return None
-        if isinstance(v, Frequency):
-            return v
-        if isinstance(v, str):
-            match = re.match(r"(\w+)(?:\s*\((.*?)\))?", v.strip())
-            if match:
-                freq, duration = match.groups()
-                if freq in [f.value for f in Frequency]:
-                    if duration and 'estimated_time' in values and values['estimated_time'] is None:
-                        values['estimated_time'] = duration
-                    return Frequency(freq)
-            if v in [f.value for f in Frequency]:
-                return Frequency(v)
-        raise ValueError(f"frequency must be one of: {', '.join(f.value for f in Frequency)}")
-
-    @field_validator('due_date', mode='before')
-    @classmethod
-    def parse_due_date(cls, v):
-        if v is None or v == '':
-            return None
-        if isinstance(v, date):
-            return v
-        if isinstance(v, str):
-            try:
-                parsed_date = datetime.strptime(v, '%Y-%m-%d').date()
-                return parsed_date
-            except ValueError as e:
-                if 'time data' in str(e):
-                    raise ValueError('Due date must be in YYYY-MM-DD format')
-                raise e
-        raise ValueError('Due date must be a valid date string in YYYY-MM-DD format')
-
-    @field_validator('before_images', 'after_images', mode='before')
-    @classmethod
-    def validate_image_arrays(cls, v):
-        if v is None:
-            return []
-        if not isinstance(v, list):
-            return []
-        return [img for img in v if img and isinstance(img, str)]
-
-class WorkOrder(BaseModel):
-    id: int
-    description: Optional[str] = None
-    status: WorkOrderStatus
-    priority: Optional[WorkOrderPriority] = None
-    due_date: Optional[date] = None
-    machine_id: Optional[int] = None
-    room_id: Optional[int] = None
-    assigned_to_id: Optional[int] = None
-    property_id: int
     created_at: datetime
-    completed_at: Optional[datetime] = None
-    before_images: List[str] = Field(default_factory=list)
-    after_images: List[str] = Field(default_factory=list)
-    type: WorkOrderType
-    topic_id: Optional[int] = None
-    procedure_id: Optional[int] = None
-    frequency: Optional[Frequency] = None
-    estimated_time: Optional[str] = None
-    model_config = ConfigDict(from_attributes=True)
+    updated_at: datetime
 
-class WorkOrderWithRelations(WorkOrder):
-    property: Optional[Property] = None
-    room: Optional[Room] = None
-    machine: Optional[Machine] = None
-    assigned_to: Optional[UserSimple] = None
+# Procedure Schemas
+class ProcedureBase(BaseSchema):
+    topic_id: int
+    title: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+    instructions: Optional[str] = None
+    estimated_minutes: Optional[int] = Field(None, ge=0)
+    is_active: bool = True
+
+class ProcedureCreate(ProcedureBase):
+    pass
+
+class ProcedureUpdate(BaseSchema):
+    title: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = None
+    instructions: Optional[str] = None
+    estimated_minutes: Optional[int] = Field(None, ge=0)
+    is_active: Optional[bool] = None
+
+class Procedure(ProcedureBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
     topic: Optional[Topic] = None
+
+# PM Schedule Schemas
+class PMScheduleBase(BaseSchema):
+    machine_id: int
+    procedure_id: int
+    user_id: int
+    frequency: FrequencyType
+    frequency_value: int = Field(default=1, ge=1)
+    last_completed: Optional[datetime] = None
+    next_due: datetime
+    is_active: bool = True
+
+class PMScheduleCreate(PMScheduleBase):
+    pass
+
+class PMScheduleUpdate(BaseSchema):
+    procedure_id: Optional[int] = None
+    user_id: Optional[int] = None
+    frequency: Optional[FrequencyType] = None
+    frequency_value: Optional[int] = Field(None, ge=1)
+    last_completed: Optional[datetime] = None
+    next_due: Optional[datetime] = None
+    is_active: Optional[bool] = None
+
+class PMSchedule(PMScheduleBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    machine: Optional[Machine] = None
+    procedure: Optional[Procedure] = None
+    responsible_user: Optional[User] = None
+
+# PM Execution Schemas
+class PMExecutionBase(BaseSchema):
+    pm_schedule_id: int
+    executed_by_id: int
+    status: PMStatus = PMStatus.SCHEDULED
+    notes: Optional[str] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    next_due_calculated: Optional[datetime] = None
+
+class PMExecutionCreate(PMExecutionBase):
+    pass
+
+class PMExecutionUpdate(BaseSchema):
+    status: Optional[PMStatus] = None
+    notes: Optional[str] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    next_due_calculated: Optional[datetime] = None
+
+class PMExecution(PMExecutionBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    pm_schedule: Optional[PMSchedule] = None
+    executor: Optional[User] = None
+
+# Issue Schemas
+class IssueBase(BaseSchema):
+    machine_id: int
+    room_id: Optional[int] = None
+    reported_by_id: int
+    assigned_to_id: Optional[int] = None
+    title: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    priority: IssuePriority = IssuePriority.MEDIUM
+    status: IssueStatus = IssueStatus.OPEN
+
+class IssueCreate(IssueBase):
+    pass
+
+class IssueUpdate(BaseSchema):
+    assigned_to_id: Optional[int] = None
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    priority: Optional[IssuePriority] = None
+    status: Optional[IssueStatus] = None
+    resolved_at: Optional[datetime] = None
+
+class Issue(IssueBase):
+    id: int
+    reported_at: datetime
+    resolved_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+    machine: Optional[Machine] = None
+    room: Optional[Room] = None
+    reporter: Optional[User] = None
+    assignee: Optional[User] = None
+
+# Inspection Schemas
+class InspectionBase(BaseSchema):
+    machine_id: int
+    inspector_id: int
+    procedure_id: Optional[int] = None
+    title: str = Field(..., min_length=1, max_length=200)
+    findings: Optional[str] = None
+    result: InspectionResult
+    inspection_date: datetime
+
+class InspectionCreate(InspectionBase):
+    pass
+
+class InspectionUpdate(BaseSchema):
+    procedure_id: Optional[int] = None
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    findings: Optional[str] = None
+    result: Optional[InspectionResult] = None
+    inspection_date: Optional[datetime] = None
+
+class Inspection(InspectionBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    machine: Optional[Machine] = None
+    inspector: Optional[User] = None
     procedure: Optional[Procedure] = None
 
-# --- WorkOrderFile Schemas ---
-class WorkOrderFileBase(BaseModel):
+# PM File Schemas
+class PMFileBase(BaseSchema):
+    pm_execution_id: Optional[int] = None
+    issue_id: Optional[int] = None
+    inspection_id: Optional[int] = None
+    file_name: str = Field(..., min_length=1, max_length=255)
     file_path: str = Field(..., min_length=1, max_length=500)
-    file_name: Optional[str] = Field(None, max_length=255)
-    file_size: Optional[int] = Field(None, ge=0)
-    mime_type: Optional[str] = Field(None, max_length=100)
-    upload_type: UploadType = Field(UploadType.OTHER)
+    file_type: str = Field(..., min_length=1, max_length=50)
+    image_type: Optional[ImageType] = None
+    description: Optional[str] = None
 
-class WorkOrderFileCreate(WorkOrderFileBase):
-    work_order_id: int = Field(..., gt=0)
+class PMFileCreate(PMFileBase):
+    pass
 
-class WorkOrderFile(WorkOrderFileBase):
+class PMFileUpdate(BaseSchema):
+    file_name: Optional[str] = Field(None, min_length=1, max_length=255)
+    file_path: Optional[str] = Field(None, min_length=1, max_length=500)
+    file_type: Optional[str] = Field(None, min_length=1, max_length=50)
+    image_type: Optional[ImageType] = None
+    description: Optional[str] = None
+
+class PMFile(PMFileBase):
     id: int
-    work_order_id: int
     uploaded_at: datetime
-    model_config = ConfigDict(from_attributes=True)
 
-# --- Procedure Execution Schemas ---
-class ProcedureExecutionBase(BaseModel):
-    scheduled_date: date
-    status: Literal['Scheduled', 'In Progress', 'Completed', 'Skipped'] = 'Scheduled'
-    execution_notes: Optional[str] = None
-    assigned_to_id: Optional[int] = None
+# User Property Access Schemas
+class UserPropertyAccessBase(BaseSchema):
+    user_id: int
+    property_id: int
+    access_level: AccessLevel
+    expires_at: Optional[datetime] = None
 
-class ProcedureExecutionCreate(ProcedureExecutionBase):
-    procedure_id: int
-    machine_id: Optional[int] = None
-    work_order_id: Optional[int] = None
+class UserPropertyAccessCreate(UserPropertyAccessBase):
+    pass
 
-class ProcedureExecutionUpdate(BaseModel):
-    status: Optional[Literal['Scheduled', 'In Progress', 'Completed', 'Skipped']] = None
-    completed_date: Optional[date] = None
-    execution_notes: Optional[str] = None
-    before_images: Optional[List[str]] = Field(default_factory=list)
-    after_images: Optional[List[str]] = Field(default_factory=list)
-    completed_by_id: Optional[int] = None
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    machine_id: Optional[int] = None
+class UserPropertyAccessUpdate(BaseSchema):
+    access_level: Optional[AccessLevel] = None
+    expires_at: Optional[datetime] = None
 
-class ProcedureExecution(ProcedureExecutionBase):
+class UserPropertyAccess(UserPropertyAccessBase):
+    granted_at: datetime
+    user: Optional[User] = None
+    property: Optional[Property] = None
+
+# Dashboard/Analytics Schemas
+class DashboardStats(BaseSchema):
+    total_machines: int
+    overdue_pm_count: int
+    open_issues_count: int
+    critical_issues_count: int
+    completed_pm_today: int
+    upcoming_pm_week: int
+
+class PMOverdueItem(BaseSchema):
     id: int
-    procedure_id: int
-    work_order_id: Optional[int] = None
-    machine_id: Optional[int] = None
-    completed_date: Optional[date] = None
-    before_images: List[str] = Field(default_factory=list)
-    after_images: List[str] = Field(default_factory=list)
-    completed_by_id: Optional[int] = None
-    created_at: datetime
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    model_config = ConfigDict(from_attributes=True)
+    machine_name: str
+    procedure_title: str
+    next_due: datetime
+    days_overdue: int
+    responsible_user: str
 
-class ProcedureExecutionWithDetails(ProcedureExecution):
-    procedure: Optional[ProcedureWithMachines] = None
-    machine: Optional[Machine] = None
-    assigned_to: Optional[UserSimple] = None
-    completed_by: Optional[UserSimple] = None
-    work_order: Optional[WorkOrder] = None
-
-# --- Machine-Procedure Association Schemas ---
-class MachineProcedureAssignment(BaseModel):
-    machine_id: int
-    procedure_ids: List[int]
-
-class ProcedureMachineAssignment(BaseModel):
-    procedure_id: int
-    machine_ids: List[int]
-
-# --- Response Models ---
-class WorkOrderResponse(BaseModel):
-    data: WorkOrder
-    message: Optional[str] = None
-
-class WorkOrdersResponse(BaseModel):
-    data: Optional[List[WorkOrder]] = None
-    total: Optional[int] = None
-    page: Optional[int] = None
-    limit: Optional[int] = None
-    message: Optional[str] = None
-
-class ApiError(BaseModel):
-    error: str
-    message: str
-    errors: Optional[dict] = None
-
-class MessageResponse(BaseModel):
-    message: str
-    detail: Optional[str] = None
-
-class FileUploadResponse(BaseModel):
-    file_path: str
-    url: str
-    path: str
-    message: str
-
-class TechnicianStatus(BaseModel):
-    id: int
-    name: str
-    status: str
-    currentWorkOrder: Optional[str] = None
-    completedToday: int
-    utilization: int
-    location: Optional[str] = None
-
-class CalendarEvent(BaseModel):
-    id: str
+class RecentActivity(BaseSchema):
+    type: str  # "PM_COMPLETED", "ISSUE_CREATED", "INSPECTION_COMPLETED"
     title: str
-    start: str
-    end: Optional[str] = None
-    backgroundColor: str = "#007bff"
-    borderColor: str = "#007bff"
-    extendedProps: dict = Field(default_factory=dict)
-    model_config = ConfigDict(from_attributes=True)
+    description: str
+    created_at: datetime
+    user_name: str
