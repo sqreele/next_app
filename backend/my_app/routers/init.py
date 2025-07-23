@@ -1,6 +1,6 @@
 
 """
-Router package for PM System API
+Router package for PM System API init.py
 """
 from fastapi import APIRouter
 from .auth import router as auth_router
