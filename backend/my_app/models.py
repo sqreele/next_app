@@ -1,13 +1,16 @@
+"""
+SQLAlchemy models for PM System
+"""
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, ForeignKey, Text, Index
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import enum
 from datetime import datetime
-from database import Base
-Base = declarative_base()
 
-# Enums (same as before)
+# Import Base from database - DON'T redefine it
+from database import Base
+
+# Enums
 class UserRole(str, enum.Enum):
     TECHNICIAN = "TECHNICIAN"
     SUPERVISOR = "SUPERVISOR"
@@ -225,8 +228,8 @@ class PMSchedule(Base):
         Index('idx_pm_schedule_machine_active', 'machine_id', 'is_active'),
         Index('idx_pm_schedule_user_active', 'user_id', 'is_active'),
         Index('idx_pm_schedule_frequency_due', 'frequency', 'next_due'),
-        Index('idx_pm_schedule_overdue', 'next_due', 'is_active'),  # For overdue queries
-        Index('idx_pm_schedule_machine_procedure', 'machine_id', 'procedure_id'),  # Unique combinations
+        Index('idx_pm_schedule_overdue', 'next_due', 'is_active'),
+        Index('idx_pm_schedule_machine_procedure', 'machine_id', 'procedure_id'),
         Index('idx_pm_schedule_last_completed', 'last_completed', 'machine_id'),
     )
 
@@ -256,7 +259,7 @@ class PMExecution(Base):
         Index('idx_pm_execution_executor_date', 'executed_by_id', 'created_at'),
         Index('idx_pm_execution_completed_date', 'completed_at', 'status'),
         Index('idx_pm_execution_started_date', 'started_at', 'status'),
-        Index('idx_pm_execution_today_completed', 'completed_at', 'status'),  # For today's completed work
+        Index('idx_pm_execution_today_completed', 'completed_at', 'status'),
     )
 
 class Issue(Base):
@@ -290,8 +293,8 @@ class Issue(Base):
         Index('idx_issue_assigned_status', 'assigned_to_id', 'status'),
         Index('idx_issue_reporter_date', 'reported_by_id', 'reported_at'),
         Index('idx_issue_priority_status', 'priority', 'status'),
-        Index('idx_issue_critical_open', 'priority', 'status'),  # For critical open issues
-        Index('idx_issue_open_status', 'status', 'reported_at'),  # For open issues
+        Index('idx_issue_critical_open', 'priority', 'status'),
+        Index('idx_issue_open_status', 'status', 'reported_at'),
         Index('idx_issue_resolved_date', 'resolved_at', 'status'),
     )
 
@@ -321,7 +324,7 @@ class Inspection(Base):
         Index('idx_inspection_inspector_date', 'inspector_id', 'inspection_date'),
         Index('idx_inspection_result_date', 'result', 'inspection_date'),
         Index('idx_inspection_procedure_result', 'procedure_id', 'result'),
-        Index('idx_inspection_needs_attention', 'result', 'machine_id'),  # For failed inspections
+        Index('idx_inspection_needs_attention', 'result', 'machine_id'),
         Index('idx_inspection_date_range', 'inspection_date', 'machine_id'),
     )
 
@@ -351,7 +354,7 @@ class PMFile(Base):
         Index('idx_pm_file_inspection_type', 'inspection_id', 'image_type'),
         Index('idx_pm_file_uploaded_date', 'uploaded_at', 'file_type'),
         Index('idx_pm_file_image_type', 'image_type', 'uploaded_at'),
-        Index('idx_pm_file_name_search', 'file_name'),  # For file search
+        Index('idx_pm_file_name_search', 'file_name'),
     )
 
 class UserPropertyAccess(Base):
