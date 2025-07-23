@@ -22,7 +22,7 @@ import openpyxl
 # For creating a new DB session in background tasks
 from database import AsyncSessionLocal as SessionLocal, get_db, get_database_stats, close_db_connections, init_database, health_check as db_health_check
 from models import User, UserRole
-from schema import (
+from schemas import (
     User as UserSchema, BulkOperationResult,
     ExportRequest, ExportResult, PaginationParams
 )
