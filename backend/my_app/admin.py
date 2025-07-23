@@ -10,20 +10,7 @@ from .models import (
     UserRole, FrequencyType, PMStatus, IssueStatus, IssuePriority,
     InspectionResult, ImageType, AccessLevel
 )
-app = FastAPI()
-admin = Admin(app, engine)
-admin.add_view(UserAdmin)
-admin.add_view(PropertyAdmin)
-admin.add_view(RoomAdmin)
-admin.add_view(MachineAdmin)
-admin.add_view(TopicAdmin)
-admin.add_view(ProcedureAdmin)
-admin.add_view(PMScheduleAdmin)
-admin.add_view(PMExecutionAdmin)
-admin.add_view(IssueAdmin)
-admin.add_view(InspectionAdmin)
-admin.add_view(PMFileAdmin)
-admin.add_view(UserPropertyAccessAdmin)
+
 # Helper functions for safe data access and formatting
 def safe_get_attr(obj, attr, default="N/A"):
     """Safely get attribute from object."""
@@ -128,7 +115,7 @@ def format_image_preview(model, attribute):
         print(f"Image path: {image_path}")  # Debug
         if image_path and isinstance(image_path, str) and image_path.strip():
             clean_path = image_path.strip('/')
-            url = f"/uploads/{clean_path}"
+            url = f"/Uploads/{clean_path}"
             return Markup(f'''
                 <a href="{url}" target="_blank">
                     <img src="{url}" width="60" height="45" 
@@ -148,7 +135,7 @@ def format_file_link(model, attribute):
         print(f"File path: {file_path}")  # Debug
         if file_path and isinstance(file_path, str) and file_path.strip():
             clean_path = file_path.strip('/')
-            url = f"/uploads/{clean_path}"
+            url = f"/Uploads/{clean_path}"
             file_name = getattr(model, 'file_name', 'Download')
             return Markup(f'<a href="{url}" target="_blank" class="btn btn-sm btn-outline-primary">📄 {file_name}</a>')
         return Markup('<span style="color: #999; font-size: 12px;">No File</span>')
@@ -543,5 +530,5 @@ class UserPropertyAccessAdmin(ModelView, model=UserPropertyAccess):
         )
     
     name = "User Property Access"
-    name_plural = "User Property Access"
+    name_plural = "User Property Accesses"  # Fixed: Correct plural form
     icon = "fa-solid fa-key"
