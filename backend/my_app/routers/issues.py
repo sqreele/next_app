@@ -8,7 +8,7 @@ from datetime import datetime
 
 from database import get_db
 from models import User, UserRole, IssueStatus, IssuePriority
-from schema import (
+from schemas import (
     Issue as IssueSchema, IssueCreate, IssueUpdate,
     PaginationParams
 )
