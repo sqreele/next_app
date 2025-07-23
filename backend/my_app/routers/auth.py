@@ -11,7 +11,7 @@ from passlib.context import CryptContext
 
 from database import get_db
 from models import User, UserRole
-from schema import User as UserSchema, UserCreate
+from schemas import User as UserSchema, UserCreate
 import crud
 from crud import CRUDError
 
