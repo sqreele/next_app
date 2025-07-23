@@ -33,4 +33,4 @@ api_router.include_router(dashboard_router, prefix="/dashboard", tags=["Dashboar
 api_router.include_router(search_router, prefix="/search", tags=["Search"])
 api_router.include_router(admin_router, prefix="/admin", tags=["Administration"])
 
-__all__ = ["api_router"]
+__all__ = ["api_router"] 
