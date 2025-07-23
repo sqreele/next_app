@@ -50,10 +50,11 @@ except Exception as e:
 
 # Import routers
 try:
+    import routers
     from routers import api_router
-    logger.info("Successfully imported routers module")
-except ModuleNotFoundError as e:
-    logger.error(f"Failed to import routers module: {e}")
+    logger.info("Successfully imported routers module and api_router")
+except ImportError as e:
+    logger.error(f"Failed to import routers or api_router: {e}")
     logger.error(f"Routers directory exists: {os.path.isdir('routers')}")
     logger.error(f"Routers directory contents: {os.listdir('routers') if os.path.isdir('routers') else 'Not found'}")
     raise
