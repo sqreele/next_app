@@ -7,7 +7,7 @@ from typing import List, Optional, Dict, Any
 
 from database import get_db
 from models import User
-from schema import SearchRequest, SearchResult, PaginationParams
+from schemas import SearchRequest, SearchResult, PaginationParams
 import crud
 from crud import CRUDError
 from .auth import get_current_active_user
