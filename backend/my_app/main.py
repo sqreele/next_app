@@ -1,3 +1,5 @@
+# backend/my_app/main.py
+
 import sys
 import os
 import logging
@@ -9,6 +11,10 @@ from contextlib import asynccontextmanager
 import uvicorn
 from dotenv import load_dotenv
 
+# SQLAdmin imports
+from sqladmin import Admin
+from sqlalchemy.orm import sessionmaker
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -16,58 +22,36 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Debug Python path and directory
-logger.info(f"Python path: {sys.path}")
-logger.info(f"Current directory: {os.getcwd()}")
-logger.info(f"Directory contents: {os.listdir('.')}")
-logger.info(f"Checking for database.py: {'database.py' in os.listdir('.')}")
-logger.info(f"Routers directory contents: {os.listdir('routers') if os.path.isdir('routers') else 'routers directory not found'}")
-
 # Force add /app/my_app to sys.path
 sys.path.insert(0, '/app/my_app')
-logger.info(f"Updated Python path: {sys.path}")
 
 # Load environment variables
 load_dotenv()
-logger.info(f"Environment variables: DB_HOST={os.environ.get('DB_HOST', 'Not set')}, DB_NAME={os.environ.get('DB_NAME', 'Not set')}")
 
 # Import database
-try:
-    from database import (
-        init_database, close_db_connections, health_check as db_health_check,
-        ENVIRONMENT, DEBUG, get_db
-    )
-    logger.info("Successfully imported database module")
-except ModuleNotFoundError as e:
-    logger.error(f"Failed to import database module: {e}")
-    logger.error(f"Current directory: {os.getcwd()}")
-    logger.error(f"Directory contents: {os.listdir('.')}")
-    logger.error(f"sys.path: {sys.path}")
-    raise
-except Exception as e:
-    logger.error(f"Unexpected error importing database module: {e}")
-    raise
+from database import (
+    init_database, close_db_connections, health_check as db_health_check,
+    ENVIRONMENT, DEBUG, get_db, sync_engine  # Add sync_engine import
+)
 
 # Import routers
-try:
-    import routers
-    from routers import api_router
-    logger.info("Successfully imported routers module and api_router")
-except ImportError as e:
-    logger.error(f"Failed to import routers or api_router: {e}")
-    logger.error(f"Routers directory exists: {os.path.isdir('routers')}")
-    logger.error(f"Routers directory contents: {os.listdir('routers') if os.path.isdir('routers') else 'Not found'}")
-    raise
-except Exception as e:
-    logger.error(f"Unexpected error importing routers module: {e}")
-    raise
+from routers import api_router
+
+# Import admin views
+from admin import (
+    UserAdmin, PropertyAdmin, RoomAdmin, MachineAdmin, TopicAdmin,
+    ProcedureAdmin, PMScheduleAdmin, PMExecutionAdmin, IssueAdmin,
+    InspectionAdmin, PMFileAdmin, UserPropertyAccessAdmin
+)
+
+# Import authentication backend
+from login_admin import authentication_backend
 
 # Validate environment variables
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,*.localhost').split(',')
 if not ALLOWED_HOSTS or not any(host.strip() for host in ALLOWED_HOSTS):
     logger.error("❌ ALLOWED_HOSTS environment variable is missing or invalid")
     raise ValueError("ALLOWED_HOSTS configuration incomplete")
-logger.info(f"ALLOWED_HOSTS: {ALLOWED_HOSTS}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -94,7 +78,6 @@ app = FastAPI(
     docs_url="/docs" if DEBUG else None,
     redoc_url="/redoc" if DEBUG else None,
 )
-logger.info("FastAPI app initialized")
 
 # Add middleware
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -110,11 +93,34 @@ if not DEBUG:
         TrustedHostMiddleware,
         allowed_hosts=[host.strip() for host in ALLOWED_HOSTS if host.strip()]
     )
-logger.info("Middleware configured")
+
+# Initialize SQLAdmin
+admin = Admin(
+    app, 
+    sync_engine,
+    authentication_backend=authentication_backend,
+    title="PM System Admin",
+    logo_url=None,
+)
+
+# Add all admin views
+admin.add_view(UserAdmin)
+admin.add_view(PropertyAdmin)
+admin.add_view(RoomAdmin)
+admin.add_view(MachineAdmin)
+admin.add_view(TopicAdmin)
+admin.add_view(ProcedureAdmin)
+admin.add_view(PMScheduleAdmin)
+admin.add_view(PMExecutionAdmin)
+admin.add_view(IssueAdmin)
+admin.add_view(InspectionAdmin)
+admin.add_view(PMFileAdmin)
+admin.add_view(UserPropertyAccessAdmin)
+
+logger.info("✅ SQLAdmin initialized with all views")
 
 # Include the main API router
 app.include_router(api_router)
-logger.info("API router included")
 
 # Root endpoint
 @app.get("/")
@@ -124,6 +130,7 @@ async def root():
         "version": "2.0.0",
         "status": "operational",
         "docs": "/docs" if DEBUG else "Documentation disabled in production",
+        "admin": "/admin" if DEBUG else "Admin panel available",
         "environment": ENVIRONMENT
     }
 
@@ -146,7 +153,6 @@ async def health_check():
         }
 
 if __name__ == "__main__":
-    logger.info("Starting Uvicorn server")
     uvicorn.run(
         "my_app.main:app",
         host="0.0.0.0",
