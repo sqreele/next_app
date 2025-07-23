@@ -7,7 +7,7 @@ from typing import List, Optional
 
 from database import get_db
 from models import User, UserRole
-from schema import (
+from schemas import (
     Property as PropertySchema, PropertyCreate, PropertyUpdate,
     Room as RoomSchema, RoomCreate, RoomUpdate,
     UserPropertyAccess as UserPropertyAccessSchema,
