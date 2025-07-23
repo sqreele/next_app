@@ -9,10 +9,10 @@ from datetime import datetime, timedelta
 from jose import jwt
 from passlib.context import CryptContext
 
-from ..database import get_db
-from ..models import User, UserRole
-from ..schemas import User as UserSchema, UserCreate
-from .. import crud
+from .database import get_db
+from .models import User, UserRole
+from .schemas import User as UserSchema, UserCreate
+from . import crud
 from crud import CRUDError
 
 router = APIRouter()
