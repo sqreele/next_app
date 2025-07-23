@@ -48,12 +48,12 @@ SETTINGS_FILE = Path("system_settings.json")
 
 
 # --- Middleware to count requests ---
-@router.middleware("http")
-async def count_requests(request: Request, call_next):
-    """Middleware to count incoming requests for monitoring."""
-    global REQUEST_COUNT
-    REQUEST_COUNT += 1
+
+async def add_process_time_header(request: Request, call_next):
+    start_time = time.time()
     response = await call_next(request)
+    process_time = time.time() - start_time
+    response.headers["X-Process-Time"] = str(process_time)
     return response
 
 # --- Helper Functions ---
