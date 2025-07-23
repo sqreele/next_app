@@ -457,7 +457,7 @@ class PaginatedResponse(BaseSchema):
 
 # Export Schemas
 class ExportRequest(BaseSchema):
-    format: str = Field(..., regex='^(csv|xlsx|pdf)$')
+    format: str = Field(..., pattern='^(csv|xlsx|pdf)$')
     filters: Optional[FilterRequest] = None
     fields: Optional[List[str]] = None
 
