@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from database import get_db
 from models import User, UserRole, InspectionResult
-from schema import (
+from schemas import (
     Inspection as InspectionSchema, InspectionCreate, InspectionUpdate,
     PaginationParams
 )
