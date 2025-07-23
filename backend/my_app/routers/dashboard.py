@@ -285,3 +285,245 @@ async def get_issue_trends(
         
         # Calculate resolution time for resolved issues
         resolved_issues = [
+            issue for issue in period_issues 
+            if issue.status in [IssueStatus.RESOLVED, IssueStatus.CLOSED] and issue.resolved_at
+        ]
+        
+        avg_resolution_time = 0
+        if resolved_issues:
+            total_resolution_time = sum([
+                (issue.resolved_at - issue.reported_at).total_seconds() / 3600  # hours
+                for issue in resolved_issues
+            ])
+            avg_resolution_time = round(total_resolution_time / len(resolved_issues), 2)
+        
+        return {
+            "period_days": days,
+            "total_issues": len(period_issues),
+            "priority_breakdown": priority_breakdown,
+            "status_breakdown": status_breakdown,
+            "resolved_issues": len(resolved_issues),
+            "avg_resolution_time_hours": avg_resolution_time,
+            "resolution_rate": round((len(resolved_issues) / len(period_issues) * 100) if period_issues else 0, 2)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to fetch issue trends")
+
+@router.get("/analytics/machine-health")
+async def get_machine_health_analytics(
+    limit: int = Query(20, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPERVISOR))
+):
+    """Get machine health analytics (Supervisor+ only)"""
+    try:
+        machines = await crud.machine.get_multi(
+            db,
+            filters={"is_active": True},
+            limit=limit,
+            order_by="name"
+        )
+        
+        machine_health = []
+        
+        for machine in machines:
+            # Get recent issues for this machine
+            machine_issues = await crud.issue.get_by_machine(db, machine_id=machine.id, limit=100)
+            
+            # Get recent inspections
+            machine_inspections = await crud.inspection.get_by_machine(db, machine_id=machine.id, limit=100)
+            
+            # Get overdue PM schedules
+            machine_schedules = await crud.pm_schedule.get_by_machine(db, machine_id=machine.id)
+            overdue_schedules = [
+                schedule for schedule in machine_schedules 
+                if schedule.next_due < datetime.now()
+            ]
+            
+            # Calculate health score (0-100)
+            health_score = 100
+            
+            # Deduct for open issues
+            open_issues = [issue for issue in machine_issues if issue.status != IssueStatus.CLOSED]
+            health_score -= len(open_issues) * 5  # -5 per open issue
+            
+            # Deduct more for critical issues
+            critical_issues = [issue for issue in open_issues if issue.priority == IssuePriority.CRITICAL]
+            health_score -= len(critical_issues) * 15  # Additional -15 per critical issue
+            
+            # Deduct for overdue PM
+            health_score -= len(overdue_schedules) * 10  # -10 per overdue PM
+            
+            # Deduct for failed inspections
+            failed_inspections = [
+                insp for insp in machine_inspections 
+                if insp.result in ['FAIL', 'NEEDS_ATTENTION']
+            ]
+            health_score -= len(failed_inspections) * 8  # -8 per failed inspection
+            
+            # Ensure score is between 0-100
+            health_score = max(0, min(100, health_score))
+            
+            machine_health.append({
+                "machine_id": machine.id,
+                "machine_name": machine.name,
+                "health_score": health_score,
+                "open_issues": len(open_issues),
+                "critical_issues": len(critical_issues),
+                "overdue_pm": len(overdue_schedules),
+                "recent_inspections": len(machine_inspections),
+                "failed_inspections": len(failed_inspections)
+            })
+        
+        # Sort by health score (worst first)
+        machine_health.sort(key=lambda x: x["health_score"])
+        
+        return {
+            "machines": machine_health,
+            "avg_health_score": round(sum([m["health_score"] for m in machine_health]) / len(machine_health), 2) if machine_health else 0,
+            "machines_needing_attention": len([m for m in machine_health if m["health_score"] < 70])
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to fetch machine health analytics")
+
+@router.get("/analytics/user-productivity")
+async def get_user_productivity(
+    days: int = Query(30, ge=7, le=365),
+    limit: int = Query(20, le=50),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.MANAGER))
+):
+    """Get user productivity analytics (Manager+ only)"""
+    try:
+        cutoff_date = datetime.now() - timedelta(days=days)
+        
+        # Get active users
+        users = await crud.user.get_multi(
+            db,
+            filters={"is_active": True},
+            limit=limit,
+            order_by="first_name"
+        )
+        
+        user_productivity = []
+        
+        for user in users:
+            # Get completed PM executions
+            user_executions = await crud.pm_execution.get_multi(
+                db,
+                filters={"executed_by_id": user.id, "status": PMStatus.COMPLETED},
+                limit=1000
+            )
+            
+            period_executions = [
+                ex for ex in user_executions 
+                if ex.completed_at and ex.completed_at >= cutoff_date
+            ]
+            
+            # Get resolved issues
+            user_issues = await crud.issue.get_multi(
+                db,
+                filters={"assigned_to_id": user.id, "status": IssueStatus.RESOLVED},
+                limit=1000
+            )
+            
+            period_resolved_issues = [
+                issue for issue in user_issues 
+                if issue.resolved_at and issue.resolved_at >= cutoff_date
+            ]
+            
+            # Get inspections
+            user_inspections = await crud.inspection.get_multi(
+                db,
+                filters={"inspector_id": user.id},
+                limit=1000
+            )
+            
+            period_inspections = [
+                insp for insp in user_inspections 
+                if insp.created_at >= cutoff_date
+            ]
+            
+            user_productivity.append({
+                "user_id": user.id,
+                "user_name": f"{user.first_name} {user.last_name}",
+                "role": user.role.value,
+                "completed_pm": len(period_executions),
+                "resolved_issues": len(period_resolved_issues),
+                "inspections_completed": len(period_inspections),
+                "total_activities": len(period_executions) + len(period_resolved_issues) + len(period_inspections)
+            })
+        
+        # Sort by total activities (most productive first)
+        user_productivity.sort(key=lambda x: x["total_activities"], reverse=True)
+        
+        return {
+            "period_days": days,
+            "users": user_productivity,
+            "total_activities": sum([u["total_activities"] for u in user_productivity]),
+            "avg_activities_per_user": round(sum([u["total_activities"] for u in user_productivity]) / len(user_productivity), 2) if user_productivity else 0
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to fetch user productivity analytics")
+
+@router.get("/my-dashboard")
+async def get_my_dashboard(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get personalized dashboard for current user"""
+    try:
+        # Get user's assigned PM schedules
+        my_pm_schedules = await crud.pm_schedule.get_by_user(db, user_id=current_user.id)
+        
+        # Get user's assigned issues
+        my_issues = await crud.issue.get_assigned_to_user(db, user_id=current_user.id, limit=50)
+        
+        # Get user's recent PM executions
+        my_executions = await crud.pm_execution.get_multi(
+            db,
+            filters={"executed_by_id": current_user.id},
+            order_by="created_at", order_direction="desc",
+            limit=10
+        )
+        
+        # Get user's recent inspections
+        my_inspections = await crud.inspection.get_multi(
+            db,
+            filters={"inspector_id": current_user.id},
+            order_by="created_at", order_direction="desc",
+            limit=10
+        )
+        
+        # Calculate user statistics
+        overdue_pm = [schedule for schedule in my_pm_schedules if schedule.next_due < datetime.now()]
+        upcoming_pm = [
+            schedule for schedule in my_pm_schedules 
+            if schedule.next_due >= datetime.now() and 
+               schedule.next_due <= datetime.now() + timedelta(days=7)
+        ]
+        open_issues = [issue for issue in my_issues if issue.status != IssueStatus.CLOSED]
+        
+        return {
+            "user": {
+                "id": current_user.id,
+                "name": f"{current_user.first_name} {current_user.last_name}",
+                "role": current_user.role.value
+            },
+            "summary": {
+                "total_pm_schedules": len(my_pm_schedules),
+                "overdue_pm": len(overdue_pm),
+                "upcoming_pm": len(upcoming_pm),
+                "assigned_issues": len(my_issues),
+                "open_issues": len(open_issues),
+                "recent_executions": len(my_executions),
+                "recent_inspections": len(my_inspections)
+            },
+            "overdue_pm": overdue_pm[:5],  # Limit to 5 most overdue
+            "upcoming_pm": upcoming_pm[:5],  # Limit to 5 next upcoming
+            "open_issues": open_issues[:5],  # Limit to 5 most recent open issues
+            "recent_executions": my_executions[:5],
+            "recent_inspections": my_inspections[:5]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to fetch personal dashboard")
