@@ -1,29 +1,28 @@
-# backend/my_app/admin.py
-
 from sqladmin import ModelView
+from markupsafe import Markup
+from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.exc import DetachedInstanceError
+from datetime import datetime, timedelta
+import pytz
 from .models import (
     User, Property, Room, Machine, Topic, Procedure, PMSchedule, PMExecution,
     Issue, Inspection, PMFile, UserPropertyAccess,
     UserRole, FrequencyType, PMStatus, IssueStatus, IssuePriority,
     InspectionResult, ImageType, AccessLevel
 )
-from markupsafe import Markup
-from sqlalchemy.orm import selectinload
-from sqlalchemy.sql import text
-from sqlalchemy.orm.exc import DetachedInstanceError
-from datetime import datetime
 
 # Helper functions for safe data access and formatting
 def safe_get_attr(obj, attr, default="N/A"):
-    """Safely get attribute from object"""
+    """Safely get attribute from object."""
     try:
         value = getattr(obj, attr, default)
         return value if value is not None else default
-    except (DetachedInstanceError, AttributeError):
+    except (DetachedInstanceError, AttributeError) as e:
+        print(f"Error in safe_get_attr for {attr}: {str(e)}")  # Debug
         return default
 
 def safe_get_relationship_name(obj, relationship_attr, name_attr="name", default="Unknown"):
-    """Safely get name from related object"""
+    """Safely get name from related object."""
     try:
         related_obj = getattr(obj, relationship_attr, None)
         if related_obj:
@@ -33,23 +32,28 @@ def safe_get_relationship_name(obj, relationship_attr, name_attr="name", default
                 return related_obj.title
             elif hasattr(related_obj, 'username'):
                 return related_obj.username
+            print(f"No {name_attr}, title, or username in {relationship_attr}")  # Debug
+        print(f"No related object for {relationship_attr}")  # Debug
         return default
-    except (DetachedInstanceError, AttributeError):
+    except (DetachedInstanceError, AttributeError) as e:
+        print(f"Error in safe_get_relationship_name for {relationship_attr}: {str(e)}")  # Debug
         return default
 
 def safe_get_user_full_name(obj, relationship_attr, default="Unknown"):
-    """Safely get user's full name"""
+    """Safely get user's full name."""
     try:
         user = getattr(obj, relationship_attr, None)
         if user and hasattr(user, 'first_name') and hasattr(user, 'last_name'):
             full_name = f"{user.first_name} {user.last_name}".strip()
             return full_name if full_name else (user.username if hasattr(user, 'username') else default)
+        print(f"No user or incomplete user data for {relationship_attr}")  # Debug
         return default
-    except (DetachedInstanceError, AttributeError):
+    except (DetachedInstanceError, AttributeError) as e:
+        print(f"Error in safe_get_user_full_name for {relationship_attr}: {str(e)}")  # Debug
         return default
 
 def format_enum_badge(model, attribute, color_map=None):
-    """Format enum value as colored badge"""
+    """Format enum value as colored badge."""
     try:
         value = getattr(model, attribute, None)
         if not value:
@@ -57,45 +61,38 @@ def format_enum_badge(model, attribute, color_map=None):
         
         enum_value = value.value if hasattr(value, 'value') else str(value)
         
-        # Default color mapping
         default_colors = {
             # User Roles
             'TECHNICIAN': 'info',
-            'SUPERVISOR': 'warning', 
+            'SUPERVISOR': 'warning',
             'MANAGER': 'primary',
             'ADMIN': 'danger',
-            
             # PM Status
             'SCHEDULED': 'info',
             'IN_PROGRESS': 'warning',
             'COMPLETED': 'success',
             'CANCELLED': 'secondary',
             'OVERDUE': 'danger',
-            
             # Issue Status
             'OPEN': 'warning',
             'ASSIGNED': 'info',
             'RESOLVED': 'success',
             'CLOSED': 'secondary',
-            
             # Issue Priority
             'LOW': 'secondary',
             'MEDIUM': 'info',
             'HIGH': 'warning',
             'CRITICAL': 'danger',
-            
             # Inspection Result
             'PASS': 'success',
             'FAIL': 'danger',
             'NEEDS_ATTENTION': 'warning',
-            
             # Frequency
             'DAILY': 'info',
             'WEEKLY': 'primary',
             'MONTHLY': 'warning',
             'QUARTERLY': 'secondary',
             'ANNUAL': 'dark',
-            
             # Access Level
             'READ_ONLY': 'secondary',
             'FULL_ACCESS': 'success',
@@ -107,13 +104,15 @@ def format_enum_badge(model, attribute, color_map=None):
         color = colors.get(enum_value, 'secondary')
         
         return Markup(f'<span class="badge badge-{color}">{enum_value}</span>')
-    except Exception:
+    except Exception as e:
+        print(f"Error in format_enum_badge for {attribute}: {str(e)}")  # Debug
         return Markup('<span class="badge badge-secondary">Error</span>')
 
 def format_image_preview(model, attribute):
-    """Format image path as preview"""
+    """Format image path as preview."""
     try:
         image_path = getattr(model, attribute, None)
+        print(f"Image path: {image_path}")  # Debug
         if image_path and isinstance(image_path, str) and image_path.strip():
             clean_path = image_path.strip('/')
             url = f"/uploads/{clean_path}"
@@ -125,38 +124,46 @@ def format_image_preview(model, attribute):
                 </a>
             ''')
         return Markup('<span style="color: #999; font-size: 12px;">No Image</span>')
-    except Exception:
+    except Exception as e:
+        print(f"Error in format_image_preview for {attribute}: {str(e)}")  # Debug
         return Markup('<span style="color: #999; font-size: 12px;">Error</span>')
 
 def format_file_link(model, attribute):
-    """Format file path as download link"""
+    """Format file path as download link."""
     try:
         file_path = getattr(model, attribute, None)
+        print(f"File path: {file_path}")  # Debug
         if file_path and isinstance(file_path, str) and file_path.strip():
             clean_path = file_path.strip('/')
             url = f"/uploads/{clean_path}"
             file_name = getattr(model, 'file_name', 'Download')
             return Markup(f'<a href="{url}" target="_blank" class="btn btn-sm btn-outline-primary">📄 {file_name}</a>')
         return Markup('<span style="color: #999; font-size: 12px;">No File</span>')
-    except Exception:
+    except Exception as e:
+        print(f"Error in format_file_link for {attribute}: {str(e)}")  # Debug
         return Markup('<span style="color: #999; font-size: 12px;">Error</span>')
 
 def format_datetime(model, attribute):
-    """Format datetime for display"""
+    """Format datetime for display with timezone."""
     try:
         dt = getattr(model, attribute, None)
         if dt and isinstance(dt, datetime):
-            return dt.strftime("%Y-%m-%d %H:%M")
+            if dt.tzinfo is None:  # Make naive datetime timezone-aware
+                dt = pytz.utc.localize(dt)
+            return dt.strftime("%Y-%m-%d %H:%M %Z")
         return "N/A"
-    except Exception:
+    except Exception as e:
+        print(f"Error in format_datetime for {attribute}: {str(e)}")  # Debug
         return "Error"
 
 def format_overdue_status(model, attribute):
-    """Format overdue status with color coding"""
+    """Format overdue status with color coding."""
     try:
         next_due = getattr(model, attribute, None)
         if next_due and isinstance(next_due, datetime):
-            now = datetime.now()
+            if next_due.tzinfo is None:
+                next_due = pytz.utc.localize(next_due)
+            now = datetime.now(pytz.utc)
             if next_due < now:
                 days_overdue = (now - next_due).days
                 return Markup(f'<span class="badge badge-danger">Overdue {days_overdue} days</span>')
@@ -166,13 +173,14 @@ def format_overdue_status(model, attribute):
             else:
                 return Markup('<span class="badge badge-success">On Schedule</span>')
         return "N/A"
-    except Exception:
+    except Exception as e:
+        print(f"Error in format_overdue_status for {attribute}: {str(e)}")  # Debug
         return "Error"
 
 # Admin Model Views
 class UserAdmin(ModelView, model=User):
     column_list = [
-        User.id, User.username, User.first_name, User.last_name, 
+        User.id, User.username, User.first_name, User.last_name,
         User.email, User.role, User.is_active, User.created_at
     ]
     column_details_list = [
@@ -192,6 +200,7 @@ class UserAdmin(ModelView, model=User):
         'role': lambda m, a: format_enum_badge(m, 'role'),
         'is_active': lambda m, a: Markup('<span class="badge badge-success">Active</span>' if m.is_active else '<span class="badge badge-secondary">Inactive</span>'),
         'created_at': lambda m, a: format_datetime(m, 'created_at'),
+        'updated_at': lambda m, a: format_datetime(m, 'updated_at'),
     }
     
     name = "User"
@@ -224,6 +233,8 @@ class RoomAdmin(ModelView, model=Room):
     column_formatters = {
         'property_name': lambda m, a: safe_get_relationship_name(m, 'property'),
         'is_active': lambda m, a: Markup('<span class="badge badge-success">Active</span>' if m.is_active else '<span class="badge badge-secondary">Inactive</span>'),
+        'created_at': lambda m, a: format_datetime(m, 'created_at'),
+        'updated_at': lambda m, a: format_datetime(m, 'updated_at'),
     }
     
     def get_query(self, request):
@@ -250,6 +261,8 @@ class MachineAdmin(ModelView, model=Machine):
         'room_name': lambda m, a: safe_get_relationship_name(m, 'room'),
         'property_name': lambda m, a: safe_get_relationship_name(m.room, 'property') if hasattr(m, 'room') and m.room else 'N/A',
         'is_active': lambda m, a: Markup('<span class="badge badge-success">Active</span>' if m.is_active else '<span class="badge badge-secondary">Inactive</span>'),
+        'created_at': lambda m, a: format_datetime(m, 'created_at'),
+        'updated_at': lambda m, a: format_datetime(m, 'updated_at'),
     }
     
     def get_query(self, request):
@@ -271,6 +284,7 @@ class TopicAdmin(ModelView, model=Topic):
     column_formatters = {
         'is_active': lambda m, a: Markup('<span class="badge badge-success">Active</span>' if m.is_active else '<span class="badge badge-secondary">Inactive</span>'),
         'created_at': lambda m, a: format_datetime(m, 'created_at'),
+        'updated_at': lambda m, a: format_datetime(m, 'updated_at'),
     }
     
     name = "Topic"
@@ -279,7 +293,7 @@ class TopicAdmin(ModelView, model=Topic):
 
 class ProcedureAdmin(ModelView, model=Procedure):
     column_list = [
-        Procedure.id, Procedure.title, "topic_name", 
+        Procedure.id, Procedure.title, "topic_name",
         Procedure.estimated_minutes, Procedure.is_active
     ]
     form_columns = [
@@ -294,6 +308,8 @@ class ProcedureAdmin(ModelView, model=Procedure):
         'topic_name': lambda m, a: safe_get_relationship_name(m, 'topic', 'title'),
         'estimated_minutes': lambda m, a: f"{m.estimated_minutes} min" if m.estimated_minutes else "N/A",
         'is_active': lambda m, a: Markup('<span class="badge badge-success">Active</span>' if m.is_active else '<span class="badge badge-secondary">Inactive</span>'),
+        'created_at': lambda m, a: format_datetime(m, 'created_at'),
+        'updated_at': lambda m, a: format_datetime(m, 'updated_at'),
     }
     
     def get_query(self, request):
@@ -314,7 +330,7 @@ class PMScheduleAdmin(ModelView, model=PMSchedule):
         PMSchedule.last_completed, PMSchedule.is_active
     ]
     column_searchable_list = []
-    column_sortable_list = [PMSchedule.id, PMSchedule.frequency, PMSchedule.next_due, PMSchedule.last_completed]
+    column_sortable_list = [PMSchedule.id, PMSchedule.frequency, PMSchedule.next_due, PMSchedule.is_active]
     column_filters = [PMSchedule.machine_id, PMSchedule.procedure_id, PMSchedule.user_id, PMSchedule.frequency, PMSchedule.is_active]
     
     column_formatters = {
@@ -325,12 +341,15 @@ class PMScheduleAdmin(ModelView, model=PMSchedule):
         'next_due': lambda m, a: format_datetime(m, 'next_due'),
         'due_status': lambda m, a: format_overdue_status(m, 'next_due'),
         'is_active': lambda m, a: Markup('<span class="badge badge-success">Active</span>' if m.is_active else '<span class="badge badge-secondary">Inactive</span>'),
+        'last_completed': lambda m, a: format_datetime(m, 'last_completed'),
+        'created_at': lambda m, a: format_datetime(m, 'created_at'),
+        'updated_at': lambda m, a: format_datetime(m, 'updated_at'),
     }
     
     def get_query(self, request):
         return super().get_query(request).options(
-            selectinload(PMSchedule.machine),
-            selectinload(PMSchedule.procedure),
+            selectinload(PMSchedule.machine).selectinload(Machine.room).selectinload(Room.property),
+            selectinload(PMSchedule.procedure).selectinload(Procedure.topic),
             selectinload(PMSchedule.responsible_user)
         )
     
@@ -361,11 +380,17 @@ class PMExecutionAdmin(ModelView, model=PMExecution):
         'status': lambda m, a: format_enum_badge(m, 'status'),
         'started_at': lambda m, a: format_datetime(m, 'started_at'),
         'completed_at': lambda m, a: format_datetime(m, 'completed_at'),
+        'next_due_calculated': lambda m, a: format_datetime(m, 'next_due_calculated'),
+        'created_at': lambda m, a: format_datetime(m, 'created_at'),
+        'updated_at': lambda m, a: format_datetime(m, 'updated_at'),
     }
     
     def get_query(self, request):
         return super().get_query(request).options(
-            selectinload(PMExecution.pm_schedule).selectinload(PMSchedule.machine),
+            selectinload(PMExecution.pm_schedule)
+                .selectinload(PMSchedule.machine)
+                .selectinload(Machine.room)
+                .selectinload(Room.property),
             selectinload(PMExecution.pm_schedule).selectinload(PMSchedule.procedure),
             selectinload(PMExecution.executor)
         )
@@ -394,13 +419,17 @@ class IssueAdmin(ModelView, model=Issue):
         'priority': lambda m, a: format_enum_badge(m, 'priority'),
         'status': lambda m, a: format_enum_badge(m, 'status'),
         'reported_at': lambda m, a: format_datetime(m, 'reported_at'),
+        'resolved_at': lambda m, a: format_datetime(m, 'resolved_at'),
+        'created_at': lambda m, a: format_datetime(m, 'created_at'),
+        'updated_at': lambda m, a: format_datetime(m, 'updated_at'),
     }
     
     def get_query(self, request):
         return super().get_query(request).options(
-            selectinload(Issue.machine),
+            selectinload(Issue.machine).selectinload(Machine.room).selectinload(Room.property),
             selectinload(Issue.reporter),
-            selectinload(Issue.assignee)
+            selectinload(Issue.assignee),
+            selectinload(Issue.room)
         )
     
     name = "Issue"
@@ -425,11 +454,13 @@ class InspectionAdmin(ModelView, model=Inspection):
         'inspector_name': lambda m, a: safe_get_user_full_name(m, 'inspector'),
         'result': lambda m, a: format_enum_badge(m, 'result'),
         'inspection_date': lambda m, a: format_datetime(m, 'inspection_date'),
+        'created_at': lambda m, a: format_datetime(m, 'created_at'),
+        'updated_at': lambda m, a: format_datetime(m, 'updated_at'),
     }
     
     def get_query(self, request):
         return super().get_query(request).options(
-            selectinload(Inspection.machine),
+            selectinload(Inspection.machine).selectinload(Machine.room).selectinload(Room.property),
             selectinload(Inspection.inspector),
             selectinload(Inspection.procedure)
         )
