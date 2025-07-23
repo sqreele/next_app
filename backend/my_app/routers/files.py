@@ -12,7 +12,7 @@ import mimetypes
 
 from database import get_db
 from models import User, UserRole, ImageType
-from schema import (
+from schemas import (
     PMFile as PMFileSchema, PMFileCreate, PMFileUpdate,
     PaginationParams
 )
