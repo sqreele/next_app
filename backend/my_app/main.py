@@ -48,7 +48,7 @@ except Exception as e:
 
 # Import routers
 try:
-    from routers import api_router
+    from .routers import api_router
     logger.info("Successfully imported routers module and api_router")
 except ImportError as e:
     logger.error(f"Failed to import routers or api_router: {e}")
