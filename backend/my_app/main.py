@@ -1,416 +1,156 @@
-"""
-Enhanced database configuration for PM System with async/sync support
-"""
+import sys
 import os
 import logging
-from typing import AsyncGenerator
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from contextlib import asynccontextmanager
+import uvicorn
 from dotenv import load_dotenv
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy import create_engine, event, text
-from sqlalchemy.pool import StaticPool
-import asyncio
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+# Debug Python path and directory
+logger.info(f"Python path: {sys.path}")
+logger.info(f"Current directory: {os.getcwd()}")
+logger.info(f"Directory contents: {os.listdir('.')}")
+logger.info(f"Checking for database.py: {'database.py' in os.listdir('.')}")
+logger.info(f"Routers directory contents: {os.listdir('routers') if os.path.isdir('routers') else 'routers directory not found'}")
+
+# Force add /app/my_app to sys.path
+sys.path.insert(0, '/app/my_app')
+logger.info(f"Updated Python path: {sys.path}")
 
 # Load environment variables
 load_dotenv()
+logger.info(f"Environment variables: DB_HOST={os.environ.get('DB_HOST', 'Not set')}, DB_NAME={os.environ.get('DB_NAME', 'Not set')}")
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Import database
+try:
+    from database import (
+        init_database, close_db_connections, health_check as db_health_check,
+        ENVIRONMENT, DEBUG, get_db
+    )
+    logger.info("Successfully imported database module")
+except ModuleNotFoundError as e:
+    logger.error(f"Failed to import database module: {e}")
+    logger.error(f"Current directory: {os.getcwd()}")
+    logger.error(f"Directory contents: {os.listdir('.')}")
+    logger.error(f"sys.path: {sys.path}")
+    raise
+except Exception as e:
+    logger.error(f"Unexpected error importing database module: {e}")
+    raise
 
-# Define the declarative base here to avoid circular imports
-Base = declarative_base()
+# Import routers
+try:
+    from routers import api_router
+    logger.info("Successfully imported routers module")
+except ModuleNotFoundError as e:
+    logger.error(f"Failed to import routers module: {e}")
+    logger.error(f"Routers directory exists: {os.path.isdir('routers')}")
+    logger.error(f"Routers directory contents: {os.listdir('routers') if os.path.isdir('routers') else 'Not found'}")
+    raise
+except Exception as e:
+    logger.error(f"Unexpected error importing routers module: {e}")
+    raise
 
-# Database Configuration from environment
-DB_USER = os.getenv('DB_USER', 'postgres')
-DB_PASSWORD = os.getenv('DB_PASSWORD', 'postgres')
-DB_HOST = os.getenv('DB_HOST', 'localhost')
-DB_PORT = os.getenv('DB_PORT', '5432')
-DB_NAME = os.getenv('DB_NAME', 'pmdb')
-DB_TEST_NAME = os.getenv('DB_TEST_NAME', 'pmdb_test')
+# Validate environment variables
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,*.localhost').split(',')
+if not ALLOWED_HOSTS or not any(host.strip() for host in ALLOWED_HOSTS):
+    logger.error("❌ ALLOWED_HOSTS environment variable is missing or invalid")
+    raise ValueError("ALLOWED_HOSTS configuration incomplete")
+logger.info(f"ALLOWED_HOSTS: {ALLOWED_HOSTS}")
 
-# Environment settings
-ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
-DEBUG = ENVIRONMENT == 'development'
-
-# Construct database URLs
-SQLALCHEMY_DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-SQLALCHEMY_SYNC_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-SQLALCHEMY_TEST_DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_TEST_NAME}"
-
-# Connection pool settings
-POOL_SIZE = int(os.getenv('DB_POOL_SIZE', '20'))
-MAX_OVERFLOW = int(os.getenv('DB_MAX_OVERFLOW', '30'))
-POOL_TIMEOUT = int(os.getenv('DB_POOL_TIMEOUT', '30'))
-POOL_RECYCLE = int(os.getenv('DB_POOL_RECYCLE', '3600'))
-
-# Async engine for FastAPI with optimized settings
-async_engine = create_async_engine(
-    SQLALCHEMY_DATABASE_URL,
-    echo=DEBUG,  # SQL logging in development only
-    future=True,
-    pool_size=POOL_SIZE,
-    max_overflow=MAX_OVERFLOW,
-    pool_timeout=POOL_TIMEOUT,
-    pool_pre_ping=True,  # Verify connections before use
-    pool_recycle=POOL_RECYCLE,  # Recreate connections every hour
-    connect_args={
-        "server_settings": {
-            "application_name": "PM_System_Async",
-            "jit": "off",  # Disable JIT for faster connection
-        },
-        "command_timeout": 60,
-    }
-)
-
-# Sync engine for SQLAdmin and migrations
-sync_engine = create_engine(
-    SQLALCHEMY_SYNC_DATABASE_URL,
-    echo=DEBUG,
-    future=True,
-    pool_size=POOL_SIZE,
-    max_overflow=MAX_OVERFLOW,
-    pool_timeout=POOL_TIMEOUT,
-    pool_pre_ping=True,
-    pool_recycle=POOL_RECYCLE,
-    connect_args={
-        "application_name": "PM_System_Sync",
-    }
-)
-
-# Test engine for testing
-test_engine = create_async_engine(
-    SQLALCHEMY_TEST_DATABASE_URL,
-    echo=False,
-    future=True,
-    poolclass=StaticPool,
-    connect_args={
-        "server_settings": {
-            "application_name": "PM_System_Test",
-        }
-    }
-)
-
-# Session factories
-AsyncSessionLocal = async_sessionmaker(
-    bind=async_engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autoflush=False,
-    autocommit=False
-)
-
-# Sync session for SQLAdmin
-SyncSessionLocal = sessionmaker(
-    bind=sync_engine,
-    expire_on_commit=False,
-    autoflush=False,
-    autocommit=False
-)
-
-# Test session factory
-TestAsyncSessionLocal = async_sessionmaker(
-    bind=test_engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autoflush=False,
-    autocommit=False
-)
-
-# Dependency for getting async database session
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """
-    Dependency function that yields async database sessions.
-    Automatically handles session cleanup and error rollback.
-    """
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-        except Exception as e:
-            logger.error(f"Database session error: {e}")
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
-
-# Sync database session dependency for SQLAdmin
-def get_sync_db():
-    """Dependency function for sync database sessions"""
-    db = SyncSessionLocal()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("🚀 Starting PM System API...")
     try:
-        yield db
-    except Exception as e:
-        logger.error(f"Sync database session error: {e}")
-        db.rollback()
-        raise
-    finally:
-        db.close()
-
-# Test database dependency
-async def get_test_db() -> AsyncGenerator[AsyncSession, None]:
-    """Test database session dependency"""
-    async with TestAsyncSessionLocal() as session:
-        try:
-            yield session
-        except Exception as e:
-            logger.error(f"Test database session error: {e}")
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
-
-# Database management functions
-async def create_tables():
-    """Create all database tables"""
-    try:
-        async with async_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        logger.info("✅ Database tables created successfully!")
-    except Exception as e:
-        logger.error(f"❌ Error creating tables: {e}")
-        raise
-
-async def drop_tables():
-    """Drop all database tables (use with caution!)"""
-    try:
-        async with async_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.drop_all)
-        logger.info("✅ Database tables dropped successfully!")
-    except Exception as e:
-        logger.error(f"❌ Error dropping tables: {e}")
-        raise
-
-def create_tables_sync():
-    """Create tables using sync engine (for SQLAdmin)"""
-    try:
-        Base.metadata.create_all(bind=sync_engine)
-        logger.info("✅ Sync database tables created successfully!")
-    except Exception as e:
-        logger.error(f"❌ Error creating sync tables: {e}")
-        raise
-
-async def create_test_tables():
-    """Create test database tables"""
-    try:
-        async with test_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        logger.info("✅ Test database tables created successfully!")
-    except Exception as e:
-        logger.error(f"❌ Error creating test tables: {e}")
-        raise
-
-async def drop_test_tables():
-    """Drop test database tables"""
-    try:
-        async with test_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.drop_all)
-        logger.info("✅ Test database tables dropped successfully!")
-    except Exception as e:
-        logger.error(f"❌ Error dropping test tables: {e}")
-        raise
-
-async def check_database_connection():
-    """Check if database connection is working"""
-    try:
-        async with async_engine.begin() as conn:
-            await conn.execute(text("SELECT 1"))
-        logger.info("✅ Async database connection successful!")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Async database connection failed: {e}")
-        return False
-
-def check_sync_database_connection():
-    """Check if sync database connection is working"""
-    try:
-        with sync_engine.begin() as conn:
-            conn.execute(text("SELECT 1"))
-        logger.info("✅ Sync database connection successful!")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Sync database connection failed: {e}")
-        return False
-
-async def create_additional_indexes():
-    """Create additional performance indexes"""
-    indexes = [
-        # Partial indexes for active records only
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_active_machines ON machines (id, name) WHERE is_active = true;",
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_active_pm_schedules ON pm_schedules (next_due, machine_id) WHERE is_active = true;",
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_active_users ON users (id, username, role) WHERE is_active = true;",
-        
-        # Composite indexes for common query patterns
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_overdue_pm ON pm_schedules (next_due, machine_id, user_id) WHERE is_active = true;",
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_open_critical_issues ON issues (priority, machine_id, assigned_to_id) WHERE status IN ('OPEN', 'ASSIGNED', 'IN_PROGRESS') AND priority = 'CRITICAL';",
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_today_completed_pm ON pm_executions (completed_at, pm_schedule_id) WHERE status = 'COMPLETED';",
-        
-        # Full-text search indexes
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_machine_name_search ON machines USING gin(to_tsvector('english', name || ' ' || COALESCE(model, '') || ' ' || COALESCE(description, '')));",
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_issue_title_search ON issues USING gin(to_tsvector('english', title || ' ' || COALESCE(description, '')));",
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_procedure_search ON procedures USING gin(to_tsvector('english', title || ' ' || COALESCE(description, '')));",
-        
-        # Dashboard performance indexes
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_dashboard_overdue ON pm_schedules (next_due, is_active) WHERE is_active = true;",
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_dashboard_issues ON issues (status, priority) WHERE status IN ('OPEN', 'ASSIGNED', 'IN_PROGRESS');",
-        
-        # File management indexes
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_files_by_execution ON pm_files (pm_execution_id, image_type, uploaded_at) WHERE pm_execution_id IS NOT NULL;",
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_files_by_issue ON pm_files (issue_id, file_type, uploaded_at) WHERE issue_id IS NOT NULL;",
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_files_by_inspection ON pm_files (inspection_id, image_type, uploaded_at) WHERE inspection_id IS NOT NULL;",
-    ]
-    
-    async with async_engine.begin() as conn:
-        for index_sql in indexes:
-            try:
-                await conn.execute(text(index_sql))
-                index_name = index_sql.split('idx_')[1].split(' ')[0] if 'idx_' in index_sql else 'custom'
-                logger.info(f"✅ Created index: {index_name}")
-            except Exception as e:
-                if "already exists" not in str(e).lower():
-                    logger.warning(f"⚠️  Index creation warning: {e}")
-
-async def init_database():
-    """Initialize database with tables and indexes"""
-    try:
-        # Check async connection
-        if not await check_database_connection():
-            raise Exception("Async database connection failed")
-        
-        # Check sync connection
-        if not check_sync_database_connection():
-            raise Exception("Sync database connection failed")
-        
-        # Create tables (async)
-        await create_tables()
-        
-        # Create tables (sync) for SQLAdmin
-        create_tables_sync()
-        
-        # Create additional indexes
-        await create_additional_indexes()
-        
-        logger.info("🎉 Database initialization completed successfully!")
-        
+        await init_database()
+        logger.info("✅ Database initialized successfully")
     except Exception as e:
         logger.error(f"❌ Database initialization failed: {e}")
         raise
+    
+    yield
+    
+    logger.info("🛑 Shutting down PM System API...")
+    await close_db_connections()
+    logger.info("✅ Application shutdown complete")
 
-# Health check function
-async def health_check() -> dict:
-    """Database health check for monitoring"""
+# Initialize FastAPI app
+app = FastAPI(
+    title="PM System API",
+    description="Advanced Preventive Maintenance Management System",
+    version="2.0.0",
+    lifespan=lifespan,
+    docs_url="/docs" if DEBUG else None,
+    redoc_url="/redoc" if DEBUG else None,
+)
+logger.info("FastAPI app initialized")
+
+# Add middleware
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"] if DEBUG else [f"https://{host.strip()}" for host in ALLOWED_HOSTS if host.strip()],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+if not DEBUG:
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=[host.strip() for host in ALLOWED_HOSTS if host.strip()]
+    )
+logger.info("Middleware configured")
+
+# Include the main API router
+app.include_router(api_router)
+logger.info("API router included")
+
+# Root endpoint
+@app.get("/")
+async def root():
+    return {
+        "message": "PM System API",
+        "version": "2.0.0",
+        "status": "operational",
+        "docs": "/docs" if DEBUG else "Documentation disabled in production",
+        "environment": ENVIRONMENT
+    }
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
     try:
-        async with AsyncSessionLocal() as session:
-            # Test basic query
-            result = await session.execute(text("SELECT 1 as health"))
-            health_result = result.scalar()
-            
-            # Test connection pool
-            pool_status = {
-                "size": async_engine.pool.size(),
-                "checked_in": async_engine.pool.checkedin(),
-                "checked_out": async_engine.pool.checkedout(),
-                "overflow": async_engine.pool.overflow(),
-                "invalid": async_engine.pool.invalidated(),
-            }
-            
-            if health_result == 1:
-                return {
-                    "status": "healthy",
-                    "database": "connected",
-                    "environment": ENVIRONMENT,
-                    "pool": pool_status,
-                    "url": f"postgresql://{DB_HOST}:{DB_PORT}/{DB_NAME}"
-                }
-            else:
-                return {
-                    "status": "unhealthy",
-                    "database": "query_failed",
-                    "environment": ENVIRONMENT,
-                    "pool": pool_status
-                }
+        db_health = await db_health_check()
+        return {
+            "status": "healthy" if db_health["status"] == "healthy" else "unhealthy",
+            "environment": ENVIRONMENT,
+            "database": db_health
+        }
     except Exception as e:
+        logger.error(f"Health check failed: {e}")
         return {
             "status": "unhealthy",
-            "database": "connection_failed",
-            "error": str(e),
-            "environment": ENVIRONMENT
+            "environment": ENVIRONMENT,
+            "error": str(e)
         }
 
-# Connection event handlers for PostgreSQL optimization
-@event.listens_for(sync_engine, "connect")
-def set_postgresql_pragma(dbapi_connection, connection_record):
-    """Set PostgreSQL connection parameters for better performance"""
-    with dbapi_connection.cursor() as cursor:
-        # Set timezone
-        cursor.execute("SET timezone = 'UTC'")
-        # Optimize for faster queries
-        cursor.execute("SET statement_timeout = '30s'")
-        cursor.execute("SET lock_timeout = '10s'")
-        cursor.execute("SET idle_in_transaction_session_timeout = '5min'")
-
-# Database monitoring functions
-async def get_database_stats():
-    """Get database statistics for monitoring"""
-    try:
-        async with AsyncSessionLocal() as session:
-            # Table sizes query
-            table_sizes_query = text("""
-                SELECT 
-                    schemaname,
-                    tablename,
-                    pg_size_pretty(pg_total_relation_size(tablename::regclass)) as total_size,
-                    pg_size_pretty(pg_relation_size(tablename::regclass)) as table_size,
-                    pg_total_relation_size(tablename::regclass) as total_bytes
-                FROM pg_tables 
-                WHERE schemaname = 'public'
-                ORDER BY pg_total_relation_size(tablename::regclass) DESC;
-            """)
-            
-            result = await session.execute(table_sizes_query)
-            table_sizes = [dict(row._mapping) for row in result]
-            
-            # Index usage query
-            index_usage_query = text("""
-                SELECT 
-                    schemaname,
-                    tablename,
-                    indexname,
-                    idx_scan,
-                    idx_tup_read,
-                    idx_tup_fetch
-                FROM pg_stat_user_indexes 
-                WHERE schemaname = 'public'
-                ORDER BY idx_scan DESC
-                LIMIT 20;
-            """)
-            
-            result = await session.execute(index_usage_query)
-            index_usage = [dict(row._mapping) for row in result]
-            
-            return {
-                "table_sizes": table_sizes,
-                "index_usage": index_usage,
-                "timestamp": asyncio.get_event_loop().time()
-            }
-    except Exception as e:
-        logger.error(f"Error getting database stats: {e}")
-        return {"error": str(e)}
-
-# Cleanup function
-async def close_db_connections():
-    """Close all database connections"""
-    try:
-        await async_engine.dispose()
-        sync_engine.dispose()
-        if ENVIRONMENT == "test":
-            await test_engine.dispose()
-        logger.info("✅ Database connections closed successfully!")
-    except Exception as e:
-        logger.error(f"❌ Error closing database connections: {e}")
-
-# Run database initialization if script is called directly
 if __name__ == "__main__":
-    async def main():
-        await init_database()
-    
-    asyncio.run(main())
+    logger.info("Starting Uvicorn server")
+    uvicorn.run(
+        "my_app.main:app",
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", 8000)),
+        reload=DEBUG,
+        log_level="info",
+        access_log=DEBUG
+    )
