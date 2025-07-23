@@ -14,7 +14,7 @@ from database import (
     init_database, health_check as db_health_check
 )
 from models import User, UserRole
-from schema import (
+from schemas import (
     User as UserSchema, BulkOperationResult,
     ExportRequest, ExportResult, PaginationParams
 )
