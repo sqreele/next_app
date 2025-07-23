@@ -4,7 +4,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import enum
 from datetime import datetime
-
+from database import Base
 Base = declarative_base()
 
 # Enums (same as before)
