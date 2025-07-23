@@ -1,127 +1,224 @@
-# ==============================================================================
-# File: backend/my_app/routers/machines.py
-# Description: Async machine routes with procedure relationships.
-# ==============================================================================
-from fastapi import APIRouter, Depends, HTTPException
+"""
+Machine management routes
+"""
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
-from .. import crud, schemas, dependencies, models
-from sqlalchemy.orm import selectinload
+from typing import List, Optional
 
-router = APIRouter(prefix="/machines", tags=["machines"])
+from database import get_db
+from models import User, UserRole
+from schema import (
+    Machine as MachineSchema, MachineCreate, MachineUpdate, MachineSummary,
+    PMSchedule as PMScheduleSchema,
+    Issue as IssueSchema,
+    Inspection as InspectionSchema,
+    PaginationParams
+)
+import crud
+from crud import CRUDError
+from .auth import get_current_active_user, require_role
 
-@router.post("/property/{property_id}", response_model=schemas.Machine)
+router = APIRouter()
+
+@router.post("/", response_model=MachineSchema, status_code=status.HTTP_201_CREATED)
 async def create_machine(
-    property_id: int,
-    machine: schemas.MachineCreate,
-    db: AsyncSession = Depends(dependencies.get_db)
+    machine: MachineCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPERVISOR))
 ):
-    return await crud.create_machine(db=db, machine=machine, property_id=property_id)
+    """Create a new machine (Supervisor+ only)"""
+    try:
+        # Check if serial number already exists
+        existing_machine = await crud.machine.get_by_serial_number(db, serial_number=machine.serial_number)
+        if existing_machine:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Serial number already exists"
+            )
+        
+        return await crud.machine.create(db, obj_in=machine)
+    except HTTPException:
+        raise
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("/", response_model=List[schemas.Machine])
-async def read_machines(
-    skip: int = 0,
-    limit: int = 100,
-    db: AsyncSession = Depends(dependencies.get_db),
+@router.get("/", response_model=List[MachineSchema])
+async def list_machines(
+    pagination: PaginationParams = Depends(),
+    room_id: Optional[int] = None,
+    is_active: Optional[bool] = None,
+    search: Optional[str] = Query(None, min_length=1),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
 ):
-    machines = await crud.get_machines(db, skip=skip, limit=limit)
-    result = []
-    for m in machines:
-        has_pm = any(getattr(wo, 'type', None) == models.WorkOrderType.PM for wo in getattr(m, 'work_orders', []))
-        has_issue = any(getattr(wo, 'type', None) == models.WorkOrderType.ISSUE for wo in getattr(m, 'work_orders', []))
-        has_workorder = any(getattr(wo, 'type', None) == models.WorkOrderType.WORKORDER for wo in getattr(m, 'work_orders', []))
-        m_dict = m.__dict__.copy()
-        m_dict['has_pm'] = has_pm
-        m_dict['has_issue'] = has_issue
-        m_dict['has_workorder'] = has_workorder
-        result.append(m_dict)
-    return result
+    """List machines with filtering and pagination"""
+    try:
+        if search:
+            machines = await crud.machine.search_machines(db, search_term=search, limit=pagination.size)
+        else:
+            filters = {}
+            if room_id:
+                filters["room_id"] = room_id
+            if is_active is not None:
+                filters["is_active"] = is_active
+            
+            machines = await crud.machine.get_multi(
+                db, 
+                skip=pagination.offset, 
+                limit=pagination.size,
+                filters=filters,
+                order_by="name"
+            )
+        return machines
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("/property/{property_id}", response_model=List[schemas.Machine])
-async def read_machines_by_property(
-    property_id: int,
-    skip: int = 0,
-    limit: int = 100,
-    db: AsyncSession = Depends(dependencies.get_db),
-):
-    machines = await crud.get_machines_by_property(db, property_id=property_id, skip=skip, limit=limit)
-    result = []
-    for m in machines:
-        has_pm = any(getattr(wo, 'type', None) == models.WorkOrderType.PM for wo in getattr(m, 'work_orders', []))
-        has_issue = any(getattr(wo, 'type', None) == models.WorkOrderType.ISSUE for wo in getattr(m, 'work_orders', []))
-        has_workorder = any(getattr(wo, 'type', None) == models.WorkOrderType.WORKORDER for wo in getattr(m, 'work_orders', []))
-        m_dict = m.__dict__.copy()
-        m_dict['has_pm'] = has_pm
-        m_dict['has_issue'] = has_issue
-        m_dict['has_workorder'] = has_workorder
-        result.append(m_dict)
-    return result
-
-@router.get("/{machine_id}", response_model=schemas.Machine)
-async def read_machine(
+@router.get("/{machine_id}", response_model=MachineSchema)
+async def get_machine(
     machine_id: int,
-    db: AsyncSession = Depends(dependencies.get_db),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
 ):
-    machine = await crud.get_machine(db, machine_id=machine_id)
-    if machine is None:
-        raise HTTPException(status_code=404, detail="Machine not found")
-    has_pm = any(getattr(wo, 'type', None) == models.WorkOrderType.PM for wo in getattr(machine, 'work_orders', []))
-    has_issue = any(getattr(wo, 'type', None) == models.WorkOrderType.ISSUE for wo in getattr(machine, 'work_orders', []))
-    has_workorder = any(getattr(wo, 'type', None) == models.WorkOrderType.WORKORDER for wo in getattr(machine, 'work_orders', []))
-    m_dict = machine.__dict__.copy()
-    m_dict['has_pm'] = has_pm
-    m_dict['has_issue'] = has_issue
-    m_dict['has_workorder'] = has_workorder
-    return m_dict
+    """Get machine by ID"""
+    try:
+        machine = await crud.machine.get_with_room(db, machine_id)
+        if not machine:
+            raise HTTPException(status_code=404, detail="Machine not found")
+        return machine
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("/{machine_id}/procedures", response_model=List[schemas.Procedure])
-async def get_machine_procedures(
+@router.put("/{machine_id}", response_model=MachineSchema)
+async def update_machine(
     machine_id: int,
-    db: AsyncSession = Depends(dependencies.get_db),
+    machine_update: MachineUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPERVISOR))
 ):
-    """Get all procedures for a specific machine"""
-    machine = await crud.get_machine(db, machine_id=machine_id)
-    if machine is None:
-        raise HTTPException(status_code=404, detail="Machine not found")
+    """Update machine (Supervisor+ only)"""
+    try:
+        machine = await crud.machine.get(db, machine_id)
+        if not machine:
+            raise HTTPException(status_code=404, detail="Machine not found")
+        
+        # Check serial number uniqueness if being updated
+        if (machine_update.serial_number and 
+            machine_update.serial_number != machine.serial_number):
+            existing_machine = await crud.machine.get_by_serial_number(
+                db, serial_number=machine_update.serial_number
+            )
+            if existing_machine:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Serial number already exists"
+                )
+        
+        updated_machine = await crud.machine.update(db, db_obj=machine, obj_in=machine_update)
+        return updated_machine
+    except HTTPException:
+        raise
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-    procedures = await crud.get_procedures_by_machine(db, machine_id)
-    return procedures
-
-@router.get("/{machine_id}/with-procedures", response_model=schemas.MachineWithProcedures)
-async def get_machine_with_procedures(
+@router.delete("/{machine_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_machine(
     machine_id: int,
-    db: AsyncSession = Depends(dependencies.get_db),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.MANAGER))
 ):
-    """Get machine with all its procedures"""
-    machine = await crud.get_machine_with_procedures(db, machine_id)
-    if machine is None:
-        raise HTTPException(status_code=404, detail="Machine not found")
-    return machine
+    """Delete machine (Manager+ only)"""
+    try:
+        machine = await crud.machine.get(db, machine_id)
+        if not machine:
+            raise HTTPException(status_code=404, detail="Machine not found")
+        
+        await crud.machine.soft_delete(db, id=machine_id)
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("/by-work-order-type/{work_order_type}", response_model=List[schemas.Machine])
-async def read_machines_by_work_order_type(
-    work_order_type: models.WorkOrderType,
-    skip: int = 0,
-    limit: int = 100,
-    db: AsyncSession = Depends(dependencies.get_db),
+@router.get("/{machine_id}/pm-schedules", response_model=List[PMScheduleSchema])
+async def get_machine_pm_schedules(
+    machine_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
 ):
-    """Get machines that have work orders of the specified type"""
-    machines = await crud.get_machines_by_work_order_type(
-        db=db,
-        work_order_type=work_order_type,
-        skip=skip,
-        limit=limit
-    )
+    """Get all PM schedules for a machine"""
+    try:
+        # Verify machine exists
+        machine = await crud.machine.get(db, machine_id)
+        if not machine:
+            raise HTTPException(status_code=404, detail="Machine not found")
+        
+        schedules = await crud.pm_schedule.get_by_machine(db, machine_id=machine_id)
+        return schedules
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-    result = []
-    for m in machines:
-        has_pm = any(getattr(wo, 'type', None) == models.WorkOrderType.PM for wo in getattr(m, 'work_orders', []))
-        has_issue = any(getattr(wo, 'type', None) == models.WorkOrderType.ISSUE for wo in getattr(m, 'work_orders', []))
-        has_workorder = any(getattr(wo, 'type', None) == models.WorkOrderType.WORKORDER for wo in getattr(m, 'work_orders', []))
-        m_dict = m.__dict__.copy()
-        m_dict['has_pm'] = has_pm
-        m_dict['has_issue'] = has_issue
-        m_dict['has_workorder'] = has_workorder
-        result.append(m_dict)
+@router.get("/{machine_id}/issues", response_model=List[IssueSchema])
+async def get_machine_issues(
+    machine_id: int,
+    limit: int = Query(20, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get issues for a machine"""
+    try:
+        # Verify machine exists
+        machine = await crud.machine.get(db, machine_id)
+        if not machine:
+            raise HTTPException(status_code=404, detail="Machine not found")
+        
+        issues = await crud.issue.get_by_machine(db, machine_id=machine_id, limit=limit)
+        return issues
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-    return result
+@router.get("/{machine_id}/inspections", response_model=List[InspectionSchema])
+async def get_machine_inspections(
+    machine_id: int,
+    limit: int = Query(20, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get inspections for a machine"""
+    try:
+        # Verify machine exists
+        machine = await crud.machine.get(db, machine_id)
+        if not machine:
+            raise HTTPException(status_code=404, detail="Machine not found")
+        
+        inspections = await crud.inspection.get_by_machine(db, machine_id=machine_id, limit=limit)
+        return inspections
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/serial/{serial_number}", response_model=MachineSchema)
+async def get_machine_by_serial(
+    serial_number: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get machine by serial number"""
+    try:
+        machine = await crud.machine.get_by_serial_number(db, serial_number=serial_number)
+        if not machine:
+            raise HTTPException(status_code=404, detail="Machine not found")
+        return machine
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/{machine_id}/summary", response_model=MachineSummary)
+async def get_machine_summary(
+    machine_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get machine summary information"""
+    try:
+        machine = await crud.machine.get(db, machine_id)
+        if not machine:
+            raise HTTPException(status_code=404, detail="Machine not found")
+        
+        return MachineSummary.model_validate(machine)
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
