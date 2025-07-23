@@ -10,7 +10,20 @@ from .models import (
     UserRole, FrequencyType, PMStatus, IssueStatus, IssuePriority,
     InspectionResult, ImageType, AccessLevel
 )
-
+app = FastAPI()
+admin = Admin(app, engine)
+admin.add_view(UserAdmin)
+admin.add_view(PropertyAdmin)
+admin.add_view(RoomAdmin)
+admin.add_view(MachineAdmin)
+admin.add_view(TopicAdmin)
+admin.add_view(ProcedureAdmin)
+admin.add_view(PMScheduleAdmin)
+admin.add_view(PMExecutionAdmin)
+admin.add_view(IssueAdmin)
+admin.add_view(InspectionAdmin)
+admin.add_view(PMFileAdmin)
+admin.add_view(UserPropertyAccessAdmin)
 # Helper functions for safe data access and formatting
 def safe_get_attr(obj, attr, default="N/A"):
     """Safely get attribute from object."""
