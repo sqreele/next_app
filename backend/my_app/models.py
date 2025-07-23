@@ -10,7 +10,7 @@ import enum
 from datetime import datetime
 
 # Import Base from database with relative import
-from .database import Base  # ← Changed from "database" to ".database"
+from database import Base  # ← Changed from "database" to ".database"
 
 # Enums
 class UserRole(str, enum.Enum):
