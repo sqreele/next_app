@@ -7,7 +7,7 @@ from typing import List, Optional
 
 from database import get_db
 from models import User, UserRole
-from schema import (
+from schemas import (
     Machine as MachineSchema, MachineCreate, MachineUpdate, MachineSummary,
     PMSchedule as PMScheduleSchema,
     Issue as IssueSchema,
