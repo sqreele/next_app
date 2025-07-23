@@ -7,7 +7,7 @@ from typing import List, Optional
 
 from database import get_db
 from models import User, UserRole, PMStatus
-from schema import (
+from schemas import (
     PMExecution as PMExecutionSchema, PMExecutionCreate, PMExecutionUpdate,
     PaginationParams
 )
