@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 from database import get_db
 from models import User, UserRole, PMStatus, IssueStatus, IssuePriority
-from schema import (
+from schemas import (
     DashboardStats, PMOverdueItem, RecentActivity, UpcomingPM,
     PaginationParams
 )
