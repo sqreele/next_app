@@ -134,4 +134,182 @@ async def update_issue(
         
         # Verify assignee exists if being updated
         if issue_update.assigned_to_id:
-            assignee = await cr
+            assignee = await crud.user.get(db, issue_update.assigned_to_id)
+            if not assignee:
+                raise HTTPException(status_code=404, detail="Assignee not found")
+        
+        # Handle status changes that require resolved_at
+        if (issue_update.status in [IssueStatus.RESOLVED, IssueStatus.CLOSED] and 
+            not issue.resolved_at):
+            issue_update.resolved_at = datetime.now()
+        
+        updated_issue = await crud.issue.update(db, db_obj=issue, obj_in=issue_update)
+        return updated_issue
+    except HTTPException:
+        raise
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.delete("/{issue_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_issue(
+    issue_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.MANAGER))
+):
+    """Delete issue (Manager+ only)"""
+    try:
+        issue = await crud.issue.get(db, issue_id)
+        if not issue:
+            raise HTTPException(status_code=404, detail="Issue not found")
+        
+        await crud.issue.remove(db, id=issue_id)
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.put("/{issue_id}/assign", response_model=IssueSchema)
+async def assign_issue(
+    issue_id: int,
+    assignee_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPERVISOR))
+):
+    """Assign an issue to a user (Supervisor+ only)"""
+    try:
+        # Verify assignee exists
+        assignee = await crud.user.get(db, assignee_id)
+        if not assignee:
+            raise HTTPException(status_code=404, detail="Assignee not found")
+        
+        issue = await crud.issue.assign_issue(db, issue_id=issue_id, assignee_id=assignee_id)
+        if not issue:
+            raise HTTPException(status_code=404, detail="Issue not found")
+        return issue
+    except HTTPException:
+        raise
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.put("/{issue_id}/resolve", response_model=IssueSchema)
+async def resolve_issue(
+    issue_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Mark an issue as resolved"""
+    try:
+        issue = await crud.issue.get(db, issue_id)
+        if not issue:
+            raise HTTPException(status_code=404, detail="Issue not found")
+        
+        # Only assignee or supervisor+ can resolve
+        can_resolve = (
+            issue.assigned_to_id == current_user.id or
+            current_user.role in [UserRole.SUPERVISOR, UserRole.MANAGER, UserRole.ADMIN]
+        )
+        
+        if not can_resolve:
+            raise HTTPException(status_code=403, detail="Not enough permissions")
+        
+        resolved_issue = await crud.issue.resolve_issue(db, issue_id=issue_id)
+        if not resolved_issue:
+            raise HTTPException(status_code=404, detail="Issue not found")
+        return resolved_issue
+    except HTTPException:
+        raise
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/critical", response_model=List[IssueSchema])
+async def get_critical_issues(
+    limit: int = Query(20, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get critical priority issues"""
+    try:
+        issues = await crud.issue.get_critical_issues(db, limit=limit)
+        return issues
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/open", response_model=List[IssueSchema])
+async def get_open_issues(
+    limit: int = Query(50, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get all open issues"""
+    try:
+        issues = await crud.issue.get_open_issues(db, limit=limit)
+        return issues
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/my-issues", response_model=List[IssueSchema])
+async def get_my_issues(
+    pagination: PaginationParams = Depends(),
+    status_filter: Optional[IssueStatus] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get issues assigned to current user"""
+    try:
+        filters = {"assigned_to_id": current_user.id}
+        if status_filter:
+            filters["status"] = status_filter
+        
+        issues = await crud.issue.get_multi(
+            db, 
+            skip=pagination.offset, 
+            limit=pagination.size,
+            filters=filters,
+            order_by="reported_at", order_direction="desc"
+        )
+        return issues
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/reported-by-me", response_model=List[IssueSchema])
+async def get_my_reported_issues(
+    pagination: PaginationParams = Depends(),
+    status_filter: Optional[IssueStatus] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get issues reported by current user"""
+    try:
+        filters = {"reported_by_id": current_user.id}
+        if status_filter:
+            filters["status"] = status_filter
+        
+        issues = await crud.issue.get_multi(
+            db, 
+            skip=pagination.offset, 
+            limit=pagination.size,
+            filters=filters,
+            order_by="reported_at", order_direction="desc"
+        )
+        return issues
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.put("/{issue_id}/priority", response_model=IssueSchema)
+async def update_issue_priority(
+    issue_id: int,
+    priority: IssuePriority,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPERVISOR))
+):
+    """Update issue priority (Supervisor+ only)"""
+    try:
+        issue = await crud.issue.get(db, issue_id)
+        if not issue:
+            raise HTTPException(status_code=404, detail="Issue not found")
+        
+        issue_update = IssueUpdate(priority=priority)
+        updated_issue = await crud.issue.update(db, db_obj=issue, obj_in=issue_update)
+        return updated_issue
+    except HTTPException:
+        raise
+    except CRUDError as e:
+        raise HTTPException(status_code=400, detail=str(e))
