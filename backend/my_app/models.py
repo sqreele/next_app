@@ -487,3 +487,70 @@ class WorkOrderFile(Base):
         Index('idx_work_order_file_work_order_type', 'work_order_id', 'image_type'),
         Index('idx_work_order_file_uploaded_date', 'uploaded_at', 'file_type'),
     )
+
+class JobStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+    ON_HOLD = "ON_HOLD"
+
+class Job(Base):
+    __tablename__ = "jobs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    property_id = Column(Integer, ForeignKey("properties.id"), nullable=False, index=True)
+    topic_id = Column(Integer, ForeignKey("topics.id"), nullable=False, index=True)
+    room_id = Column(Integer, ForeignKey("rooms.id"), index=True)  # Support for rooms
+    status = Column(Enum(JobStatus), nullable=False, default=JobStatus.PENDING, index=True)
+    title = Column(String(200), nullable=False, index=True)
+    description = Column(Text)
+    before_image = Column(String(500), index=True)  # Path to before image
+    after_image = Column(String(500), index=True)   # Path to after image
+    notes = Column(Text)
+    export_data = Column(Text)  # JSON field for export data execution
+    pdf_file_path = Column(String(500))  # PDF file path for reports
+    started_at = Column(DateTime, index=True)
+    completed_at = Column(DateTime, index=True)
+    created_at = Column(DateTime, server_default=func.now(), index=True)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    user = relationship("User", lazy="selectin")
+    property = relationship("Property", lazy="selectin")
+    topic = relationship("Topic", lazy="selectin")
+    room = relationship("Room", lazy="selectin")
+    files = relationship("JobFile", back_populates="job", lazy="selectin")
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_job_user_status', 'user_id', 'status'),
+        Index('idx_job_property_status', 'property_id', 'status'),
+        Index('idx_job_topic_status', 'topic_id', 'status'),
+        Index('idx_job_room_status', 'room_id', 'status'),
+        Index('idx_job_status_created', 'status', 'created_at'),
+        Index('idx_job_created_date', 'created_at'),
+        Index('idx_job_completed_date', 'completed_at', 'status'),
+    )
+
+class JobFile(Base):
+    __tablename__ = "job_files"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False, index=True)
+    file_name = Column(String(255), nullable=False, index=True)
+    file_path = Column(String(500), nullable=False, index=True)
+    file_type = Column(String(50), nullable=False, index=True)
+    image_type = Column(Enum(ImageType), index=True)
+    description = Column(Text)
+    uploaded_at = Column(DateTime, server_default=func.now(), index=True)
+    
+    # Relationships
+    job = relationship("Job", back_populates="files", lazy="selectin")
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_job_file_job_type', 'job_id', 'image_type'),
+        Index('idx_job_file_uploaded_date', 'uploaded_at', 'file_type'),
+    )
