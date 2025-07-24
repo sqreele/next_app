@@ -233,41 +233,81 @@ def check_sync_database_connection():
 
 async def create_additional_indexes():
     """Create additional performance indexes"""
-    indexes = [
+    # Regular indexes that can be created within transactions
+    regular_indexes = [
         # Partial indexes for active records only
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_active_machines ON machines (id, name) WHERE is_active = true;",
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_active_pm_schedules ON pm_schedules (next_due, machine_id) WHERE is_active = true;",
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_active_users ON users (id, username, role) WHERE is_active = true;",
+        "CREATE INDEX IF NOT EXISTS idx_active_machines ON machines (id, name) WHERE is_active = true;",
+        "CREATE INDEX IF NOT EXISTS idx_active_pm_schedules ON pm_schedules (next_due, machine_id) WHERE is_active = true;",
+        "CREATE INDEX IF NOT EXISTS idx_active_users ON users (id, username, role) WHERE is_active = true;",
         
         # Composite indexes for common query patterns
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_overdue_pm ON pm_schedules (next_due, machine_id, user_id) WHERE is_active = true;",
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_open_critical_issues ON issues (priority, machine_id, assigned_to_id) WHERE status IN ('OPEN', 'ASSIGNED', 'IN_PROGRESS') AND priority = 'CRITICAL';",
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_today_completed_pm ON pm_executions (completed_at, pm_schedule_id) WHERE status = 'COMPLETED';",
+        "CREATE INDEX IF NOT EXISTS idx_overdue_pm ON pm_schedules (next_due, machine_id, user_id) WHERE is_active = true;",
+        "CREATE INDEX IF NOT EXISTS idx_open_critical_issues ON issues (priority, machine_id, assigned_to_id) WHERE status IN ('OPEN', 'ASSIGNED', 'IN_PROGRESS') AND priority = 'CRITICAL';",
+        "CREATE INDEX IF NOT EXISTS idx_today_completed_pm ON pm_executions (completed_at, pm_schedule_id) WHERE status = 'COMPLETED';",
         
-        # Full-text search indexes
+        # Dashboard performance indexes
+        "CREATE INDEX IF NOT EXISTS idx_dashboard_overdue ON pm_schedules (next_due, is_active) WHERE is_active = true;",
+        "CREATE INDEX IF NOT EXISTS idx_dashboard_issues ON issues (status, priority) WHERE status IN ('OPEN', 'ASSIGNED', 'IN_PROGRESS');",
+        
+        # File management indexes
+        "CREATE INDEX IF NOT EXISTS idx_files_by_execution ON pm_files (pm_execution_id, image_type, uploaded_at) WHERE pm_execution_id IS NOT NULL;",
+        "CREATE INDEX IF NOT EXISTS idx_files_by_issue ON pm_files (issue_id, file_type, uploaded_at) WHERE issue_id IS NOT NULL;",
+        "CREATE INDEX IF NOT EXISTS idx_files_by_inspection ON pm_files (inspection_id, image_type, uploaded_at) WHERE inspection_id IS NOT NULL;",
+    ]
+    
+    # Full-text search indexes that may benefit from concurrent creation
+    concurrent_indexes = [
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_machine_name_search ON machines USING gin(to_tsvector('english', name || ' ' || COALESCE(model, '') || ' ' || COALESCE(description, '')));",
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_issue_title_search ON issues USING gin(to_tsvector('english', title || ' ' || COALESCE(description, '')));",
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_procedure_search ON procedures USING gin(to_tsvector('english', title || ' ' || COALESCE(description, '')));",
-        
-        # Dashboard performance indexes
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_dashboard_overdue ON pm_schedules (next_due, is_active) WHERE is_active = true;",
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_dashboard_issues ON issues (status, priority) WHERE status IN ('OPEN', 'ASSIGNED', 'IN_PROGRESS');",
-        
-        # File management indexes
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_files_by_execution ON pm_files (pm_execution_id, image_type, uploaded_at) WHERE pm_execution_id IS NOT NULL;",
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_files_by_issue ON pm_files (issue_id, file_type, uploaded_at) WHERE issue_id IS NOT NULL;",
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_files_by_inspection ON pm_files (inspection_id, image_type, uploaded_at) WHERE inspection_id IS NOT NULL;",
     ]
     
+    # Create regular indexes first within a transaction
     async with async_engine.begin() as conn:
-        for index_sql in indexes:
+        for index_sql in regular_indexes:
+            index_name = 'unknown'
             try:
+                if 'idx_' in index_sql:
+                    index_name = index_sql.split('idx_')[1].split(' ')[0]
+                
                 await conn.execute(text(index_sql))
-                index_name = index_sql.split('idx_')[1].split(' ')[0] if 'idx_' in index_sql else 'custom'
-                logger.info(f"✅ Created index: {index_name}")
+                logger.info(f"✅ Created regular index: {index_name}")
+                
             except Exception as e:
-                if "already exists" not in str(e).lower():
-                    logger.warning(f"⚠️  Index creation warning: {e}")
+                error_str = str(e).lower()
+                if "already exists" in error_str:
+                    logger.info(f"ℹ️  Index {index_name} already exists, skipping")
+                else:
+                    logger.warning(f"⚠️  Index creation warning for {index_name}: {e}")
+    
+    # Create concurrent indexes outside of transactions using autocommit
+    for index_sql in concurrent_indexes:
+        index_name = 'unknown'
+        try:
+            if 'idx_' in index_sql:
+                index_name = index_sql.split('idx_')[1].split(' ')[0]
+            
+            # Use connection with autocommit for CONCURRENT operations
+            async with async_engine.connect() as conn:
+                # Set autocommit mode
+                await conn.execution_options(autocommit=True).execute(text(index_sql))
+                logger.info(f"✅ Created concurrent index: {index_name}")
+                
+        except Exception as e:
+            error_str = str(e).lower()
+            if "already exists" in error_str:
+                logger.info(f"ℹ️  Concurrent index {index_name} already exists, skipping")
+            else:
+                logger.warning(f"⚠️  Concurrent index creation warning for {index_name}: {e}")
+                # If concurrent creation fails, try without CONCURRENTLY as fallback
+                try:
+                    fallback_sql = index_sql.replace("CONCURRENTLY ", "")
+                    async with async_engine.begin() as conn:
+                        await conn.execute(text(fallback_sql))
+                        logger.info(f"✅ Created index (fallback): {index_name}")
+                except Exception as fallback_e:
+                    if "already exists" not in str(fallback_e).lower():
+                        logger.warning(f"⚠️  Fallback index creation failed for {index_name}: {fallback_e}")
 
 async def init_database():
     """Initialize database with tables and indexes"""
