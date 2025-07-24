@@ -290,7 +290,8 @@ async def create_additional_indexes():
             # Use connection with autocommit for CONCURRENT operations
             async with async_engine.connect() as conn:
                 # Set autocommit mode
-                await conn.execution_options(autocommit=True).execute(text(index_sql))
+                conn_with_options = await conn.execution_options(autocommit=True)
+                await conn_with_options.execute(text(index_sql))
                 logger.info(f"✅ Created concurrent index: {index_name}")
                 
         except Exception as e:
