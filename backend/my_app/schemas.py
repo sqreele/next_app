@@ -9,7 +9,8 @@ from enum import Enum
 # Import enums from models
 from models import (
     UserRole, FrequencyType, PMStatus, IssueStatus, IssuePriority,
-    InspectionResult, ImageType, AccessLevel, WorkOrderType, WorkOrderStatus
+    InspectionResult, ImageType, AccessLevel, WorkOrderType, WorkOrderStatus,
+    JobStatus
 )
 
 # Base schemas with enhanced configuration
@@ -616,3 +617,37 @@ class ExportResult(BaseSchema):
     file_name: str
     created_at: datetime
     expires_at: datetime
+
+# Job Schemas
+class JobBase(BaseSchema):
+    title: str = Field(..., min_length=1, max_length=200)
+    description: str = Field(..., min_length=1)
+    status: JobStatus = JobStatus.PENDING
+    before_image: Optional[str] = Field(None, max_length=500)
+    after_image: Optional[str] = Field(None, max_length=500)
+
+class JobCreate(JobBase):
+    user_ids: Optional[List[int]] = Field(default_factory=list)
+    topic_ids: Optional[List[int]] = Field(default_factory=list)
+    room_ids: Optional[List[int]] = Field(default_factory=list)
+    property_ids: Optional[List[int]] = Field(default_factory=list)
+
+class JobUpdate(BaseSchema):
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = Field(None, min_length=1)
+    status: Optional[JobStatus] = None
+    before_image: Optional[str] = Field(None, max_length=500)
+    after_image: Optional[str] = Field(None, max_length=500)
+    user_ids: Optional[List[int]] = None
+    topic_ids: Optional[List[int]] = None
+    room_ids: Optional[List[int]] = None
+    property_ids: Optional[List[int]] = None
+
+class Job(JobBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    users: List[User] = Field(default_factory=list)
+    topics: List[Topic] = Field(default_factory=list)
+    rooms: List[Room] = Field(default_factory=list)
+    properties: List[Property] = Field(default_factory=list)

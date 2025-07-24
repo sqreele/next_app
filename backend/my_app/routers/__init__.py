@@ -15,6 +15,7 @@ from routers.files import router as files_router
 from routers.dashboard import router as dashboard_router
 from routers.search import router as search_router
 from routers.admin import router as admin_router
+from routers.jobs import router as jobs_router
 
 # Create main API router
 api_router = APIRouter(prefix="/api/v1")
@@ -32,5 +33,6 @@ api_router.include_router(files_router, prefix="/files", tags=["File Management"
 api_router.include_router(dashboard_router, prefix="/dashboard", tags=["Dashboard & Analytics"])
 api_router.include_router(search_router, prefix="/search", tags=["Search"])
 api_router.include_router(admin_router, prefix="/admin", tags=["Administration"])
+api_router.include_router(jobs_router, prefix="/jobs", tags=["Jobs"])
 
 __all__ = ["api_router"] 

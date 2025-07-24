@@ -14,8 +14,9 @@ from database import Base
 from models import (
     User, Property, Room, Machine, Topic, Procedure, PMSchedule, 
     PMExecution, Issue, Inspection, PMFile, UserPropertyAccess, WorkOrder, WorkOrderFile,
-    UserRole, PMStatus, IssueStatus, IssuePriority, InspectionResult, FrequencyType,
-    WorkOrderStatus, WorkOrderType, machine_procedure_association, work_order_topic_association
+    Job, UserRole, PMStatus, IssueStatus, IssuePriority, InspectionResult, FrequencyType,
+    WorkOrderStatus, WorkOrderType, JobStatus, machine_procedure_association, work_order_topic_association,
+    job_user_association, job_topic_association, job_room_association, job_property_association
 )
 
 # Configure logging
@@ -1258,3 +1259,314 @@ async def update_work_order_topics(
 async def get_work_orders_by_topic(db: AsyncSession, *, topic_id: int) -> List[WorkOrder]:
     """Get all work orders for a specific topic"""
     return await work_order_crud.get_by_topic(db, topic_id=topic_id)
+
+# Job CRUD Operations
+class CRUDJob(BaseCRUD[Job, Dict[str, Any], Dict[str, Any]]):
+    """CRUD operations for Job with many-to-many relationships"""
+    
+    async def get_with_relationships(self, db: AsyncSession, id: int) -> Optional[Job]:
+        """Get job with all related entities loaded"""
+        try:
+            query = select(Job).options(
+                selectinload(Job.users),
+                selectinload(Job.topics),
+                selectinload(Job.rooms),
+                selectinload(Job.properties)
+            ).where(Job.id == id)
+            result = await db.execute(query)
+            return result.scalar_one_or_none()
+        except Exception as e:
+            logger.error(f"Error getting job with relationships {id}: {e}")
+            raise CRUDError(f"Failed to get job with relationships")
+    
+    async def get_multi_with_relationships(
+        self, 
+        db: AsyncSession, 
+        *, 
+        skip: int = 0, 
+        limit: int = 100,
+        status: Optional[JobStatus] = None,
+        user_id: Optional[int] = None,
+        topic_id: Optional[int] = None,
+        room_id: Optional[int] = None,
+        property_id: Optional[int] = None
+    ) -> List[Job]:
+        """Get multiple jobs with filters and relationships"""
+        try:
+            query = select(Job).options(
+                selectinload(Job.users),
+                selectinload(Job.topics),
+                selectinload(Job.rooms),
+                selectinload(Job.properties)
+            )
+            
+            # Apply filters
+            filters = []
+            if status:
+                filters.append(Job.status == status)
+            
+            if user_id:
+                query = query.join(job_user_association).filter(
+                    job_user_association.c.user_id == user_id
+                )
+            
+            if topic_id:
+                query = query.join(job_topic_association).filter(
+                    job_topic_association.c.topic_id == topic_id
+                )
+            
+            if room_id:
+                query = query.join(job_room_association).filter(
+                    job_room_association.c.room_id == room_id
+                )
+            
+            if property_id:
+                query = query.join(job_property_association).filter(
+                    job_property_association.c.property_id == property_id
+                )
+            
+            if filters:
+                query = query.filter(and_(*filters))
+            
+            query = query.order_by(desc(Job.created_at)).offset(skip).limit(limit)
+            result = await db.execute(query)
+            return result.scalars().all()
+        except Exception as e:
+            logger.error(f"Error getting jobs with relationships: {e}")
+            raise CRUDError(f"Failed to get jobs with relationships")
+    
+    async def create_with_relationships(
+        self, 
+        db: AsyncSession, 
+        *,
+        obj_in: Dict[str, Any]
+    ) -> Job:
+        """Create job with many-to-many relationships"""
+        try:
+            # Extract relationship IDs
+            user_ids = obj_in.pop('user_ids', [])
+            topic_ids = obj_in.pop('topic_ids', [])
+            room_ids = obj_in.pop('room_ids', [])
+            property_ids = obj_in.pop('property_ids', [])
+            
+            # Create the job
+            db_obj = Job(**obj_in)
+            db.add(db_obj)
+            await db.flush()  # Flush to get the ID
+            
+            # Add many-to-many relationships
+            if user_ids:
+                for user_id in user_ids:
+                    insert_stmt = job_user_association.insert().values(
+                        job_id=db_obj.id, user_id=user_id
+                    )
+                    await db.execute(insert_stmt)
+            
+            if topic_ids:
+                for topic_id in topic_ids:
+                    insert_stmt = job_topic_association.insert().values(
+                        job_id=db_obj.id, topic_id=topic_id
+                    )
+                    await db.execute(insert_stmt)
+            
+            if room_ids:
+                for room_id in room_ids:
+                    insert_stmt = job_room_association.insert().values(
+                        job_id=db_obj.id, room_id=room_id
+                    )
+                    await db.execute(insert_stmt)
+            
+            if property_ids:
+                for property_id in property_ids:
+                    insert_stmt = job_property_association.insert().values(
+                        job_id=db_obj.id, property_id=property_id
+                    )
+                    await db.execute(insert_stmt)
+            
+            await db.commit()
+            await db.refresh(db_obj)
+            return await self.get_with_relationships(db, db_obj.id)
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"Error creating job with relationships: {e}")
+            raise CRUDError(f"Failed to create job with relationships")
+    
+    async def update_with_relationships(
+        self, 
+        db: AsyncSession, 
+        *,
+        db_obj: Job,
+        obj_in: Dict[str, Any]
+    ) -> Job:
+        """Update job with many-to-many relationships"""
+        try:
+            # Extract relationship IDs
+            user_ids = obj_in.pop('user_ids', None)
+            topic_ids = obj_in.pop('topic_ids', None)
+            room_ids = obj_in.pop('room_ids', None)
+            property_ids = obj_in.pop('property_ids', None)
+            
+            # Update job fields
+            for field, value in obj_in.items():
+                if hasattr(db_obj, field) and value is not None:
+                    setattr(db_obj, field, value)
+            
+            # Update many-to-many relationships if provided
+            if user_ids is not None:
+                # Delete existing relationships
+                delete_stmt = job_user_association.delete().where(
+                    job_user_association.c.job_id == db_obj.id
+                )
+                await db.execute(delete_stmt)
+                
+                # Add new relationships
+                for user_id in user_ids:
+                    insert_stmt = job_user_association.insert().values(
+                        job_id=db_obj.id, user_id=user_id
+                    )
+                    await db.execute(insert_stmt)
+            
+            if topic_ids is not None:
+                # Delete existing relationships
+                delete_stmt = job_topic_association.delete().where(
+                    job_topic_association.c.job_id == db_obj.id
+                )
+                await db.execute(delete_stmt)
+                
+                # Add new relationships
+                for topic_id in topic_ids:
+                    insert_stmt = job_topic_association.insert().values(
+                        job_id=db_obj.id, topic_id=topic_id
+                    )
+                    await db.execute(insert_stmt)
+            
+            if room_ids is not None:
+                # Delete existing relationships
+                delete_stmt = job_room_association.delete().where(
+                    job_room_association.c.job_id == db_obj.id
+                )
+                await db.execute(delete_stmt)
+                
+                # Add new relationships
+                for room_id in room_ids:
+                    insert_stmt = job_room_association.insert().values(
+                        job_id=db_obj.id, room_id=room_id
+                    )
+                    await db.execute(insert_stmt)
+            
+            if property_ids is not None:
+                # Delete existing relationships
+                delete_stmt = job_property_association.delete().where(
+                    job_property_association.c.job_id == db_obj.id
+                )
+                await db.execute(delete_stmt)
+                
+                # Add new relationships
+                for property_id in property_ids:
+                    insert_stmt = job_property_association.insert().values(
+                        job_id=db_obj.id, property_id=property_id
+                    )
+                    await db.execute(insert_stmt)
+            
+            await db.commit()
+            await db.refresh(db_obj)
+            return await self.get_with_relationships(db, db_obj.id)
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"Error updating job with relationships: {e}")
+            raise CRUDError(f"Failed to update job with relationships")
+    
+    async def get_by_status(self, db: AsyncSession, *, status: JobStatus) -> List[Job]:
+        """Get jobs by status"""
+        try:
+            query = select(Job).options(
+                selectinload(Job.users),
+                selectinload(Job.topics),
+                selectinload(Job.rooms),
+                selectinload(Job.properties)
+            ).filter(Job.status == status).order_by(desc(Job.created_at))
+            result = await db.execute(query)
+            return result.scalars().all()
+        except Exception as e:
+            logger.error(f"Error getting jobs by status {status}: {e}")
+            raise CRUDError(f"Failed to get jobs by status")
+    
+    async def get_by_user(self, db: AsyncSession, *, user_id: int) -> List[Job]:
+        """Get jobs assigned to a specific user"""
+        try:
+            query = select(Job).options(
+                selectinload(Job.users),
+                selectinload(Job.topics),
+                selectinload(Job.rooms),
+                selectinload(Job.properties)
+            ).join(job_user_association).filter(
+                job_user_association.c.user_id == user_id
+            ).order_by(desc(Job.created_at))
+            result = await db.execute(query)
+            return result.scalars().all()
+        except Exception as e:
+            logger.error(f"Error getting jobs by user {user_id}: {e}")
+            raise CRUDError(f"Failed to get jobs by user")
+
+# Create job CRUD instance
+job_crud = CRUDJob(Job)
+
+# Convenience functions for job operations
+async def create_job(
+    db: AsyncSession, 
+    *, 
+    job_in: Dict[str, Any]
+) -> Job:
+    """Create a new job with relationships"""
+    return await job_crud.create_with_relationships(db, obj_in=job_in)
+
+async def get_job(db: AsyncSession, *, job_id: int) -> Optional[Job]:
+    """Get a job by ID with relationships"""
+    return await job_crud.get_with_relationships(db, job_id)
+
+async def get_jobs(
+    db: AsyncSession, 
+    *, 
+    skip: int = 0, 
+    limit: int = 100,
+    status: Optional[JobStatus] = None,
+    user_id: Optional[int] = None,
+    topic_id: Optional[int] = None,
+    room_id: Optional[int] = None,
+    property_id: Optional[int] = None
+) -> List[Job]:
+    """Get multiple jobs with filters"""
+    return await job_crud.get_multi_with_relationships(
+        db, 
+        skip=skip, 
+        limit=limit,
+        status=status,
+        user_id=user_id,
+        topic_id=topic_id,
+        room_id=room_id,
+        property_id=property_id
+    )
+
+async def update_job(
+    db: AsyncSession, 
+    *, 
+    job_id: int, 
+    job_in: Dict[str, Any]
+) -> Optional[Job]:
+    """Update a job with relationships"""
+    job = await job_crud.get(db, job_id)
+    if not job:
+        return None
+    return await job_crud.update_with_relationships(db, db_obj=job, obj_in=job_in)
+
+async def delete_job(db: AsyncSession, *, job_id: int) -> Optional[Job]:
+    """Delete a job"""
+    return await job_crud.remove(db, id=job_id)
+
+async def get_jobs_by_status(db: AsyncSession, *, status: JobStatus) -> List[Job]:
+    """Get all jobs with a specific status"""
+    return await job_crud.get_by_status(db, status=status)
+
+async def get_jobs_by_user(db: AsyncSession, *, user_id: int) -> List[Job]:
+    """Get all jobs assigned to a specific user"""
+    return await job_crud.get_by_user(db, user_id=user_id)

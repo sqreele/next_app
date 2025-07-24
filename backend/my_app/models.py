@@ -34,6 +34,47 @@ work_order_topic_association = Table(
     Index('idx_work_order_topic_topic', 'topic_id'),
 )
 
+# Association tables for many-to-many relationships for jobs
+job_user_association = Table(
+    'job_user_association',
+    Base.metadata,
+    Column('job_id', Integer, ForeignKey('jobs.id'), primary_key=True),
+    Column('user_id', Integer, ForeignKey('users.id'), primary_key=True),
+    Column('created_at', DateTime, server_default=func.now()),
+    Index('idx_job_user_job', 'job_id'),
+    Index('idx_job_user_user', 'user_id'),
+)
+
+job_topic_association = Table(
+    'job_topic_association',
+    Base.metadata,
+    Column('job_id', Integer, ForeignKey('jobs.id'), primary_key=True),
+    Column('topic_id', Integer, ForeignKey('topics.id'), primary_key=True),
+    Column('created_at', DateTime, server_default=func.now()),
+    Index('idx_job_topic_job', 'job_id'),
+    Index('idx_job_topic_topic', 'topic_id'),
+)
+
+job_room_association = Table(
+    'job_room_association',
+    Base.metadata,
+    Column('job_id', Integer, ForeignKey('jobs.id'), primary_key=True),
+    Column('room_id', Integer, ForeignKey('rooms.id'), primary_key=True),
+    Column('created_at', DateTime, server_default=func.now()),
+    Index('idx_job_room_job', 'job_id'),
+    Index('idx_job_room_room', 'room_id'),
+)
+
+job_property_association = Table(
+    'job_property_association',
+    Base.metadata,
+    Column('job_id', Integer, ForeignKey('jobs.id'), primary_key=True),
+    Column('property_id', Integer, ForeignKey('properties.id'), primary_key=True),
+    Column('created_at', DateTime, server_default=func.now()),
+    Index('idx_job_property_job', 'job_id'),
+    Index('idx_job_property_property', 'property_id'),
+)
+
 # Enums
 class UserRole(str, enum.Enum):
     TECHNICIAN = "TECHNICIAN"
@@ -97,6 +138,14 @@ class AccessLevel(str, enum.Enum):
     SUPERVISOR = "SUPERVISOR"
     ADMIN = "ADMIN"
 
+class JobStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    ASSIGNED = "ASSIGNED"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+    ON_HOLD = "ON_HOLD"
+
 # Models with Indexes
 class User(Base):
     __tablename__ = "users"
@@ -119,6 +168,7 @@ class User(Base):
     assigned_issues = relationship("Issue", foreign_keys="Issue.assigned_to_id", back_populates="assignee", lazy="selectin")
     inspections = relationship("Inspection", back_populates="inspector", lazy="selectin")
     property_access = relationship("UserPropertyAccess", back_populates="user", lazy="selectin")
+    jobs = relationship("Job", secondary=job_user_association, lazy="selectin")
     
     # Indexes
     __table_args__ = (
@@ -140,6 +190,7 @@ class Property(Base):
     # Relationships
     rooms = relationship("Room", back_populates="property", lazy="selectin")
     user_access = relationship("UserPropertyAccess", back_populates="property", lazy="selectin")
+    jobs = relationship("Job", secondary=job_property_association, lazy="selectin")
     
     # Indexes
     __table_args__ = (
@@ -161,6 +212,7 @@ class Room(Base):
     property = relationship("Property", back_populates="rooms", lazy="selectin")
     machines = relationship("Machine", back_populates="room", lazy="selectin")
     issues = relationship("Issue", back_populates="room", lazy="selectin")
+    jobs = relationship("Job", secondary=job_room_association, lazy="selectin")
     
     # Indexes
     __table_args__ = (
@@ -208,6 +260,7 @@ class Topic(Base):
     # Relationships
     procedures = relationship("Procedure", back_populates="topic", lazy="selectin")
     work_orders = relationship("WorkOrder", secondary=work_order_topic_association, back_populates="topics", lazy="selectin")
+    jobs = relationship("Job", secondary=job_topic_association, lazy="selectin")
     
     # Indexes
     __table_args__ = (
@@ -414,6 +467,32 @@ class UserPropertyAccess(Base):
         Index('idx_user_property_access_level', 'access_level', 'user_id'),
         Index('idx_user_property_expires', 'expires_at', 'user_id'),
         Index('idx_property_access_granted', 'granted_at', 'property_id'),
+    )
+
+class Job(Base):
+    __tablename__ = "jobs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(200), nullable=False, index=True)
+    description = Column(Text, nullable=False)
+    status = Column(Enum(JobStatus), nullable=False, default=JobStatus.PENDING, index=True)
+    before_image = Column(String(500), index=True)  # File path for before image
+    after_image = Column(String(500), index=True)   # File path for after image
+    created_at = Column(DateTime, server_default=func.now(), index=True)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    
+    # Many-to-many relationships
+    users = relationship("User", secondary=job_user_association, lazy="selectin")
+    topics = relationship("Topic", secondary=job_topic_association, lazy="selectin")
+    rooms = relationship("Room", secondary=job_room_association, lazy="selectin")
+    properties = relationship("Property", secondary=job_property_association, lazy="selectin")
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_job_status_created', 'status', 'created_at'),
+        Index('idx_job_title_status', 'title', 'status'),
+        Index('idx_job_created_date', 'created_at'),
+        Index('idx_job_status_updated', 'status', 'updated_at'),
     )
 
 class WorkOrder(Base):
