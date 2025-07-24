@@ -10,7 +10,7 @@ import enum
 from datetime import datetime
 
 # Import Base from database with absolute import
-from database import Base
+from my_app.database import Base
 
 # Association table for many-to-many relationship between machines and procedures
 machine_procedure_association = Table(
