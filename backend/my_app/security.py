@@ -13,13 +13,13 @@ from fastapi import HTTPException, status, Depends
 from fastapi.security import OAuth2PasswordBearer
 
 # Import models to fix the NameError
-from . import models
+import models
 
 # --- FIX IS HERE ---
 # This special block is only 'True' for type checkers, not when the app is running.
 # This breaks the import loop.
 if TYPE_CHECKING:
-    from . import schemas
+    import schemas
 
 # Password Hashing Setup
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

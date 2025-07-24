@@ -1,6 +1,6 @@
 # File: backend/my_app/utils/helpers.py
 import re
-from ..models import Frequency
+from models import Frequency
 
 def parse_frequency_and_duration(input_str: str) -> tuple[str | None, str | None]:
     if not input_str:

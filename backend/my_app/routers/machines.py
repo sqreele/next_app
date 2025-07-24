@@ -16,7 +16,7 @@ from schemas import (
 )
 import crud
 from crud import CRUDError
-from .auth import get_current_active_user, require_role
+from routers.auth import get_current_active_user, require_role
 
 router = APIRouter()
 
