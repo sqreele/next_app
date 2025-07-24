@@ -178,8 +178,8 @@ async def perform_database_maintenance(
                 # These commands can't run in a transaction block
                 # Get the underlying connection
                 connection = await db.connection()
-                await connection.execution_options(isolation_level="AUTOCOMMIT")
-                await db.execute(text(db_action.upper()))
+                connection_with_options = await connection.execution_options(isolation_level="AUTOCOMMIT")
+                await connection_with_options.execute(text(db_action.upper()))
                 logger.info(f"Database maintenance '{db_action}' completed successfully.")
             else:
                 logger.warning(f"Invalid maintenance action: {db_action}")
