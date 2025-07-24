@@ -9,7 +9,7 @@ from enum import Enum
 # Import enums from models
 from models import (
     UserRole, FrequencyType, PMStatus, IssueStatus, IssuePriority,
-    InspectionResult, ImageType, AccessLevel
+    InspectionResult, ImageType, AccessLevel, JobStatus
 )
 
 # Base schemas with enhanced configuration
@@ -500,3 +500,68 @@ class ExportResult(BaseSchema):
     file_name: str
     created_at: datetime
     expires_at: datetime
+
+# Job Schemas
+class JobBase(BaseSchema):
+    user_id: int = Field(..., gt=0)
+    topic: str = Field(..., min_length=1, max_length=200)
+    property: Optional[str] = Field(None, max_length=500)
+    before_image: Optional[str] = Field(None, max_length=500)  # File path for before image
+    after_image: Optional[str] = Field(None, max_length=500)   # File path for after image
+    room_id: Optional[int] = Field(None, gt=0)
+    status: JobStatus = JobStatus.PENDING
+    description: Optional[str] = Field(None, max_length=2000)
+
+class JobCreate(JobBase):
+    @validator('topic')
+    def validate_topic(cls, v):
+        return v.strip()
+
+class JobUpdate(BaseSchema):
+    topic: Optional[str] = Field(None, min_length=1, max_length=200)
+    property: Optional[str] = Field(None, max_length=500)
+    before_image: Optional[str] = Field(None, max_length=500)
+    after_image: Optional[str] = Field(None, max_length=500)
+    room_id: Optional[int] = Field(None, gt=0)
+    status: Optional[JobStatus] = None
+    description: Optional[str] = Field(None, max_length=2000)
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+class Job(JobBase):
+    id: int  # This is the job_id
+    created_at: datetime
+    updated_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    user: Optional[UserSummary] = None
+    room: Optional[Room] = None
+
+class JobSummary(BaseSchema):
+    id: int
+    topic: str
+    status: JobStatus
+    user_id: int
+    room_id: Optional[int]
+    created_at: datetime
+
+# Job-related Dashboard Schemas
+class JobStats(BaseSchema):
+    total_jobs: int
+    pending_jobs: int
+    in_progress_jobs: int
+    completed_jobs: int
+    cancelled_jobs: int
+    jobs_completed_today: int
+    average_completion_time_hours: Optional[float] = None
+
+class JobActivity(BaseSchema):
+    id: int
+    topic: str
+    status: JobStatus
+    user_name: str
+    user_id: int
+    room_name: Optional[str] = None
+    room_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime

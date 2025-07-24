@@ -10,9 +10,9 @@ from typing import Any
 from database import get_db
 from models import (
     User, Property, Room, Machine, Topic, Procedure, PMSchedule, PMExecution,
-    Issue, Inspection, PMFile, UserPropertyAccess,
+    Issue, Inspection, PMFile, UserPropertyAccess, Job,
     UserRole, FrequencyType, PMStatus, IssueStatus, IssuePriority,
-    InspectionResult, ImageType, AccessLevel, machine_procedure_association
+    InspectionResult, ImageType, AccessLevel, JobStatus, machine_procedure_association
 )
 
 @asynccontextmanager
@@ -908,3 +908,117 @@ class UserPropertyAccessAdmin(ModelView, model=UserPropertyAccess):
     name = "User Property Access"
     name_plural = "User Property Accesses"  # Fixed: Correct plural form
     icon = "fa-solid fa-key"
+
+class JobAdmin(ModelView, model=Job):
+    """Admin view for Job model"""
+    
+    # Column configuration for list view
+    column_list = [
+        "id", "topic", "status", "user_display", "room_display", 
+        "property", "created_at", "started_at", "completed_at"
+    ]
+    
+    # Detailed list with more columns
+    column_details_list = [
+        "id", "topic", "description", "status", "user_display", "room_display",
+        "property", "before_image", "after_image", "created_at", "updated_at",
+        "started_at", "completed_at"
+    ]
+    
+    # Sortable columns
+    column_sortable_list = ["id", "topic", "status", "created_at", "started_at", "completed_at"]
+    
+    # Searchable columns
+    column_searchable_list = ["topic", "description", "property"]
+    
+    # Filters
+    column_filters = ["status", "created_at", "started_at", "completed_at"]
+    
+    # Form configuration
+    form_columns = [
+        "user_id", "topic", "description", "property", "room_id", "status",
+        "before_image", "after_image"
+    ]
+    
+    # Create form configuration
+    form_create_rules = [
+        "user_id", "topic", "description", "property", "room_id"
+    ]
+    
+    # Edit form configuration
+    form_edit_rules = [
+        "user_id", "topic", "description", "property", "room_id", "status",
+        "before_image", "after_image", "started_at", "completed_at"
+    ]
+    
+    # Custom columns for better display
+    def user_display(self, model: Job) -> str:
+        """Display user name instead of ID."""
+        try:
+            if hasattr(model, 'user') and model.user:
+                return f"{safe_get_attr(model.user, 'first_name')} {safe_get_attr(model.user, 'last_name')}"
+            return f"User ID: {safe_get_attr(model, 'user_id')}"
+        except Exception as e:
+            logger.error(f"Error in user_display: {str(e)}")
+            return f"User ID: {safe_get_attr(model, 'user_id', 'Unknown')}"
+    
+    def room_display(self, model: Job) -> str:
+        """Display room name instead of ID."""
+        try:
+            if hasattr(model, 'room') and model.room:
+                return safe_get_attr(model.room, 'name')
+            elif model.room_id:
+                return f"Room ID: {model.room_id}"
+            return "No Room"
+        except Exception as e:
+            logger.error(f"Error in room_display: {str(e)}")
+            return "No Room"
+    
+    def status_badge(self, model: Job) -> Markup:
+        """Display status as colored badge."""
+        try:
+            status = safe_get_attr(model, 'status', 'UNKNOWN')
+            color_map = {
+                'PENDING': 'warning',
+                'ASSIGNED': 'info',
+                'IN_PROGRESS': 'primary',
+                'COMPLETED': 'success',
+                'CANCELLED': 'danger',
+                'ON_HOLD': 'secondary'
+            }
+            color = color_map.get(status, 'secondary')
+            return Markup(f'<span class="badge bg-{color}">{status}</span>')
+        except Exception as e:
+            logger.error(f"Error in status_badge: {str(e)}")
+            return Markup('<span class="badge bg-secondary">Unknown</span>')
+    
+    def before_image_display(self, model: Job) -> Markup:
+        """Display before image if available."""
+        try:
+            if model.before_image:
+                return Markup(f'<a href="/uploads/{model.before_image}" target="_blank">View Image</a>')
+            return "No Image"
+        except Exception as e:
+            logger.error(f"Error in before_image_display: {str(e)}")
+            return "No Image"
+    
+    def after_image_display(self, model: Job) -> Markup:
+        """Display after image if available."""
+        try:
+            if model.after_image:
+                return Markup(f'<a href="/uploads/{model.after_image}" target="_blank">View Image</a>')
+            return "No Image"
+        except Exception as e:
+            logger.error(f"Error in after_image_display: {str(e)}")
+            return "No Image"
+    
+    def get_query(self, request):
+        """Optimize query with proper joins."""
+        return super().get_query(request).options(
+            joinedload(Job.user),
+            joinedload(Job.room)
+        )
+    
+    name = "Job"
+    name_plural = "Jobs"
+    icon = "fa-solid fa-briefcase"

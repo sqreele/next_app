@@ -14,7 +14,8 @@ from database import Base
 from models import (
     User, Property, Room, Machine, Topic, Procedure, PMSchedule, 
     PMExecution, Issue, Inspection, PMFile, UserPropertyAccess,
-    UserRole, PMStatus, IssueStatus, IssuePriority, InspectionResult, FrequencyType
+    UserRole, PMStatus, IssueStatus, IssuePriority, InspectionResult, FrequencyType,
+    Job, JobStatus
 )
 
 # Configure logging
@@ -942,6 +943,98 @@ class CRUDUserPropertyAccess(BaseCRUD[UserPropertyAccess, Any, Any]):
             logger.error(f"Error getting property users: {e}")
             return []
 
+class CRUDJob(BaseCRUD[Job, Any, Any]):
+    """CRUD operations for Job model"""
+    
+    async def get_with_relations(self, db: AsyncSession, id: int) -> Optional[Job]:
+        """Get Job with all related data"""
+        try:
+            query = (
+                select(Job)
+                .options(
+                    selectinload(Job.user),
+                    selectinload(Job.room)
+                )
+                .where(Job.id == id)
+            )
+            result = await db.execute(query)
+            return result.scalar_one_or_none()
+        except Exception as e:
+            logger.error(f"Error getting Job with relations: {e}")
+            return None
+    
+    async def get_by_status(self, db: AsyncSession, *, status: JobStatus, limit: int = 50) -> List[Job]:
+        """Get Jobs by status"""
+        return await self.get_multi(
+            db, filters={"status": status},
+            order_by="created_at", order_direction="desc",
+            limit=limit
+        )
+    
+    async def get_by_user(self, db: AsyncSession, *, user_id: int, limit: int = 50) -> List[Job]:
+        """Get Jobs for a specific user"""
+        return await self.get_multi(
+            db, filters={"user_id": user_id},
+            order_by="created_at", order_direction="desc",
+            limit=limit
+        )
+    
+    async def get_by_room(self, db: AsyncSession, *, room_id: int, limit: int = 50) -> List[Job]:
+        """Get Jobs for a specific room"""
+        return await self.get_multi(
+            db, filters={"room_id": room_id},
+            order_by="created_at", order_direction="desc",
+            limit=limit
+        )
+    
+    async def get_recent_jobs(self, db: AsyncSession, *, days: int = 7, limit: int = 50) -> List[Job]:
+        """Get recent Jobs"""
+        try:
+            start_date = datetime.now() - timedelta(days=days)
+            query = (
+                select(Job)
+                .options(
+                    selectinload(Job.user),
+                    selectinload(Job.room)
+                )
+                .where(Job.created_at >= start_date)
+                .order_by(desc(Job.created_at))
+                .limit(limit)
+            )
+            result = await db.execute(query)
+            return result.scalars().all()
+        except Exception as e:
+            logger.error(f"Error getting recent Jobs: {e}")
+            return []
+    
+    async def update_status(self, db: AsyncSession, *, job_id: int, status: JobStatus) -> Optional[Job]:
+        """Update job status"""
+        try:
+            job = await self.get(db, job_id)
+            if not job:
+                return None
+            
+            # Update timestamps based on status
+            update_data = {"status": status, "updated_at": datetime.now()}
+            if status == JobStatus.IN_PROGRESS and not job.started_at:
+                update_data["started_at"] = datetime.now()
+            elif status == JobStatus.COMPLETED and not job.completed_at:
+                update_data["completed_at"] = datetime.now()
+            
+            query = (
+                update(Job)
+                .where(Job.id == job_id)
+                .values(**update_data)
+            )
+            await db.execute(query)
+            await db.commit()
+            
+            return await self.get(db, job_id)
+        except Exception as e:
+            logger.error(f"Error updating job status: {e}")
+            await db.rollback()
+            return None
+
 # Create CRUD instances
 user = CRUDUser(User)
 property_crud = CRUDProperty(Property)
@@ -955,6 +1048,7 @@ issue = CRUDIssue(Issue)
 inspection = CRUDInspection(Inspection)
 pm_file = CRUDPMFile(PMFile)
 user_property_access = CRUDUserPropertyAccess(UserPropertyAccess)
+job = CRUDJob(Job)
 
 # Utility functions
 async def get_dashboard_data(db: AsyncSession) -> Dict[str, Any]:

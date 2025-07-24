@@ -74,6 +74,14 @@ class AccessLevel(str, enum.Enum):
     SUPERVISOR = "SUPERVISOR"
     ADMIN = "ADMIN"
 
+class JobStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    ASSIGNED = "ASSIGNED"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+    ON_HOLD = "ON_HOLD"
+
 # Models with Indexes
 class User(Base):
     __tablename__ = "users"
@@ -96,6 +104,7 @@ class User(Base):
     assigned_issues = relationship("Issue", foreign_keys="Issue.assigned_to_id", back_populates="assignee", lazy="selectin")
     inspections = relationship("Inspection", back_populates="inspector", lazy="selectin")
     property_access = relationship("UserPropertyAccess", back_populates="user", lazy="selectin")
+    jobs = relationship("Job", lazy="selectin")
     
     # Indexes
     __table_args__ = (
@@ -138,6 +147,7 @@ class Room(Base):
     property = relationship("Property", back_populates="rooms", lazy="selectin")
     machines = relationship("Machine", back_populates="room", lazy="selectin")
     issues = relationship("Issue", back_populates="room", lazy="selectin")
+    jobs = relationship("Job", lazy="selectin")
     
     # Indexes
     __table_args__ = (
@@ -390,4 +400,35 @@ class UserPropertyAccess(Base):
         Index('idx_user_property_access_level', 'access_level', 'user_id'),
         Index('idx_user_property_expires', 'expires_at', 'user_id'),
         Index('idx_property_access_granted', 'granted_at', 'property_id'),
+    )
+
+class Job(Base):
+    __tablename__ = "jobs"
+    
+    id = Column(Integer, primary_key=True, index=True)  # job_id
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    topic = Column(String(200), nullable=False, index=True)
+    property = Column(String(500), nullable=True, index=True)
+    before_image = Column(String(500), nullable=True, index=True)  # File path for before image
+    after_image = Column(String(500), nullable=True, index=True)   # File path for after image
+    room_id = Column(Integer, ForeignKey("rooms.id"), nullable=True, index=True)
+    status = Column(Enum(JobStatus), nullable=False, default=JobStatus.PENDING, index=True)
+    description = Column(Text)
+    created_at = Column(DateTime, server_default=func.now(), index=True)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    started_at = Column(DateTime, index=True)
+    completed_at = Column(DateTime, index=True)
+    
+    # Relationships
+    user = relationship("User", lazy="selectin")
+    room = relationship("Room", lazy="selectin")
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_job_user_status', 'user_id', 'status'),
+        Index('idx_job_status_created', 'status', 'created_at'),
+        Index('idx_job_room_status', 'room_id', 'status'),
+        Index('idx_job_topic_status', 'topic', 'status'),
+        Index('idx_job_completed_date', 'completed_at', 'status'),
+        Index('idx_job_started_date', 'started_at', 'status'),
     )
