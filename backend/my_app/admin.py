@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import pytz
 import logging
 from contextlib import asynccontextmanager
+from typing import Any
 from database import get_db
 from models import (
     User, Property, Room, Machine, Topic, Procedure, PMSchedule, PMExecution,
