@@ -13,8 +13,9 @@ import logging
 from database import Base
 from models import (
     User, Property, Room, Machine, Topic, Procedure, PMSchedule, 
-    PMExecution, Issue, Inspection, PMFile, UserPropertyAccess,
-    UserRole, PMStatus, IssueStatus, IssuePriority, InspectionResult, FrequencyType
+    PMExecution, Issue, Inspection, PMFile, UserPropertyAccess, WorkOrder, WorkOrderFile,
+    UserRole, PMStatus, IssueStatus, IssuePriority, InspectionResult, FrequencyType,
+    WorkOrderStatus, WorkOrderType, machine_procedure_association, work_order_topic_association
 )
 
 # Configure logging
@@ -1029,3 +1030,231 @@ async def bulk_update_pm_schedules(
     except Exception as e:
         logger.error(f"Error in bulk update: {e}")
         return {"success_count": 0, "error_count": len(schedule_ids), "errors": [str(e)]}
+
+
+class WorkOrderCRUD(BaseCRUD[WorkOrder, Any, Any]):
+    """CRUD operations for WorkOrder with many-to-many topic relationship"""
+    
+    async def create_with_topics(
+        self, 
+        db: AsyncSession, 
+        *, 
+        work_order_data: Dict[str, Any],
+        topic_ids: Optional[List[int]] = None
+    ) -> WorkOrder:
+        """Create a work order with many-to-many topic associations"""
+        try:
+            # Extract topic_ids from work_order_data if provided
+            if topic_ids is None:
+                topic_ids = work_order_data.pop('topic_ids', [])
+            
+            # Create the work order
+            db_work_order = WorkOrder(**work_order_data)
+            db.add(db_work_order)
+            await db.flush()  # Get the ID without committing
+            
+            # Add topic associations if provided
+            if topic_ids:
+                # Verify topics exist
+                topic_query = select(Topic).where(Topic.id.in_(topic_ids))
+                result = await db.execute(topic_query)
+                existing_topics = result.scalars().all()
+                existing_topic_ids = {topic.id for topic in existing_topics}
+                
+                # Only add existing topics
+                valid_topic_ids = [tid for tid in topic_ids if tid in existing_topic_ids]
+                
+                if valid_topic_ids:
+                    # Create association records
+                    for topic_id in valid_topic_ids:
+                        insert_stmt = work_order_topic_association.insert().values(
+                            work_order_id=db_work_order.id,
+                            topic_id=topic_id
+                        )
+                        await db.execute(insert_stmt)
+            
+            await db.commit()
+            await db.refresh(db_work_order)
+            
+            # Load relationships
+            await db.refresh(db_work_order, ["topics", "machine", "room", "property", "assignee", "topic", "procedure"])
+            
+            return db_work_order
+            
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"Error creating work order with topics: {e}")
+            raise CRUDError(f"Failed to create work order: {str(e)}")
+    
+    async def get_with_topics(self, db: AsyncSession, id: int) -> Optional[WorkOrder]:
+        """Get work order with all relationships including many-to-many topics"""
+        try:
+            query = (
+                select(WorkOrder)
+                .options(
+                    selectinload(WorkOrder.topics),
+                    selectinload(WorkOrder.machine),
+                    selectinload(WorkOrder.room),
+                    selectinload(WorkOrder.property),
+                    selectinload(WorkOrder.assignee),
+                    selectinload(WorkOrder.topic),
+                    selectinload(WorkOrder.procedure),
+                    selectinload(WorkOrder.files)
+                )
+                .where(WorkOrder.id == id)
+            )
+            result = await db.execute(query)
+            return result.scalar_one_or_none()
+        except Exception as e:
+            logger.error(f"Error getting work order with topics {id}: {e}")
+            raise CRUDError(f"Failed to get work order")
+    
+    async def get_multi_with_topics(
+        self,
+        db: AsyncSession,
+        *,
+        skip: int = 0,
+        limit: int = 100,
+        filters: Optional[Dict[str, Any]] = None
+    ) -> List[WorkOrder]:
+        """Get multiple work orders with topics and filters"""
+        try:
+            query = (
+                select(WorkOrder)
+                .options(
+                    selectinload(WorkOrder.topics),
+                    selectinload(WorkOrder.machine),
+                    selectinload(WorkOrder.room),
+                    selectinload(WorkOrder.property),
+                    selectinload(WorkOrder.assignee),
+                    selectinload(WorkOrder.topic),
+                    selectinload(WorkOrder.procedure)
+                )
+            )
+            
+            # Apply filters
+            if filters:
+                conditions = []
+                for key, value in filters.items():
+                    if hasattr(WorkOrder, key) and value is not None:
+                        conditions.append(getattr(WorkOrder, key) == value)
+                
+                if conditions:
+                    query = query.where(and_(*conditions))
+            
+            # Apply pagination
+            query = query.offset(skip).limit(limit)
+            
+            result = await db.execute(query)
+            return result.scalars().all()
+            
+        except Exception as e:
+            logger.error(f"Error getting work orders with topics: {e}")
+            raise CRUDError(f"Failed to get work orders")
+    
+    async def update_topics(
+        self, 
+        db: AsyncSession, 
+        *, 
+        work_order_id: int, 
+        topic_ids: List[int]
+    ) -> Optional[WorkOrder]:
+        """Update the many-to-many topic associations for a work order"""
+        try:
+            # Verify work order exists
+            work_order = await self.get(db, work_order_id)
+            if not work_order:
+                return None
+            
+            # Remove existing associations
+            delete_stmt = delete(work_order_topic_association).where(
+                work_order_topic_association.c.work_order_id == work_order_id
+            )
+            await db.execute(delete_stmt)
+            
+            # Add new associations
+            if topic_ids:
+                # Verify topics exist
+                topic_query = select(Topic).where(Topic.id.in_(topic_ids))
+                result = await db.execute(topic_query)
+                existing_topics = result.scalars().all()
+                existing_topic_ids = {topic.id for topic in existing_topics}
+                
+                # Only add existing topics
+                valid_topic_ids = [tid for tid in topic_ids if tid in existing_topic_ids]
+                
+                for topic_id in valid_topic_ids:
+                    insert_stmt = work_order_topic_association.insert().values(
+                        work_order_id=work_order_id,
+                        topic_id=topic_id
+                    )
+                    await db.execute(insert_stmt)
+            
+            await db.commit()
+            
+            # Return updated work order with relationships
+            return await self.get_with_topics(db, work_order_id)
+            
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"Error updating work order topics: {e}")
+            raise CRUDError(f"Failed to update work order topics")
+    
+    async def get_by_topic(self, db: AsyncSession, *, topic_id: int) -> List[WorkOrder]:
+        """Get all work orders associated with a specific topic"""
+        try:
+            query = (
+                select(WorkOrder)
+                .join(work_order_topic_association)
+                .where(work_order_topic_association.c.topic_id == topic_id)
+                .options(
+                    selectinload(WorkOrder.topics),
+                    selectinload(WorkOrder.machine),
+                    selectinload(WorkOrder.room),
+                    selectinload(WorkOrder.property),
+                    selectinload(WorkOrder.assignee)
+                )
+            )
+            result = await db.execute(query)
+            return result.scalars().all()
+            
+        except Exception as e:
+            logger.error(f"Error getting work orders by topic {topic_id}: {e}")
+            raise CRUDError(f"Failed to get work orders by topic")
+
+
+# Create CRUD instances
+work_order_crud = WorkOrderCRUD(WorkOrder)
+
+# Module-level functions for work orders
+async def create_work_order(db: AsyncSession, *, work_order: Any) -> WorkOrder:
+    """Create a work order with many-to-many topic associations"""
+    work_order_data = work_order.model_dump() if hasattr(work_order, 'model_dump') else work_order.dict()
+    return await work_order_crud.create_with_topics(db, work_order_data=work_order_data)
+
+async def get_work_order(db: AsyncSession, work_order_id: int) -> Optional[WorkOrder]:
+    """Get a work order with all relationships"""
+    return await work_order_crud.get_with_topics(db, work_order_id)
+
+async def get_work_orders(
+    db: AsyncSession, 
+    *, 
+    skip: int = 0, 
+    limit: int = 100, 
+    filters: Optional[Dict[str, Any]] = None
+) -> List[WorkOrder]:
+    """Get multiple work orders with filters"""
+    return await work_order_crud.get_multi_with_topics(db, skip=skip, limit=limit, filters=filters)
+
+async def update_work_order_topics(
+    db: AsyncSession, 
+    *, 
+    work_order_id: int, 
+    topic_ids: List[int]
+) -> Optional[WorkOrder]:
+    """Update work order topic associations"""
+    return await work_order_crud.update_topics(db, work_order_id=work_order_id, topic_ids=topic_ids)
+
+async def get_work_orders_by_topic(db: AsyncSession, *, topic_id: int) -> List[WorkOrder]:
+    """Get all work orders for a specific topic"""
+    return await work_order_crud.get_by_topic(db, topic_id=topic_id)

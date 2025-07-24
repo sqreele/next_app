@@ -23,6 +23,17 @@ machine_procedure_association = Table(
     Index('idx_machine_procedure_procedure', 'procedure_id'),
 )
 
+# Association table for many-to-many relationship between work orders and topics
+work_order_topic_association = Table(
+    'work_order_topic_association',
+    Base.metadata,
+    Column('work_order_id', Integer, ForeignKey('work_orders.id'), primary_key=True),
+    Column('topic_id', Integer, ForeignKey('topics.id'), primary_key=True),
+    Column('created_at', DateTime, server_default=func.now()),
+    Index('idx_work_order_topic_work_order', 'work_order_id'),
+    Index('idx_work_order_topic_topic', 'topic_id'),
+)
+
 # Enums
 class UserRole(str, enum.Enum):
     TECHNICIAN = "TECHNICIAN"
@@ -56,6 +67,18 @@ class IssuePriority(str, enum.Enum):
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
     CRITICAL = "CRITICAL"
+
+class WorkOrderType(str, enum.Enum):
+    PM = "PM"
+    ISSUE = "ISSUE"
+    WORKORDER = "WORKORDER"
+
+class WorkOrderStatus(str, enum.Enum):
+    SCHEDULED = "SCHEDULED"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+    OVERDUE = "OVERDUE"
 
 class InspectionResult(str, enum.Enum):
     PASS = "PASS"
@@ -184,6 +207,7 @@ class Topic(Base):
     
     # Relationships
     procedures = relationship("Procedure", back_populates="topic", lazy="selectin")
+    work_orders = relationship("WorkOrder", secondary=work_order_topic_association, back_populates="topics", lazy="selectin")
     
     # Indexes
     __table_args__ = (
@@ -390,4 +414,69 @@ class UserPropertyAccess(Base):
         Index('idx_user_property_access_level', 'access_level', 'user_id'),
         Index('idx_user_property_expires', 'expires_at', 'user_id'),
         Index('idx_property_access_granted', 'granted_at', 'property_id'),
+    )
+
+class WorkOrder(Base):
+    __tablename__ = "work_orders"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    machine_id = Column(Integer, ForeignKey("machines.id"), nullable=False, index=True)
+    room_id = Column(Integer, ForeignKey("rooms.id"), index=True)
+    property_id = Column(Integer, ForeignKey("properties.id"), index=True)
+    assigned_to_id = Column(Integer, ForeignKey("users.id"), index=True)
+    topic_id = Column(Integer, ForeignKey("topics.id"), index=True)
+    procedure_id = Column(Integer, ForeignKey("procedures.id"), index=True)
+    description = Column(Text, nullable=False)
+    status = Column(Enum(WorkOrderStatus), nullable=False, default=WorkOrderStatus.SCHEDULED, index=True)
+    priority = Column(Enum(IssuePriority), nullable=False, default=IssuePriority.MEDIUM, index=True)
+    type = Column(Enum(WorkOrderType), nullable=False, index=True)
+    frequency = Column(Enum(FrequencyType), index=True)
+    due_date = Column(DateTime, index=True)
+    completed_at = Column(DateTime, index=True)
+    before_images = Column(Text)  # JSON field for image paths
+    after_images = Column(Text)   # JSON field for image paths
+    pdf_file_path = Column(String(500))
+    created_at = Column(DateTime, server_default=func.now(), index=True)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    machine = relationship("Machine", lazy="selectin")
+    room = relationship("Room", lazy="selectin")
+    property = relationship("Property", lazy="selectin")
+    assignee = relationship("User", lazy="selectin")
+    topic = relationship("Topic", lazy="selectin")
+    procedure = relationship("Procedure", lazy="selectin")
+    topics = relationship("Topic", secondary=work_order_topic_association, back_populates="work_orders", lazy="selectin")
+    files = relationship("WorkOrderFile", back_populates="work_order", lazy="selectin")
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_work_order_status_priority', 'status', 'priority'),
+        Index('idx_work_order_machine_status', 'machine_id', 'status'),
+        Index('idx_work_order_assigned_status', 'assigned_to_id', 'status'),
+        Index('idx_work_order_type_status', 'type', 'status'),
+        Index('idx_work_order_due_date', 'due_date', 'status'),
+        Index('idx_work_order_topic_status', 'topic_id', 'status'),
+        Index('idx_work_order_procedure_status', 'procedure_id', 'status'),
+    )
+
+class WorkOrderFile(Base):
+    __tablename__ = "work_order_files"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    work_order_id = Column(Integer, ForeignKey("work_orders.id"), nullable=False, index=True)
+    file_name = Column(String(255), nullable=False, index=True)
+    file_path = Column(String(500), nullable=False, index=True)
+    file_type = Column(String(50), nullable=False, index=True)
+    image_type = Column(Enum(ImageType), index=True)
+    description = Column(Text)
+    uploaded_at = Column(DateTime, server_default=func.now(), index=True)
+    
+    # Relationships
+    work_order = relationship("WorkOrder", back_populates="files", lazy="selectin")
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_work_order_file_work_order_type', 'work_order_id', 'image_type'),
+        Index('idx_work_order_file_uploaded_date', 'uploaded_at', 'file_type'),
     )
