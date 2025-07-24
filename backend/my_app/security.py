@@ -93,7 +93,7 @@ async def get_current_user(token: str, db: AsyncSession) -> 'models.User':
     )
     
     # Check if token is blacklisted
-    from .routers.auth import TOKEN_BLACKLIST
+    from routers.auth import TOKEN_BLACKLIST
     if token in TOKEN_BLACKLIST:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

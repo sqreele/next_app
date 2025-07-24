@@ -8,9 +8,9 @@ from sqladmin.authentication import AuthenticationBackend
 from starlette.requests import Request
 from starlette.responses import RedirectResponse
 
-from .database import sync_engine
-from .models import User, UserRole
-from .security import verify_password, create_access_token, SECRET_KEY, ALGORITHM
+from database import sync_engine
+from models import User, UserRole
+from security import verify_password, create_access_token, SECRET_KEY, ALGORITHM
 from jose import jwt, JWTError
 
 class AdminAuthBackend(AuthenticationBackend):

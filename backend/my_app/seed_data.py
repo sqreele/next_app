@@ -1,7 +1,7 @@
 import json
 from sqlalchemy.orm import Session
-from my_app.database import SessionLocal, sync_engine
-from my_app.models import Base, Room, Property
+from database import SessionLocal, sync_engine
+from models import Base, Room, Property
 from datetime import datetime
 
 # JSON data provided by the user

@@ -6,9 +6,9 @@ from jose import jwt, JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy import select
-from . import crud, models, schemas
-from .database import SessionLocal
-from .security import SECRET_KEY, ALGORITHM
+import crud, models, schemas
+from database import SessionLocal
+from security import SECRET_KEY, ALGORITHM
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/users/token")
 oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/users/token", auto_error=False)

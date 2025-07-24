@@ -5,7 +5,7 @@ from sqlalchemy.orm.exc import DetachedInstanceError
 from datetime import datetime, timedelta
 import pytz
 import logging
-from .models import (
+from models import (
     User, Property, Room, Machine, Topic, Procedure, PMSchedule, PMExecution,
     Issue, Inspection, PMFile, UserPropertyAccess,
     UserRole, FrequencyType, PMStatus, IssueStatus, IssuePriority,
