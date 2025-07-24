@@ -12,7 +12,7 @@ from models import (
     User, Property, Room, Machine, Topic, Procedure, PMSchedule, PMExecution,
     Issue, Inspection, PMFile, UserPropertyAccess,
     UserRole, FrequencyType, PMStatus, IssueStatus, IssuePriority,
-    InspectionResult, ImageType, AccessLevel
+    InspectionResult, ImageType, AccessLevel, machine_procedure_association
 )
 
 @asynccontextmanager
@@ -232,6 +232,224 @@ def format_overdue_status(model, attribute):
         logger.error(f"Error in format_overdue_status for {attribute}: {str(e)}")
         return "Error"
 
+def format_many_to_many_count(model, relationship_attr, item_name="items"):
+    """Format many-to-many relationship count."""
+    try:
+        if model is None:
+            return "No Model"
+        
+        related_items = getattr(model, relationship_attr, None)
+        if related_items is not None:
+            count = len(related_items) if hasattr(related_items, '__len__') else 0
+            if count == 0:
+                return f"No {item_name}"
+            elif count == 1:
+                return f"1 {item_name[:-1] if item_name.endswith('s') else item_name}"
+            else:
+                return f"{count} {item_name}"
+        return f"No {item_name}"
+    except Exception as e:
+        logger.error(f"Error in format_many_to_many_count for {relationship_attr}: {str(e)}")
+        return "Error"
+
+def format_many_to_many_list(model, relationship_attr, display_attr="name", badge_class="info", max_items=10):
+    """Format many-to-many relationship as a list of badges."""
+    try:
+        if model is None:
+            return Markup('<span style="color: #999; font-size: 12px;">No Model</span>')
+        
+        related_items = getattr(model, relationship_attr, None)
+        if related_items and hasattr(related_items, '__iter__'):
+            items_list = list(related_items)
+            if not items_list:
+                return Markup('<span style="color: #999; font-size: 12px;">None assigned</span>')
+            
+            # Limit the number of items displayed
+            display_items = items_list[:max_items]
+            badges = []
+            
+            for item in display_items:
+                # Try different display attributes
+                display_value = None
+                for attr in [display_attr, 'title', 'name', 'username']:
+                    if hasattr(item, attr):
+                        value = getattr(item, attr, None)
+                        if value:
+                            display_value = str(value)
+                            break
+                
+                if not display_value and hasattr(item, 'id'):
+                    display_value = f"ID: {item.id}"
+                elif not display_value:
+                    display_value = "Unknown"
+                
+                badges.append(f'<span class="badge badge-{badge_class} mr-1 mb-1">{display_value}</span>')
+            
+            result = ''.join(badges)
+            
+            # Add "and X more" if there are more items
+            if len(items_list) > max_items:
+                remaining = len(items_list) - max_items
+                result += f'<span class="badge badge-secondary mr-1 mb-1">+{remaining} more</span>'
+            
+            return Markup(result)
+        
+        return Markup('<span style="color: #999; font-size: 12px;">None assigned</span>')
+    except Exception as e:
+        logger.error(f"Error in format_many_to_many_list for {relationship_attr}: {str(e)}")
+        return Markup('<span style="color: #999; font-size: 12px;">Error</span>')
+
+def format_machine_procedures_detailed(model, attribute):
+    """Detailed formatter for machine procedures with additional info."""
+    try:
+        if model is None:
+            return Markup('<span style="color: #999; font-size: 12px;">No Model</span>')
+        
+        procedures = getattr(model, 'procedures', None)
+        if procedures and hasattr(procedures, '__iter__'):
+            procedures_list = list(procedures)
+            if not procedures_list:
+                return Markup('<span style="color: #999; font-size: 12px;">No procedures assigned</span>')
+            
+            items = []
+            for proc in procedures_list[:5]:  # Show max 5 procedures
+                title = getattr(proc, 'title', 'Unknown')
+                topic_name = safe_get_relationship_name(proc, 'topic', 'title', 'No Topic')
+                estimated_time = getattr(proc, 'estimated_minutes', None)
+                time_text = f" ({estimated_time}min)" if estimated_time else ""
+                
+                items.append(f'''
+                    <div class="mb-1">
+                        <span class="badge badge-info">{title}</span>
+                        <small class="text-muted"> - {topic_name}{time_text}</small>
+                    </div>
+                ''')
+            
+            result = ''.join(items)
+            
+            if len(procedures_list) > 5:
+                remaining = len(procedures_list) - 5
+                result += f'<small class="text-muted">...and {remaining} more procedures</small>'
+            
+            return Markup(result)
+        
+        return Markup('<span style="color: #999; font-size: 12px;">No procedures assigned</span>')
+    except Exception as e:
+        logger.error(f"Error in format_machine_procedures_detailed: {str(e)}")
+        return Markup('<span style="color: #999; font-size: 12px;">Error</span>')
+
+def format_procedure_machines_detailed(model, attribute):
+    """Detailed formatter for procedure machines with additional info."""
+    try:
+        if model is None:
+            return Markup('<span style="color: #999; font-size: 12px;">No Model</span>')
+        
+        machines = getattr(model, 'machines', None)
+        if machines and hasattr(machines, '__iter__'):
+            machines_list = list(machines)
+            if not machines_list:
+                return Markup('<span style="color: #999; font-size: 12px;">No machines assigned</span>')
+            
+            items = []
+            for machine in machines_list[:5]:  # Show max 5 machines
+                name = getattr(machine, 'name', 'Unknown')
+                model_name = getattr(machine, 'model', '')
+                room_name = safe_get_relationship_name(machine, 'room', 'name', 'Unknown Room')
+                
+                display_text = f"{name}"
+                if model_name:
+                    display_text += f" ({model_name})"
+                
+                items.append(f'''
+                    <div class="mb-1">
+                        <span class="badge badge-primary">{display_text}</span>
+                        <small class="text-muted"> - {room_name}</small>
+                    </div>
+                ''')
+            
+            result = ''.join(items)
+            
+            if len(machines_list) > 5:
+                remaining = len(machines_list) - 5
+                result += f'<small class="text-muted">...and {remaining} more machines</small>'
+            
+            return Markup(result)
+        
+        return Markup('<span style="color: #999; font-size: 12px;">No machines assigned</span>')
+    except Exception as e:
+        logger.error(f"Error in format_procedure_machines_detailed: {str(e)}")
+        return Markup('<span style="color: #999; font-size: 12px;">Error</span>')
+
+def format_user_property_access_detailed(model, attribute):
+    """Detailed formatter for user property access with additional info."""
+    try:
+        if model is None:
+            return Markup('<span style="color: #999; font-size: 12px;">No Model</span>')
+        
+        access_list = getattr(model, 'property_access', None)
+        if access_list and hasattr(access_list, '__iter__'):
+            items = []
+            for access in access_list[:5]:  # Show max 5 access details
+                property_name = safe_get_relationship_name(access, 'property')
+                access_level = format_enum_badge(access, 'access_level')
+                granted_at = format_datetime(access, 'granted_at')
+                expires_at = format_datetime(access, 'expires_at') if getattr(access, 'expires_at', None) else 'Never'
+                
+                items.append(f'''
+                    <div class="mb-1">
+                        <span class="badge badge-info">{property_name}</span>
+                        <small class="text-muted"> - {access_level} (Granted: {granted_at}, Expires: {expires_at})</small>
+                    </div>
+                ''')
+            
+            result = ''.join(items)
+            
+            if len(access_list) > 5:
+                remaining = len(access_list) - 5
+                result += f'<small class="text-muted">...and {remaining} more</small>'
+            
+            return Markup(result)
+        
+        return Markup('<span style="color: #999; font-size: 12px;">No property access details</span>')
+    except Exception as e:
+        logger.error(f"Error in format_user_property_access_detailed: {str(e)}")
+        return Markup('<span style="color: #999; font-size: 12px;">Error</span>')
+
+def format_property_user_access_detailed(model, attribute):
+    """Detailed formatter for property user access with additional info."""
+    try:
+        if model is None:
+            return Markup('<span style="color: #999; font-size: 12px;">No Model</span>')
+        
+        access_list = getattr(model, 'user_access', None)
+        if access_list and hasattr(access_list, '__iter__'):
+            items = []
+            for access in access_list[:5]:  # Show max 5 access details
+                user_name = safe_get_user_full_name(access, 'user')
+                access_level = format_enum_badge(access, 'access_level')
+                granted_at = format_datetime(access, 'granted_at')
+                expires_at = format_datetime(access, 'expires_at') if getattr(access, 'expires_at', None) else 'Never'
+                
+                items.append(f'''
+                    <div class="mb-1">
+                        <span class="badge badge-success">{user_name}</span>
+                        <small class="text-muted"> - {access_level} (Granted: {granted_at}, Expires: {expires_at})</small>
+                    </div>
+                ''')
+            
+            result = ''.join(items)
+            
+            if len(access_list) > 5:
+                remaining = len(access_list) - 5
+                result += f'<small class="text-muted">...and {remaining} more</small>'
+            
+            return Markup(result)
+        
+        return Markup('<span style="color: #999; font-size: 12px;">No user access details</span>')
+    except Exception as e:
+        logger.error(f"Error in format_property_user_access_detailed: {str(e)}")
+        return Markup('<span style="color: #999; font-size: 12px;">Error</span>')
+
 # Safe formatter wrapper
 def safe_formatter(formatter_func):
     """Wrapper to make formatters safe from exceptions."""
@@ -247,12 +465,12 @@ def safe_formatter(formatter_func):
 class UserAdmin(ModelView, model=User):
     column_list = [
         User.id, User.username, User.first_name, User.last_name,
-        User.email, User.role, User.is_active, User.created_at
+        User.email, User.role, "property_access_count", User.is_active, User.created_at
     ]
     column_details_list = [
         User.id, User.username, User.first_name, User.last_name,
-        User.email, User.phone, User.role, User.is_active,
-        User.created_at, User.updated_at
+        User.email, User.phone, User.role, "property_access_list", 
+        User.is_active, User.created_at, User.updated_at
     ]
     form_columns = [
         User.username, User.email, User.first_name, User.last_name,
@@ -264,40 +482,8 @@ class UserAdmin(ModelView, model=User):
     
     column_formatters = {
         'role': safe_formatter(lambda m, a: format_enum_badge(m, 'role')),
-        'is_active': safe_formatter(lambda m, a: Markup('<span class="badge badge-success">Active</span>' if getattr(m, 'is_active', False) else '<span class="badge badge-secondary">Inactive</span>')),
-        'created_at': safe_formatter(lambda m, a: format_datetime(m, 'created_at')),
-        'updated_at': safe_formatter(lambda m, a: format_datetime(m, 'updated_at')),
-    }
-    
-    name = "User"
-    name_plural = "Users"
-    icon = "fa-solid fa-users"
-
-class PropertyAdmin(ModelView, model=Property):
-    column_list = [Property.id, Property.name, Property.address, Property.is_active, Property.created_at]
-    form_columns = [Property.name, Property.address, Property.is_active]
-    column_searchable_list = [Property.name, Property.address]
-    column_sortable_list = [Property.id, Property.name, Property.is_active, Property.created_at]
-    column_filters = [Property.is_active]
-    
-    column_formatters = {
-        'is_active': safe_formatter(lambda m, a: Markup('<span class="badge badge-success">Active</span>' if getattr(m, 'is_active', False) else '<span class="badge badge-secondary">Inactive</span>')),
-        'created_at': safe_formatter(lambda m, a: format_datetime(m, 'created_at')),
-    }
-    
-    name = "Property"
-    name_plural = "Properties"
-    icon = "fa-solid fa-building"
-
-class RoomAdmin(ModelView, model=Room):
-    column_list = [Room.id, Room.name, Room.room_number, "property_name", Room.is_active]
-    form_columns = [Room.property_id, Room.name, Room.room_number, Room.is_active]
-    column_searchable_list = [Room.name, Room.room_number]
-    column_sortable_list = [Room.id, Room.name, Room.room_number, Room.is_active]
-    column_filters = [Room.property_id, Room.is_active]
-    
-    column_formatters = {
-        'property_name': safe_formatter(lambda m, a: safe_get_relationship_name(m, 'property')),
+        'property_access_count': safe_formatter(lambda m, a: format_many_to_many_count(m, 'property_access', 'properties')),
+        'property_access_list': safe_formatter(lambda m, a: format_user_property_access_detailed(m, 'property_access')),
         'is_active': safe_formatter(lambda m, a: Markup('<span class="badge badge-success">Active</span>' if getattr(m, 'is_active', False) else '<span class="badge badge-secondary">Inactive</span>')),
         'created_at': safe_formatter(lambda m, a: format_datetime(m, 'created_at')),
         'updated_at': safe_formatter(lambda m, a: format_datetime(m, 'updated_at')),
@@ -305,7 +491,69 @@ class RoomAdmin(ModelView, model=Room):
     
     def get_query(self, request):
         """Optimize query with proper joins."""
-        return super().get_query(request).options(joinedload(Room.property))
+        return super().get_query(request).options(
+            selectinload(User.property_access).joinedload(UserPropertyAccess.property)
+        )
+    
+    name = "User"
+    name_plural = "Users"
+    icon = "fa-solid fa-users"
+
+class PropertyAdmin(ModelView, model=Property):
+    column_list = [Property.id, Property.name, Property.address, "user_access_count", Property.is_active, Property.created_at]
+    column_details_list = [
+        Property.id, Property.name, Property.address, "user_access_list",
+        Property.is_active, Property.created_at, Property.updated_at
+    ]
+    form_columns = [Property.name, Property.address, Property.is_active]
+    column_searchable_list = [Property.name, Property.address]
+    column_sortable_list = [Property.id, Property.name, Property.is_active, Property.created_at]
+    column_filters = [Property.is_active]
+    
+    column_formatters = {
+        'user_access_count': safe_formatter(lambda m, a: format_many_to_many_count(m, 'user_access', 'users')),
+        'user_access_list': safe_formatter(lambda m, a: format_property_user_access_detailed(m, 'user_access')),
+        'is_active': safe_formatter(lambda m, a: Markup('<span class="badge badge-success">Active</span>' if getattr(m, 'is_active', False) else '<span class="badge badge-secondary">Inactive</span>')),
+        'created_at': safe_formatter(lambda m, a: format_datetime(m, 'created_at')),
+        'updated_at': safe_formatter(lambda m, a: format_datetime(m, 'updated_at')),
+    }
+    
+    def get_query(self, request):
+        """Optimize query with proper joins."""
+        return super().get_query(request).options(
+            selectinload(Property.user_access).joinedload(UserPropertyAccess.user)
+        )
+    
+    name = "Property"
+    name_plural = "Properties"
+    icon = "fa-solid fa-building"
+
+class RoomAdmin(ModelView, model=Room):
+    column_list = [Room.id, Room.name, Room.room_number, "property_name", "machines_count", Room.is_active]
+    column_details_list = [
+        Room.id, Room.name, Room.room_number, "property_name", "machines_list",
+        Room.is_active, Room.created_at, Room.updated_at
+    ]
+    form_columns = [Room.property_id, Room.name, Room.room_number, Room.is_active]
+    column_searchable_list = [Room.name, Room.room_number]
+    column_sortable_list = [Room.id, Room.name, Room.room_number, Room.is_active]
+    column_filters = [Room.property_id, Room.is_active]
+    
+    column_formatters = {
+        'property_name': safe_formatter(lambda m, a: safe_get_relationship_name(m, 'property')),
+        'machines_count': safe_formatter(lambda m, a: format_many_to_many_count(m, 'machines', 'machines')),
+        'machines_list': safe_formatter(lambda m, a: format_many_to_many_list(m, 'machines', 'name', 'secondary', 8)),
+        'is_active': safe_formatter(lambda m, a: Markup('<span class="badge badge-success">Active</span>' if getattr(m, 'is_active', False) else '<span class="badge badge-secondary">Inactive</span>')),
+        'created_at': safe_formatter(lambda m, a: format_datetime(m, 'created_at')),
+        'updated_at': safe_formatter(lambda m, a: format_datetime(m, 'updated_at')),
+    }
+    
+    def get_query(self, request):
+        """Optimize query with proper joins."""
+        return super().get_query(request).options(
+            joinedload(Room.property),
+            selectinload(Room.machines)
+        )
     
     name = "Room"
     name_plural = "Rooms"
@@ -314,7 +562,12 @@ class RoomAdmin(ModelView, model=Room):
 class MachineAdmin(ModelView, model=Machine):
     column_list = [
         Machine.id, Machine.name, Machine.model, Machine.serial_number,
-        "room_name", "property_name", Machine.is_active
+        "room_name", "property_name", "procedures_count", Machine.is_active
+    ]
+    column_details_list = [
+        Machine.id, Machine.name, Machine.model, Machine.serial_number,
+        Machine.description, "room_name", "property_name", "procedures_list", 
+        Machine.is_active, Machine.created_at, Machine.updated_at
     ]
     form_columns = [
         Machine.room_id, Machine.name, Machine.model, Machine.serial_number,
@@ -342,6 +595,8 @@ class MachineAdmin(ModelView, model=Machine):
     column_formatters = {
         'room_name': safe_formatter(lambda m, a: safe_get_relationship_name(m, 'room')),
         'property_name': safe_formatter(lambda m, a: safe_get_relationship_name(getattr(m, 'room', None), 'property') if hasattr(m, 'room') and m.room else 'N/A'),
+        'procedures_count': safe_formatter(lambda m, a: format_many_to_many_count(m, 'procedures', 'procedures')),
+        'procedures_list': safe_formatter(lambda m, a: format_machine_procedures_detailed(m, 'procedures')),
         'is_active': safe_formatter(lambda m, a: Markup('<span class="badge badge-success">Active</span>' if getattr(m, 'is_active', False) else '<span class="badge badge-secondary">Inactive</span>')),
         'created_at': safe_formatter(lambda m, a: format_datetime(m, 'created_at')),
         'updated_at': safe_formatter(lambda m, a: format_datetime(m, 'updated_at')),
@@ -350,7 +605,8 @@ class MachineAdmin(ModelView, model=Machine):
     def get_query(self, request):
         """Optimize query with proper joins."""
         return super().get_query(request).options(
-            joinedload(Machine.room).joinedload(Room.property)
+            joinedload(Machine.room).joinedload(Room.property),
+            selectinload(Machine.procedures)  # Load many-to-many relationship
         )
     
     name = "Machine"
@@ -358,17 +614,29 @@ class MachineAdmin(ModelView, model=Machine):
     icon = "fa-solid fa-cogs"
 
 class TopicAdmin(ModelView, model=Topic):
-    column_list = [Topic.id, Topic.title, Topic.description, Topic.is_active, Topic.created_at]
+    column_list = [Topic.id, Topic.title, Topic.description, "procedures_count", Topic.is_active, Topic.created_at]
+    column_details_list = [
+        Topic.id, Topic.title, Topic.description, "procedures_list", 
+        Topic.is_active, Topic.created_at, Topic.updated_at
+    ]
     form_columns = [Topic.title, Topic.description, Topic.is_active]
     column_searchable_list = [Topic.title, Topic.description]
     column_sortable_list = [Topic.id, Topic.title, Topic.is_active, Topic.created_at]
     column_filters = [Topic.is_active]
     
     column_formatters = {
+        'procedures_count': safe_formatter(lambda m, a: format_many_to_many_count(m, 'procedures', 'procedures')),
+        'procedures_list': safe_formatter(lambda m, a: format_many_to_many_list(m, 'procedures', 'title', 'info', 6)),
         'is_active': safe_formatter(lambda m, a: Markup('<span class="badge badge-success">Active</span>' if getattr(m, 'is_active', False) else '<span class="badge badge-secondary">Inactive</span>')),
         'created_at': safe_formatter(lambda m, a: format_datetime(m, 'created_at')),
         'updated_at': safe_formatter(lambda m, a: format_datetime(m, 'updated_at')),
     }
+    
+    def get_query(self, request):
+        """Optimize query with proper joins."""
+        return super().get_query(request).options(
+            selectinload(Topic.procedures)
+        )
     
     name = "Topic"
     name_plural = "Topics"
@@ -377,7 +645,12 @@ class TopicAdmin(ModelView, model=Topic):
 class ProcedureAdmin(ModelView, model=Procedure):
     column_list = [
         Procedure.id, Procedure.title, "topic_name",
-        Procedure.estimated_minutes, Procedure.is_active
+        Procedure.estimated_minutes, "machines_count", Procedure.is_active
+    ]
+    column_details_list = [
+        Procedure.id, Procedure.title, "topic_name", Procedure.description,
+        Procedure.instructions, Procedure.estimated_minutes, "machines_list",
+        Procedure.is_active, Procedure.created_at, Procedure.updated_at
     ]
     form_columns = [
         Procedure.topic_id, Procedure.title, Procedure.description,
@@ -390,6 +663,8 @@ class ProcedureAdmin(ModelView, model=Procedure):
     column_formatters = {
         'topic_name': safe_formatter(lambda m, a: safe_get_relationship_name(m, 'topic', 'title')),
         'estimated_minutes': safe_formatter(lambda m, a: f"{m.estimated_minutes} min" if getattr(m, 'estimated_minutes', None) else "N/A"),
+        'machines_count': safe_formatter(lambda m, a: format_many_to_many_count(m, 'machines', 'machines')),
+        'machines_list': safe_formatter(lambda m, a: format_procedure_machines_detailed(m, 'machines')),
         'is_active': safe_formatter(lambda m, a: Markup('<span class="badge badge-success">Active</span>' if getattr(m, 'is_active', False) else '<span class="badge badge-secondary">Inactive</span>')),
         'created_at': safe_formatter(lambda m, a: format_datetime(m, 'created_at')),
         'updated_at': safe_formatter(lambda m, a: format_datetime(m, 'updated_at')),
@@ -397,7 +672,10 @@ class ProcedureAdmin(ModelView, model=Procedure):
     
     def get_query(self, request):
         """Optimize query with proper joins."""
-        return super().get_query(request).options(joinedload(Procedure.topic))
+        return super().get_query(request).options(
+            joinedload(Procedure.topic),
+            selectinload(Procedure.machines)  # Load many-to-many relationship
+        )
     
     name = "Procedure"
     name_plural = "Procedures"
@@ -589,6 +867,15 @@ class PMFileAdmin(ModelView, model=PMFile):
     name = "PM File"
     name_plural = "PM Files"
     icon = "fa-solid fa-file"
+
+# Create a helper class for Machine-Procedure Association management
+class MachineProcedureAssociationView:
+    """Helper view to display machine-procedure associations"""
+    
+    @staticmethod
+    def get_machine_procedures_summary():
+        """Get a summary of machine-procedure associations for display"""
+        return "Machine-Procedure associations can be managed through the Machine or Procedure admin pages."
 
 class UserPropertyAccessAdmin(ModelView, model=UserPropertyAccess):
     column_list = [
