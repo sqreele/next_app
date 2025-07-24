@@ -8,19 +8,15 @@ import { useRoomStore } from '@/stores/rooms-store'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
+
 import { toast } from 'sonner'
-import { 
-  CogIcon,
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
-  XMarkIcon,
-  WrenchScrewdriverIcon
-} from '@heroicons/react/24/outline'
+import { CogIcon } from '@heroicons/react/24/outline'
 
 interface MachineFormData {
   name: string
-  status: 'Operational' | 'Maintenance' | 'Offline' | 'Decommissioned'
+  model: string
+  serial_number: string
+  description: string
   room_id: number
 }
 
@@ -28,32 +24,7 @@ interface FormErrors {
   [key: string]: string
 }
 
-const statusOptions = [
-  { 
-    value: 'Operational', 
-    label: 'Operational', 
-    color: 'bg-green-100 text-green-800',
-    icon: CheckCircleIcon 
-  },
-  { 
-    value: 'Maintenance', 
-    label: 'Maintenance', 
-    color: 'bg-yellow-100 text-yellow-800',
-    icon: WrenchScrewdriverIcon 
-  },
-  { 
-    value: 'Offline', 
-    label: 'Offline', 
-    color: 'bg-red-100 text-red-800',
-    icon: XMarkIcon 
-  },
-  { 
-    value: 'Decommissioned', 
-    label: 'Decommissioned', 
-    color: 'bg-gray-100 text-gray-800',
-    icon: ExclamationTriangleIcon 
-  },
-]
+
 
 export function CreateMachineForm() {
   const router = useRouter()
@@ -62,7 +33,9 @@ export function CreateMachineForm() {
   
   const [formData, setFormData] = useState<MachineFormData>({
     name: '',
-    status: 'Operational',
+    model: '',
+    serial_number: '',
+    description: '',
     room_id: 0,
   })
   
@@ -82,6 +55,10 @@ export function CreateMachineForm() {
 
     if (!formData.name.trim()) {
       newErrors.name = 'Machine name is required'
+    }
+
+    if (!formData.serial_number.trim()) {
+      newErrors.serial_number = 'Serial number is required'
     }
 
     if (formData.room_id === 0) {
@@ -147,7 +124,6 @@ export function CreateMachineForm() {
     }
   }
 
-  const selectedStatus = statusOptions.find(s => s.value === formData.status)
   const selectedRoom = activeRooms.find(r => r.id === formData.room_id)
 
   return (
@@ -216,31 +192,57 @@ export function CreateMachineForm() {
               )}
             </div>
 
-            {/* Status Selection */}
+            {/* Model */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Status
+                Model
               </label>
-              <div className="grid grid-cols-2 gap-3">
-                {statusOptions.map((status) => {
-                  const IconComponent = status.icon
-                  return (
-                    <button
-                      key={status.value}
-                      type="button"
-                      onClick={() => handleInputChange('status', status.value as any)}
-                      className={`flex items-center gap-2 p-3 rounded-lg border-2 transition-all ${
-                        formData.status === status.value
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <IconComponent className="h-5 w-5" />
-                      <span className="text-sm font-medium">{status.label}</span>
-                    </button>
-                  )
-                })}
-              </div>
+              <Input
+                type="text"
+                value={formData.model}
+                onChange={(e) => handleInputChange('model', e.target.value)}
+                placeholder="Enter machine model..."
+                className={errors.model ? 'border-red-500' : ''}
+              />
+              {errors.model && (
+                <p className="mt-1 text-sm text-red-600">{errors.model}</p>
+              )}
+            </div>
+
+            {/* Serial Number */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Serial Number *
+              </label>
+              <Input
+                type="text"
+                value={formData.serial_number}
+                onChange={(e) => handleInputChange('serial_number', e.target.value)}
+                placeholder="Enter serial number..."
+                className={errors.serial_number ? 'border-red-500' : ''}
+              />
+              {errors.serial_number && (
+                <p className="mt-1 text-sm text-red-600">{errors.serial_number}</p>
+              )}
+            </div>
+
+            {/* Description */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Description
+              </label>
+              <textarea
+                value={formData.description}
+                onChange={(e) => handleInputChange('description', e.target.value)}
+                placeholder="Enter machine description..."
+                rows={3}
+                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  errors.description ? 'border-red-500' : 'border-gray-300'
+                }`}
+              />
+              {errors.description && (
+                <p className="mt-1 text-sm text-red-600">{errors.description}</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -257,16 +259,18 @@ export function CreateMachineForm() {
                 <span className="font-medium">{formData.name || 'Not set'}</span>
               </div>
               <div className="flex justify-between">
+                <span className="text-gray-600">Model:</span>
+                <span className="font-medium">{formData.model || 'Not set'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Serial Number:</span>
+                <span className="font-medium">{formData.serial_number || 'Not set'}</span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-gray-600">Room:</span>
                 <span className="font-medium">
                   {selectedRoom ? `${selectedRoom.name} (${selectedRoom.number})` : 'Not selected'}
                 </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Status:</span>
-                <Badge className={selectedStatus?.color}>
-                  {formData.status}
-                </Badge>
               </div>
             </div>
           </CardContent>

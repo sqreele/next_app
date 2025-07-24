@@ -117,6 +117,12 @@ class MachineCreate(MachineBase):
     @validator('serial_number')
     def validate_serial_number(cls, v):
         return v.upper().strip()
+    
+    @validator('room_id')
+    def validate_room_id(cls, v):
+        if v is None or v <= 0:
+            raise ValueError('room_id is required and must be a positive integer')
+        return v
 
 class MachineUpdate(BaseSchema):
     name: Optional[str] = Field(None, min_length=1, max_length=100)

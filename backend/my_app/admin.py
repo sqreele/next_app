@@ -5,12 +5,25 @@ from sqlalchemy.orm.exc import DetachedInstanceError
 from datetime import datetime, timedelta
 import pytz
 import logging
+from contextlib import asynccontextmanager
+from database import get_db
 from models import (
     User, Property, Room, Machine, Topic, Procedure, PMSchedule, PMExecution,
     Issue, Inspection, PMFile, UserPropertyAccess,
     UserRole, FrequencyType, PMStatus, IssueStatus, IssuePriority,
     InspectionResult, ImageType, AccessLevel
 )
+
+@asynccontextmanager
+async def get_db_context():
+    """Context manager for database sessions in admin"""
+    db = None
+    try:
+        db = await get_db().__anext__()
+        yield db
+    finally:
+        if db:
+            await db.close()
 
 # Set up logging for debugging
 logger = logging.getLogger(__name__)
@@ -309,6 +322,21 @@ class MachineAdmin(ModelView, model=Machine):
     column_searchable_list = [Machine.name, Machine.model, Machine.serial_number]
     column_sortable_list = [Machine.id, Machine.name, Machine.model, Machine.serial_number, Machine.is_active]
     column_filters = [Machine.room_id, Machine.is_active]
+    
+    async def insert_model(self, request, data: dict) -> Any:
+        """Custom insert with validation"""
+        # Validate room_id is provided and valid
+        if not data.get('room_id'):
+            raise ValueError("Room ID is required and cannot be empty")
+        
+        # Validate room exists
+        from crud import room
+        async with get_db_context() as db:
+            existing_room = await room.get(db, data['room_id'])
+            if not existing_room:
+                raise ValueError(f"Room with ID {data['room_id']} does not exist")
+        
+        return await super().insert_model(request, data)
     
     column_formatters = {
         'room_name': safe_formatter(lambda m, a: safe_get_relationship_name(m, 'room')),

@@ -3,6 +3,7 @@
 Debug admin panel - minimal version to test if admin works
 """
 import logging
+from typing import Any
 from sqladmin import ModelView
 from markupsafe import Markup
 from models import User, Property, Room, Machine
@@ -58,6 +59,14 @@ class SimpleMachineAdmin(ModelView, model=Machine):
     form_columns = [Machine.room_id, Machine.name, Machine.model, Machine.serial_number, Machine.is_active]
     column_searchable_list = [Machine.name, Machine.model, Machine.serial_number]
     column_sortable_list = [Machine.id, Machine.name, Machine.model]
+    
+    async def insert_model(self, request, data: dict) -> Any:
+        """Custom insert with validation"""
+        # Validate room_id is provided and valid
+        if not data.get('room_id'):
+            raise ValueError("Room ID is required and cannot be empty")
+        
+        return await super().insert_model(request, data)
     
     name = "Machine (Simple)"
     name_plural = "Machines (Simple)"

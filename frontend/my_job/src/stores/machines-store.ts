@@ -346,13 +346,35 @@ export const useMachineStore = create<MachineState>()(
         set({ loading: true, error: null })
         
         try {
-          const response = await machinesAPI.createMachine(data)
+          // Ensure room_id is provided and valid
+          if (!data.room_id || data.room_id <= 0) {
+            throw new Error('Room ID is required and must be a valid number')
+          }
+          
+          // Ensure serial_number is provided
+          if (!data.serial_number || !data.serial_number.trim()) {
+            throw new Error('Serial number is required')
+          }
+          
+          const createData: CreateMachineData = {
+            name: data.name.trim(),
+            model: data.model?.trim() || '',
+            serial_number: data.serial_number.trim(),
+            description: data.description?.trim() || '',
+            room_id: data.room_id,
+            is_active: true
+          }
+          
+          const response = await machinesAPI.createMachine(createData)
           const newMachine = response.data
           
           get().addMachine(newMachine)
           return newMachine
         } catch (error: any) {
-          const errorMessage = error?.response?.data?.message || error?.message || 'Failed to create machine'
+          const errorMessage = error?.response?.data?.detail || 
+                               error?.response?.data?.message || 
+                               error?.message || 
+                               'Failed to create machine'
           set({ error: errorMessage })
           throw error
         } finally {
