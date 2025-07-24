@@ -491,34 +491,49 @@ class PaginatedResponse(BaseSchema):
 
 # WorkOrder Schemas
 class WorkOrderBase(BaseSchema):
-    machine_id: int = Field(..., gt=0)
+    machine_id: Optional[int] = Field(None, gt=0)  # Made optional for general work orders
     room_id: Optional[int] = Field(None, gt=0)
     property_id: Optional[int] = Field(None, gt=0)
     assigned_to_id: Optional[int] = Field(None, gt=0)
     topic_id: Optional[int] = Field(None, gt=0)
     procedure_id: Optional[int] = Field(None, gt=0)
-    description: str = Field(..., min_length=1, max_length=2000)
+    title: Optional[str] = Field(None, min_length=3, max_length=100)
+    description: str = Field(..., min_length=10, max_length=2000)
     status: WorkOrderStatus = WorkOrderStatus.SCHEDULED
-    priority: IssuePriority = IssuePriority.MEDIUM
+    priority: Optional[IssuePriority] = None  # Made optional for general work orders
     type: WorkOrderType
     frequency: Optional[FrequencyType] = None
     due_date: Optional[datetime] = None
+    estimated_duration: Optional[int] = Field(None, gt=0, le=480)  # Duration in minutes, max 8 hours
+    safety_requirements: Optional[str] = Field(None, max_length=500)
+    required_tools: Optional[str] = Field(None, max_length=500)
+    required_parts: Optional[str] = Field(None, max_length=500)
+    special_instructions: Optional[str] = Field(None, max_length=1000)
+    cost_estimate: Optional[float] = Field(None, ge=0, le=1000000)  # Cost in dollars
 
 class WorkOrderCreate(WorkOrderBase):
     topic_ids: Optional[List[int]] = []  # List of topic IDs for many-to-many relationship
 
 class WorkOrderUpdate(BaseSchema):
+    machine_id: Optional[int] = Field(None, gt=0)
     room_id: Optional[int] = Field(None, gt=0)
     property_id: Optional[int] = Field(None, gt=0)
     assigned_to_id: Optional[int] = Field(None, gt=0)
     topic_id: Optional[int] = Field(None, gt=0)
     procedure_id: Optional[int] = Field(None, gt=0)
-    description: Optional[str] = Field(None, min_length=1, max_length=2000)
+    title: Optional[str] = Field(None, min_length=3, max_length=100)
+    description: Optional[str] = Field(None, min_length=10, max_length=2000)
     status: Optional[WorkOrderStatus] = None
     priority: Optional[IssuePriority] = None
     frequency: Optional[FrequencyType] = None
     due_date: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    estimated_duration: Optional[int] = Field(None, gt=0, le=480)
+    safety_requirements: Optional[str] = Field(None, max_length=500)
+    required_tools: Optional[str] = Field(None, max_length=500)
+    required_parts: Optional[str] = Field(None, max_length=500)
+    special_instructions: Optional[str] = Field(None, max_length=1000)
+    cost_estimate: Optional[float] = Field(None, ge=0, le=1000000)
     topic_ids: Optional[List[int]] = None  # Update many-to-many relationship
 
 class WorkOrder(WorkOrderBase):

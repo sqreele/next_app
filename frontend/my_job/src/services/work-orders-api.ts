@@ -4,14 +4,21 @@ import { AxiosResponse } from 'axios'
 
 export interface WorkOrder {
   id: number
+  title?: string
   description: string
-  status: 'Pending' | 'In Progress' | 'Completed' | 'Cancelled'
-  priority: 'Low' | 'Medium' | 'High' | 'Urgent'
+  status: 'Scheduled' | 'Pending' | 'In Progress' | 'Completed' | 'Cancelled'
+  priority: 'Low' | 'Medium' | 'High' | 'Critical'
   due_date: string
   machine_id: number | null
   room_id: number
   assigned_to_id: number
   property_id: number
+  estimated_duration?: number
+  safety_requirements?: string | null
+  required_tools?: string | null
+  required_parts?: string | null
+  special_instructions?: string | null
+  cost_estimate?: number | null
   created_at: string
   completed_at: string | null
   before_image_path: string | null
@@ -24,14 +31,21 @@ export interface WorkOrder {
 }
 
 export interface CreateWorkOrderData {
+  title?: string
   description: string
-  status: 'Pending' | 'In Progress' | 'Completed' | 'Cancelled'
-  priority: 'Low' | 'Medium' | 'High' | 'Urgent' | null
+  status: 'Scheduled' | 'Pending' | 'In Progress' | 'Completed' | 'Cancelled'
+  priority: 'Low' | 'Medium' | 'High' | 'Critical' | null
   due_date?: string
   machine_id?: number | null
   room_id?: number
   assigned_to_id?: number
   property_id?: number
+  estimated_duration?: number
+  safety_requirements?: string | null
+  required_tools?: string | null
+  required_parts?: string | null
+  special_instructions?: string | null
+  cost_estimate?: number | null
   before_image_path?: string | null
   after_image_path?: string | null
   before_images: string[]
@@ -39,6 +53,7 @@ export interface CreateWorkOrderData {
   pdf_file_path?: string | null
   type: 'pm' | 'issue' | 'workorder'
   topic_id?: number | null
+  topic_ids?: number[]
   procedure_id?: number | null
   frequency?: string | null
 }

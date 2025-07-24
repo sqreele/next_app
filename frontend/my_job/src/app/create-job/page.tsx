@@ -15,8 +15,8 @@ function CreateJobPageContent() {
           <ClipboardDocumentListIcon className="h-6 w-6 text-blue-600" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Create Work Order</h1>
-          <p className="text-gray-600">Fill out the form to create a new work order</p>
+          <h1 className="text-2xl font-bold text-gray-900">Create Job with Details</h1>
+          <p className="text-gray-600">Create comprehensive work orders with detailed specifications, requirements, and scheduling</p>
         </div>
       </div>
       
