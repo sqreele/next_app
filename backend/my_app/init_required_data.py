@@ -1,9 +1,9 @@
 # backend/init_required_data.py
 import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
-from my_app.database import SessionLocal
-from my_app.models import Property, User, UserProfile
-from my_app.security import get_password_hash
+from database import SessionLocal
+from models import Property, User, UserProfile
+from security import get_password_hash
 
 async def init_required_data():
     async with SessionLocal() as db:

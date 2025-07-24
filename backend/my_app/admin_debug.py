@@ -5,7 +5,7 @@ Debug admin panel - minimal version to test if admin works
 import logging
 from sqladmin import ModelView
 from markupsafe import Markup
-from .models import User, Property, Room, Machine
+from models import User, Property, Room, Machine
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
