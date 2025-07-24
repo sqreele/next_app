@@ -45,11 +45,27 @@ async def create_additional_indexes():
         for index_sql in regular_indexes:
             await conn.execute(text(index_sql))
     
-    # Create concurrent indexes with autocommit
+    # Create concurrent indexes with autocommit (PostgreSQL specific)
     for index_sql in concurrent_indexes:
         async with async_engine.connect() as conn:
-            await conn.execution_options(autocommit=True).execute(text(index_sql))
+            conn_with_options = await conn.execution_options(isolation_level="AUTOCOMMIT")
+            await conn_with_options.execute(text(index_sql))
 ```
+
+### Key Fix Details
+
+The critical fix was changing from:
+```python
+await conn.execution_options(autocommit=True).execute(text(index_sql))
+```
+
+To:
+```python
+conn_with_options = await conn.execution_options(isolation_level="AUTOCOMMIT")
+await conn_with_options.execute(text(index_sql))
+```
+
+This is required because PostgreSQL with asyncpg driver expects `isolation_level="AUTOCOMMIT"` rather than `autocommit=True`.
 
 ## Best Practices
 
@@ -79,7 +95,23 @@ async def create_additional_indexes():
 Use the provided test script to verify the fix:
 
 ```bash
+# From the backend directory
+cd backend
 python test_db_init.py
+```
+
+The test script will:
+1. Test basic database connection
+2. Run the full database initialization including concurrent index creation
+3. Report success or failure with detailed logging
+
+Expected output on success:
+```
+✅ Database connection successful
+✅ Created concurrent index: machine_name_search
+✅ Created concurrent index: issue_title_search  
+✅ Created concurrent index: procedure_search
+🎉 All tests passed!
 ```
 
 ## Monitoring
