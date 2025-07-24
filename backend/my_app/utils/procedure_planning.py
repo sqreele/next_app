@@ -4,7 +4,7 @@
 # ==============================================================================
 from datetime import date, datetime, timedelta
 from typing import List, Dict, Optional
-from .. import models, schemas
+import models, schemas
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 

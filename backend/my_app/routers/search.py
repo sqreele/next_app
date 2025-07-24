@@ -10,7 +10,7 @@ from models import User
 from schemas import SearchRequest, SearchResult, PaginationParams
 import crud
 from crud import CRUDError
-from .auth import get_current_active_user
+from routers.auth import get_current_active_user
 
 router = APIRouter()
 
