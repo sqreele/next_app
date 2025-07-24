@@ -3,7 +3,7 @@
 """
 SQLAlchemy models for PM System
 """
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, ForeignKey, Text, Index, Table
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, ForeignKey, Text, Index, Table, Float
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import enum
