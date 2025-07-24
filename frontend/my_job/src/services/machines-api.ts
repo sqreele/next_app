@@ -16,8 +16,11 @@ export interface Machine {
 
 export interface CreateMachineData {
   name: string
-  status: 'Operational' | 'Maintenance' | 'Offline' | 'Decommissioned'
+  model?: string
+  serial_number: string
+  description?: string
   room_id: number
+  is_active?: boolean
 }
 
 export interface UpdateMachineData extends Partial<CreateMachineData> {}

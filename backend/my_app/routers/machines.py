@@ -28,6 +28,22 @@ async def create_machine(
 ):
     """Create a new machine (Supervisor+ only)"""
     try:
+        # Validate room_id is not None
+        if machine.room_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="room_id is required and cannot be null"
+            )
+        
+        # Check if room exists
+        from crud import room
+        existing_room = await room.get(db, machine.room_id)
+        if not existing_room:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Room with ID {machine.room_id} does not exist"
+            )
+        
         # Check if serial number already exists
         existing_machine = await crud.machine.get_by_serial_number(db, serial_number=machine.serial_number)
         if existing_machine:
