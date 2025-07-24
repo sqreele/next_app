@@ -9,7 +9,7 @@ from enum import Enum
 # Import enums from models
 from models import (
     UserRole, FrequencyType, PMStatus, IssueStatus, IssuePriority,
-    InspectionResult, ImageType, AccessLevel
+    InspectionResult, ImageType, AccessLevel, WorkOrderType, WorkOrderStatus
 )
 
 # Base schemas with enhanced configuration
@@ -488,6 +488,107 @@ class PaginatedResponse(BaseSchema):
         total = values.get('total', 0)
         size = values.get('size', 20)
         return (total + size - 1) // size if total > 0 else 1
+
+# WorkOrder Schemas
+class WorkOrderBase(BaseSchema):
+    machine_id: int = Field(..., gt=0)
+    room_id: Optional[int] = Field(None, gt=0)
+    property_id: Optional[int] = Field(None, gt=0)
+    assigned_to_id: Optional[int] = Field(None, gt=0)
+    topic_id: Optional[int] = Field(None, gt=0)
+    procedure_id: Optional[int] = Field(None, gt=0)
+    description: str = Field(..., min_length=1, max_length=2000)
+    status: WorkOrderStatus = WorkOrderStatus.SCHEDULED
+    priority: IssuePriority = IssuePriority.MEDIUM
+    type: WorkOrderType
+    frequency: Optional[FrequencyType] = None
+    due_date: Optional[datetime] = None
+
+class WorkOrderCreate(WorkOrderBase):
+    topic_ids: Optional[List[int]] = []  # List of topic IDs for many-to-many relationship
+
+class WorkOrderUpdate(BaseSchema):
+    room_id: Optional[int] = Field(None, gt=0)
+    property_id: Optional[int] = Field(None, gt=0)
+    assigned_to_id: Optional[int] = Field(None, gt=0)
+    topic_id: Optional[int] = Field(None, gt=0)
+    procedure_id: Optional[int] = Field(None, gt=0)
+    description: Optional[str] = Field(None, min_length=1, max_length=2000)
+    status: Optional[WorkOrderStatus] = None
+    priority: Optional[IssuePriority] = None
+    frequency: Optional[FrequencyType] = None
+    due_date: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    topic_ids: Optional[List[int]] = None  # Update many-to-many relationship
+
+class WorkOrder(WorkOrderBase):
+    id: int
+    completed_at: Optional[datetime] = None
+    before_images: Optional[List[str]] = []
+    after_images: Optional[List[str]] = []
+    pdf_file_path: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    machine: Optional[MachineSummary] = None
+    room: Optional[Room] = None
+    property: Optional[Property] = None
+    assignee: Optional[UserSummary] = None
+    topic: Optional[Topic] = None
+    procedure: Optional[Procedure] = None
+    topics: List[Topic] = []  # Many-to-many relationship
+
+class WorkOrderWithTopics(BaseSchema):
+    id: int
+    machine_id: int
+    room_id: Optional[int]
+    property_id: Optional[int]
+    assigned_to_id: Optional[int]
+    topic_id: Optional[int]
+    procedure_id: Optional[int]
+    description: str
+    status: WorkOrderStatus
+    priority: IssuePriority
+    type: WorkOrderType
+    frequency: Optional[FrequencyType]
+    due_date: Optional[datetime]
+    completed_at: Optional[datetime]
+    before_images: Optional[List[str]] = []
+    after_images: Optional[List[str]] = []
+    pdf_file_path: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    machine: Optional[MachineSummary] = None
+    room: Optional[Room] = None
+    property: Optional[Property] = None
+    assignee: Optional[UserSummary] = None
+    topic: Optional[Topic] = None
+    procedure: Optional[Procedure] = None
+    topics: List[Topic] = []  # Many-to-many relationship
+
+# WorkOrderFile Schemas
+class WorkOrderFileBase(BaseSchema):
+    work_order_id: int = Field(..., gt=0)
+    file_name: str = Field(..., min_length=1, max_length=255)
+    file_path: str = Field(..., min_length=1, max_length=500)
+    file_type: str = Field(..., min_length=1, max_length=50)
+    image_type: Optional[ImageType] = None
+    description: Optional[str] = Field(None, max_length=500)
+
+class WorkOrderFileCreate(WorkOrderFileBase):
+    @validator('file_name')
+    def validate_file_name(cls, v):
+        allowed_extensions = {'.jpg', '.jpeg', '.png', '.pdf', '.docx', '.xlsx', '.txt'}
+        if not any(v.lower().endswith(ext) for ext in allowed_extensions):
+            raise ValueError(f'File type not allowed. Allowed: {", ".join(allowed_extensions)}')
+        return v
+
+class WorkOrderFileUpdate(BaseSchema):
+    file_name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = Field(None, max_length=500)
+
+class WorkOrderFile(WorkOrderFileBase):
+    id: int
+    uploaded_at: datetime
 
 # Export Schemas
 class ExportRequest(BaseSchema):
