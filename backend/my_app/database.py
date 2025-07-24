@@ -34,9 +34,19 @@ ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
 DEBUG = ENVIRONMENT == 'development'
 
 # Construct database URLs
-SQLALCHEMY_DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-SQLALCHEMY_SYNC_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-SQLALCHEMY_TEST_DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_TEST_NAME}"
+# Check if we should use SQLite for local development
+USE_SQLITE = os.getenv('USE_SQLITE', 'false').lower() == 'true'
+
+if USE_SQLITE:
+    # SQLite configuration for local development
+    SQLALCHEMY_DATABASE_URL = f"sqlite+aiosqlite:///{DB_NAME}"
+    SQLALCHEMY_SYNC_DATABASE_URL = f"sqlite:///{DB_NAME}"
+    SQLALCHEMY_TEST_DATABASE_URL = f"sqlite+aiosqlite:///{DB_TEST_NAME}"
+else:
+    # PostgreSQL configuration for production/Docker
+    SQLALCHEMY_DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    SQLALCHEMY_SYNC_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    SQLALCHEMY_TEST_DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_TEST_NAME}"
 
 # Connection pool settings
 POOL_SIZE = int(os.getenv('DB_POOL_SIZE', '20'))
@@ -44,39 +54,61 @@ MAX_OVERFLOW = int(os.getenv('DB_MAX_OVERFLOW', '30'))
 POOL_TIMEOUT = int(os.getenv('DB_POOL_TIMEOUT', '30'))
 POOL_RECYCLE = int(os.getenv('DB_POOL_RECYCLE', '3600'))
 
-# Async engine for FastAPI with optimized settings
-async_engine = create_async_engine(
-    SQLALCHEMY_DATABASE_URL,
-    echo=DEBUG,  # SQL logging in development only
-    future=True,
-    pool_size=POOL_SIZE,
-    max_overflow=MAX_OVERFLOW,
-    pool_timeout=POOL_TIMEOUT,
-    pool_pre_ping=True,  # Verify connections before use
-    pool_recycle=POOL_RECYCLE,  # Recreate connections every hour
-    connect_args={
-        "server_settings": {
-            "application_name": "PM_System_Async",
-            "jit": "off",  # Disable JIT for faster connection
-        },
-        "command_timeout": 60,
-    }
-)
+# Create engines based on database type
+if USE_SQLITE:
+    # SQLite async engine configuration
+    async_engine = create_async_engine(
+        SQLALCHEMY_DATABASE_URL,
+        echo=DEBUG,
+        future=True,
+        connect_args={
+            "check_same_thread": False  # Allow SQLite to work with async
+        }
+    )
+    
+    # SQLite sync engine configuration
+    sync_engine = create_engine(
+        SQLALCHEMY_SYNC_DATABASE_URL,
+        echo=DEBUG,
+        future=True,
+        connect_args={
+            "check_same_thread": False
+        }
+    )
+else:
+    # PostgreSQL async engine configuration
+    async_engine = create_async_engine(
+        SQLALCHEMY_DATABASE_URL,
+        echo=DEBUG,  # SQL logging in development only
+        future=True,
+        pool_size=POOL_SIZE,
+        max_overflow=MAX_OVERFLOW,
+        pool_timeout=POOL_TIMEOUT,
+        pool_pre_ping=True,  # Verify connections before use
+        pool_recycle=POOL_RECYCLE,  # Recreate connections every hour
+        connect_args={
+            "server_settings": {
+                "application_name": "PM_System_Async",
+                "jit": "off",  # Disable JIT for faster connection
+            },
+            "command_timeout": 60,
+        }
+    )
 
-# Sync engine for SQLAdmin and migrations
-sync_engine = create_engine(
-    SQLALCHEMY_SYNC_DATABASE_URL,
-    echo=DEBUG,
-    future=True,
-    pool_size=POOL_SIZE,
-    max_overflow=MAX_OVERFLOW,
-    pool_timeout=POOL_TIMEOUT,
-    pool_pre_ping=True,
-    pool_recycle=POOL_RECYCLE,
-    connect_args={
-        "application_name": "PM_System_Sync",
-    }
-)
+    # PostgreSQL sync engine configuration
+    sync_engine = create_engine(
+        SQLALCHEMY_SYNC_DATABASE_URL,
+        echo=DEBUG,
+        future=True,
+        pool_size=POOL_SIZE,
+        max_overflow=MAX_OVERFLOW,
+        pool_timeout=POOL_TIMEOUT,
+        pool_pre_ping=True,
+        pool_recycle=POOL_RECYCLE,
+        connect_args={
+            "application_name": "PM_System_Sync",
+        }
+    )
 
 # Test engine for testing
 test_engine = create_async_engine(
@@ -378,16 +410,17 @@ async def health_check() -> dict:
         }
 
 # Connection event handlers for PostgreSQL optimization
-@event.listens_for(sync_engine, "connect")
-def set_postgresql_pragma(dbapi_connection, connection_record):
-    """Set PostgreSQL connection parameters for better performance"""
-    with dbapi_connection.cursor() as cursor:
-        # Set timezone
-        cursor.execute("SET timezone = 'UTC'")
-        # Optimize for faster queries
-        cursor.execute("SET statement_timeout = '30s'")
-        cursor.execute("SET lock_timeout = '10s'")
-        cursor.execute("SET idle_in_transaction_session_timeout = '5min'")
+if not USE_SQLITE:
+    @event.listens_for(sync_engine, "connect")
+    def set_postgresql_pragma(dbapi_connection, connection_record):
+        """Set PostgreSQL connection parameters for better performance"""
+        with dbapi_connection.cursor() as cursor:
+            # Set timezone
+            cursor.execute("SET timezone = 'UTC'")
+            # Optimize for faster queries
+            cursor.execute("SET statement_timeout = '30s'")
+            cursor.execute("SET lock_timeout = '10s'")
+            cursor.execute("SET idle_in_transaction_session_timeout = '5min'")
 
 # Database monitoring functions
 async def get_database_stats():

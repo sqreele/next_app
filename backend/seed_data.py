@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from sqlalchemy import select
 
-from my_app.database import SessionLocal, sync_engine
+from my_app.database import AsyncSessionLocal, sync_engine
 from my_app.models import Base, Room, Property
 from datetime import datetime
 
@@ -1795,7 +1795,7 @@ def create_tables_sync():
         raise
 
 async def seed_rooms():
-    async with SessionLocal() as db:
+    async with AsyncSessionLocal() as db:
         try:
             # Ensure properties exist
             prop1 = await db.get(Property, 1)
@@ -1835,8 +1835,7 @@ async def seed_rooms():
                 
                 new_room = Room(
                     name=room_item["name"],
-                    number=room_item.get("number", room_item["name"]), # Use number if present, else name
-                    room_type=room_item["room_type"],
+                    room_number=room_item.get("number", room_item["name"]), # Use number if present, else name
                     is_active=room_item["is_active"],
                     property_id=primary_property_id
                 )
