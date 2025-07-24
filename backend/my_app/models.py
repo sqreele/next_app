@@ -420,19 +420,26 @@ class WorkOrder(Base):
     __tablename__ = "work_orders"
     
     id = Column(Integer, primary_key=True, index=True)
-    machine_id = Column(Integer, ForeignKey("machines.id"), nullable=False, index=True)
+    machine_id = Column(Integer, ForeignKey("machines.id"), nullable=True, index=True)  # Made nullable for general work orders
     room_id = Column(Integer, ForeignKey("rooms.id"), index=True)
     property_id = Column(Integer, ForeignKey("properties.id"), index=True)
     assigned_to_id = Column(Integer, ForeignKey("users.id"), index=True)
     topic_id = Column(Integer, ForeignKey("topics.id"), index=True)
     procedure_id = Column(Integer, ForeignKey("procedures.id"), index=True)
+    title = Column(String(100), index=True)  # Job title
     description = Column(Text, nullable=False)
     status = Column(Enum(WorkOrderStatus), nullable=False, default=WorkOrderStatus.SCHEDULED, index=True)
-    priority = Column(Enum(IssuePriority), nullable=False, default=IssuePriority.MEDIUM, index=True)
+    priority = Column(Enum(IssuePriority), nullable=True, index=True)  # Made nullable for general work orders
     type = Column(Enum(WorkOrderType), nullable=False, index=True)
     frequency = Column(Enum(FrequencyType), index=True)
     due_date = Column(DateTime, index=True)
     completed_at = Column(DateTime, index=True)
+    estimated_duration = Column(Integer, index=True)  # Duration in minutes
+    safety_requirements = Column(Text)  # Safety requirements and PPE
+    required_tools = Column(Text)  # Required tools and equipment
+    required_parts = Column(Text)  # Required parts and materials
+    special_instructions = Column(Text)  # Special instructions and notes
+    cost_estimate = Column(Float)  # Estimated cost
     before_images = Column(Text)  # JSON field for image paths
     after_images = Column(Text)   # JSON field for image paths
     pdf_file_path = Column(String(500))
