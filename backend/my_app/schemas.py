@@ -173,7 +173,7 @@ class ProcedureBase(BaseSchema):
     is_active: bool = True
 
 class ProcedureCreate(ProcedureBase):
-    pass
+    machine_ids: Optional[List[int]] = []  # Optional list of machine IDs to associate
 
 class ProcedureUpdate(BaseSchema):
     title: Optional[str] = Field(None, min_length=1, max_length=100)
@@ -181,12 +181,40 @@ class ProcedureUpdate(BaseSchema):
     instructions: Optional[str] = Field(None, max_length=5000)
     estimated_minutes: Optional[int] = Field(None, ge=1, le=1440)
     is_active: Optional[bool] = None
+    machine_ids: Optional[List[int]] = None  # Optional list of machine IDs to update associations
 
 class Procedure(ProcedureBase):
     id: int
     created_at: datetime
     updated_at: datetime
     topic: Optional[Topic] = None
+
+# Machine-Procedure Many-to-Many Schemas
+class MachineWithProcedures(BaseSchema):
+    id: int
+    room_id: int
+    name: str
+    model: Optional[str]
+    serial_number: str
+    description: Optional[str]
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    room: Optional[Room] = None
+    procedures: List[Procedure] = []
+
+class ProcedureWithMachines(BaseSchema):
+    id: int
+    topic_id: int
+    title: str
+    description: Optional[str]
+    instructions: Optional[str]
+    estimated_minutes: Optional[int]
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    topic: Optional[Topic] = None
+    machines: List[MachineSummary] = []
 
 # PM Schedule Schemas
 class PMScheduleBase(BaseSchema):

@@ -3,7 +3,7 @@
 """
 SQLAlchemy models for PM System
 """
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, ForeignKey, Text, Index
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, ForeignKey, Text, Index, Table
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import enum
@@ -11,6 +11,17 @@ from datetime import datetime
 
 # Import Base from database with absolute import
 from database import Base
+
+# Association table for many-to-many relationship between machines and procedures
+machine_procedure_association = Table(
+    'machine_procedure_association',
+    Base.metadata,
+    Column('machine_id', Integer, ForeignKey('machines.id'), primary_key=True),
+    Column('procedure_id', Integer, ForeignKey('procedures.id'), primary_key=True),
+    Column('created_at', DateTime, server_default=func.now()),
+    Index('idx_machine_procedure_machine', 'machine_id'),
+    Index('idx_machine_procedure_procedure', 'procedure_id'),
+)
 
 # Enums
 class UserRole(str, enum.Enum):
@@ -152,6 +163,7 @@ class Machine(Base):
     pm_schedules = relationship("PMSchedule", back_populates="machine", lazy="selectin")
     issues = relationship("Issue", back_populates="machine", lazy="selectin")
     inspections = relationship("Inspection", back_populates="machine", lazy="selectin")
+    procedures = relationship("Procedure", secondary=machine_procedure_association, back_populates="machines", lazy="selectin")
     
     # Indexes
     __table_args__ = (
@@ -195,6 +207,7 @@ class Procedure(Base):
     topic = relationship("Topic", back_populates="procedures", lazy="selectin")
     pm_schedules = relationship("PMSchedule", back_populates="procedure", lazy="selectin")
     inspections = relationship("Inspection", back_populates="procedure", lazy="selectin")
+    machines = relationship("Machine", secondary=machine_procedure_association, back_populates="procedures", lazy="selectin")
     
     # Indexes
     __table_args__ = (
