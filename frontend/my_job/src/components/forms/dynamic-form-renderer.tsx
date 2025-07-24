@@ -115,6 +115,35 @@ export function DynamicFormRenderer({
           </div>
         )
 
+      case 'enhanced-checkbox':
+        const checkboxOptions = field.options || selectOptions
+        const selectedValues = Array.isArray(value) ? value : []
+        
+        return (
+          <div className="space-y-2">
+            {checkboxOptions.map((option) => (
+              <div key={option.value} className="flex items-center">
+                <input
+                  type="checkbox"
+                  id={`${field.name}-${option.value}`}
+                  checked={selectedValues.includes(option.value)}
+                  onChange={(e) => {
+                    const newValues = e.target.checked
+                      ? [...selectedValues, option.value]
+                      : selectedValues.filter(v => v !== option.value)
+                    onChange(newValues)
+                  }}
+                  onBlur={onBlur}
+                  className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor={`${field.name}-${option.value}`} className="text-sm text-gray-700">
+                  {option.label}
+                </label>
+              </div>
+            ))}
+          </div>
+        )
+
       case 'datetime-local':
       case 'date':
         return (

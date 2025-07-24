@@ -21,6 +21,7 @@ export interface WorkOrder {
   pdf_file_path: string | null
   type: 'pm' | 'issue' | 'workorder'
   topic_id: number | null
+  topics?: Array<{id: number, title: string}>  // Many-to-many topics relationship
 }
 
 export interface CreateWorkOrderData {
@@ -39,6 +40,7 @@ export interface CreateWorkOrderData {
   pdf_file_path?: string | null
   type: 'pm' | 'issue' | 'workorder'
   topic_id?: number | null
+  topic_ids?: number[]  // Many-to-many topics relationship
   procedure_id?: number | null
   frequency?: string | null
 }

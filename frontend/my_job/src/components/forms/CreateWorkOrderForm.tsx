@@ -32,6 +32,7 @@ const initialFormData = {
   status: 'Pending',
   type: 'pm',
   topic_id: '',
+  topic_ids: [],  // Array for many-to-many topics relationship
   has_pm: false,
   has_issue: false,
   beforePhotos: [],
@@ -519,6 +520,7 @@ export function CreateWorkOrderForm() {
         property_id: numericPropertyId as number,
         type: allowedTypes.includes(formData.type as AllowedType) ? (formData.type as AllowedType) : 'pm',
         topic_id: formData.topic_id ? Number(formData.topic_id) : undefined,
+        topic_ids: Array.isArray(formData.topic_ids) ? formData.topic_ids.map(id => Number(id)) : undefined,
         has_pm: formData.type === 'pm' ? true : false,
         has_issue: !!formData.has_issue,
         frequency: (formData.type === 'pm' && formData.frequency) ? formData.frequency : undefined,
@@ -608,6 +610,14 @@ export function CreateWorkOrderForm() {
           { value: '', label: 'No Topic Selected' },
           ...topics.map((topic) => ({ value: topic.id.toString(), label: topic.title })),
         ]
+      case 'topic_ids':
+        if (topicsLoading) {
+          return [{ value: '', label: 'Loading topics...' }]
+        }
+        if (topicsError) {
+          return [{ value: '', label: 'Failed to load topics' }]
+        }
+        return topics.map((topic) => ({ value: topic.id.toString(), label: topic.title }))
       case 'frequency':
         return [
           { value: '', label: 'Select Frequency' },

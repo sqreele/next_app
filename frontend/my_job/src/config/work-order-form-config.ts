@@ -142,9 +142,16 @@ export const workOrderFormSections: FormSection[] = [
       },
       {
         name: 'topic_id',
-        label: 'Topic Category (Optional)',
+        label: 'Primary Topic Category (Optional)',
         type: 'select',
         required: false,
+      },
+      {
+        name: 'topic_ids',
+        label: 'Related Topics (Optional)',
+        type: 'enhanced-checkbox',
+        required: false,
+        description: 'Select all topics that relate to this work order',
       },
     ],
   },

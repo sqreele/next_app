@@ -7,7 +7,7 @@ from datetime import datetime
 from enum import Enum
 
 # Import enums from models
-from models import (
+from .models import (
     UserRole, FrequencyType, PMStatus, IssueStatus, IssuePriority,
     InspectionResult, ImageType, AccessLevel, WorkOrderType, WorkOrderStatus
 )
