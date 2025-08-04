@@ -2,21 +2,10 @@
 import React from 'react'
 import { Metadata } from 'next'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
-import { TechnicianStatus } from '@/components/dashboard/dashboard-overview'
-import { QuickStats } from '@/components/dashboard/quick-stats'
-import { RecentWorkOrders } from '@/components/dashboard/recent-work-orders'
-import { UpcomingJobs } from '@/components/dashboard/upcoming-jobs'
-import { AssetAlerts } from '@/components/dashboard/asset-alerts'
-import { PerformanceCharts } from '@/components/dashboard/performance-charts'
-import { QuickActions } from '@/components/dashboard/quick-actions'
-import { InventoryStatus } from '@/components/dashboard/inventory-status'
+import { DashboardErrorBoundary } from '@/components/ErrorBoundary'
+import { DashboardContent } from '@/components/dashboard/dashboard-content'
 import { 
   ChartBarIcon, 
-  ClockIcon, 
-  ExclamationTriangleIcon,
-  CheckCircleIcon,
-  UserGroupIcon,
-  CogIcon
 } from '@heroicons/react/24/outline'
 
 export const metadata: Metadata = {
@@ -44,85 +33,12 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
-            <QuickActions />
           </div>
 
-          {/* Quick Stats */}
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
-            <QuickStats />
-          </div>
-
-          {/* Main Content Grid */}
-          <div className="grid gap-8 grid-cols-1 lg:grid-cols-3">
-            {/* Left/Main Content */}
-            <div className="lg:col-span-2 space-y-8">
-              {/* Overview Section */}
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
-                <div className="flex items-center gap-2 mb-6">
-                  <ChartBarIcon className="w-5 h-5 text-green-600" />
-                  <h2 className="text-xl font-semibold text-gray-800">Overview</h2>
-                </div>
-                <TechnicianStatus />
-              </div>
-
-              {/* Performance Section */}
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
-                <div className="flex items-center gap-2 mb-6">
-                  <CogIcon className="w-5 h-5 text-blue-600" />
-                  <h2 className="text-xl font-semibold text-gray-800">Performance</h2>
-                </div>
-                <PerformanceCharts />
-              </div>
-
-              {/* Recent Work Orders Section */}
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
-                <div className="flex items-center gap-2 mb-6">
-                  <ClockIcon className="w-5 h-5 text-purple-600" />
-                  <h2 className="text-xl font-semibold text-gray-800">Recent Work Orders</h2>
-                </div>
-                <RecentWorkOrders />
-              </div>
-            </div>
-
-            {/* Right/Sidebar */}
-            <div className="space-y-8">
-              {/* Upcoming Jobs */}
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <ClockIcon className="w-5 h-5 text-orange-600" />
-                  <h2 className="text-lg font-semibold text-gray-700">Upcoming Jobs</h2>
-                </div>
-                <UpcomingJobs />
-              </div>
-
-              {/* Technician Status */}
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <UserGroupIcon className="w-5 h-5 text-green-600" />
-                  <h2 className="text-lg font-semibold text-gray-700">Technician Status</h2>
-                </div>
-                <TechnicianStatus />
-              </div>
-
-              {/* Asset Alerts */}
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <ExclamationTriangleIcon className="w-5 h-5 text-red-600" />
-                  <h2 className="text-lg font-semibold text-gray-700">Asset Alerts</h2>
-                </div>
-                <AssetAlerts />
-              </div>
-
-              {/* Inventory Status */}
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <CheckCircleIcon className="w-5 h-5 text-blue-600" />
-                  <h2 className="text-lg font-semibold text-gray-700">Inventory Status</h2>
-                </div>
-                <InventoryStatus />
-              </div>
-            </div>
-          </div>
+          {/* Dashboard Content with Error Boundary */}
+          <DashboardErrorBoundary componentName="Dashboard">
+            <DashboardContent />
+          </DashboardErrorBoundary>
         </div>
       </div>
     </ProtectedRoute>
