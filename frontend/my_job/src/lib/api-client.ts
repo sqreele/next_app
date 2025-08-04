@@ -10,14 +10,31 @@ interface ApiError {
   details?: any
 }
 
+// Get the API base URL from environment variables
+const getApiBaseUrl = () => {
+  // For client-side requests, use the public URL
+  if (typeof window !== 'undefined') {
+    const clientUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+    console.log('🔗 Client-side API URL:', clientUrl)
+    return clientUrl
+  }
+  // For server-side requests, use the internal Docker URL
+  const serverUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000'
+  console.log('🔗 Server-side API URL:', serverUrl)
+  return serverUrl
+}
+
 // Create axios instance with default config
 const apiClient: AxiosInstance = axios.create({
-  // For Docker setup, use relative URLs (no baseURL needed)
-  timeout: 10000,
+  baseURL: getApiBaseUrl(),
+  timeout: 15000, // Increased timeout for better reliability
   headers: {
     'Content-Type': 'application/json',
   },
 })
+
+// Log the base URL being used
+console.log('🚀 API Client initialized with baseURL:', apiClient.defaults.baseURL)
 
 // Enhanced error handler with specific logic for different scenarios
 export const createErrorHandler = (options: {
@@ -80,6 +97,12 @@ export const createErrorHandler = (options: {
           case 500:
             apiError.message = 'Server error. Please try again later.'
             break
+          case 502:
+            apiError.message = 'Backend service is temporarily unavailable. Please try again later.'
+            break
+          case 525:
+            apiError.message = 'SSL connection failed. Please check your network connection.'
+            break
           default:
             apiError.message = data?.message || data?.detail || `Server error (${status})`
         }
@@ -88,7 +111,7 @@ export const createErrorHandler = (options: {
       apiError.code = data?.code || `HTTP_${status}`
     } else if (error.request) {
       // Request was made but no response received
-      apiError.message = 'Network error. Please check your connection.'
+      apiError.message = 'Network error. Please check your connection and try again.'
       apiError.code = 'NETWORK_ERROR'
     } else {
       // Something else happened
@@ -103,6 +126,7 @@ export const createErrorHandler = (options: {
         code: apiError.code,
         url: error.config?.url,
         method: error.config?.method,
+        baseURL: error.config?.baseURL,
         details: apiError.details,
         originalError: error
       })

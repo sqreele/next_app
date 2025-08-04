@@ -27,11 +27,16 @@ services:
   frontend:
     build:
       context: ./frontend/my_job
+    env_file: ./frontend/my_job/.env.local
     volumes:
       - /app/node_modules
     restart: unless-stopped
     depends_on:
       - backend
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_BACKEND_URL=http://backend:8000
 
   nginx:
     build: ./nginx
