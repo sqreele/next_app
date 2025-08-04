@@ -8,6 +8,7 @@ import {
   getApiErrorMessage,
   getApiValidationErrors
 } from '@/services/work-orders-api'
+import { retryRequest, waitForConnection } from '@/lib/api-client'
 
 interface WorkOrderState {
   // Data
@@ -204,12 +205,12 @@ export const useWorkOrderStore = create<WorkOrderState>()(
             // Search filter
             if (filters.search) {
               const searchTerm = filters.search.toLowerCase()
-              const searchableText = [
-                workOrder.task,
-                workOrder.description,
-              ].join(' ').toLowerCase()
+              const matchesSearch = 
+                workOrder.title?.toLowerCase().includes(searchTerm) ||
+                workOrder.description?.toLowerCase().includes(searchTerm) ||
+                workOrder.id.toString().includes(searchTerm)
               
-              if (!searchableText.includes(searchTerm)) return false
+              if (!matchesSearch) return false
             }
             
             return true
@@ -228,12 +229,24 @@ export const useWorkOrderStore = create<WorkOrderState>()(
         setError: (error) => set({ error }),
         clearError: () => set({ error: null }),
 
-        // API Actions using Axios
+        // API Actions using Axios with enhanced error handling
         fetchWorkOrders: async (filters) => {
           set({ loading: true, error: null })
           
           try {
-            const workOrders = await workOrdersAPI.getWorkOrders(filters)
+            // Wait for connection before making request
+            const isConnected = await waitForConnection(5000)
+            if (!isConnected) {
+              throw new Error('Unable to connect to server. Please check your connection.')
+            }
+
+            const workOrders = await retryRequest(
+              () => workOrdersAPI.getWorkOrders(filters),
+              3, // max retries
+              1000, // base delay
+              5000 // max delay
+            )
+            
             get().setWorkOrders(workOrders)
           } catch (error: any) {
             const errorMessage = getApiErrorMessage(error)
@@ -248,7 +261,13 @@ export const useWorkOrderStore = create<WorkOrderState>()(
           set({ loading: true, error: null })
           
           try {
-            const workOrder = await workOrdersAPI.getWorkOrder(id)
+            const workOrder = await retryRequest(
+              () => workOrdersAPI.getWorkOrder(id),
+              2, // max retries
+              1000, // base delay
+              3000 // max delay
+            )
+            
             set({ selectedWorkOrder: workOrder })
           } catch (error: any) {
             const errorMessage = getApiErrorMessage(error)
@@ -263,7 +282,13 @@ export const useWorkOrderStore = create<WorkOrderState>()(
           set({ loading: true, error: null })
           
           try {
-            const newWorkOrder = await workOrdersAPI.createWorkOrder(data)
+            const newWorkOrder = await retryRequest(
+              () => workOrdersAPI.createWorkOrder(data),
+              2, // max retries
+              1000, // base delay
+              3000 // max delay
+            )
+            
             get().addWorkOrder(newWorkOrder)
             return newWorkOrder
           } catch (error: any) {
@@ -279,7 +304,13 @@ export const useWorkOrderStore = create<WorkOrderState>()(
           set({ loading: true, error: null })
           
           try {
-            const updatedWorkOrder = await workOrdersAPI.updateWorkOrder(id, data)
+            const updatedWorkOrder = await retryRequest(
+              () => workOrdersAPI.updateWorkOrder(id, data),
+              2, // max retries
+              1000, // base delay
+              3000 // max delay
+            )
+            
             get().updateWorkOrder(id, updatedWorkOrder)
           } catch (error: any) {
             const errorMessage = getApiErrorMessage(error)
@@ -294,7 +325,13 @@ export const useWorkOrderStore = create<WorkOrderState>()(
           set({ loading: true, error: null })
           
           try {
-            await workOrdersAPI.deleteWorkOrder(id)
+            await retryRequest(
+              () => workOrdersAPI.deleteWorkOrder(id),
+              2, // max retries
+              1000, // base delay
+              3000 // max delay
+            )
+            
             get().deleteWorkOrder(id)
           } catch (error: any) {
             const errorMessage = getApiErrorMessage(error)
@@ -309,7 +346,13 @@ export const useWorkOrderStore = create<WorkOrderState>()(
           set({ loading: true, error: null })
           
           try {
-            const updatedWorkOrder = await workOrdersAPI.updateWorkOrderStatus(id, status)
+            const updatedWorkOrder = await retryRequest(
+              () => workOrdersAPI.updateWorkOrderStatus(id, status),
+              2, // max retries
+              1000, // base delay
+              3000 // max delay
+            )
+            
             get().updateWorkOrder(id, updatedWorkOrder)
           } catch (error: any) {
             const errorMessage = getApiErrorMessage(error)
@@ -324,7 +367,13 @@ export const useWorkOrderStore = create<WorkOrderState>()(
           set({ loading: true, error: null })
           
           try {
-            const workOrders = await workOrdersAPI.searchWorkOrders(query)
+            const workOrders = await retryRequest(
+              () => workOrdersAPI.searchWorkOrders(query),
+              2, // max retries
+              1000, // base delay
+              3000 // max delay
+            )
+            
             get().setWorkOrders(workOrders)
           } catch (error: any) {
             const errorMessage = getApiErrorMessage(error)
@@ -339,7 +388,13 @@ export const useWorkOrderStore = create<WorkOrderState>()(
           set({ loading: true, error: null })
           
           try {
-            const workOrders = await workOrdersAPI.getOverdueWorkOrders()
+            const workOrders = await retryRequest(
+              () => workOrdersAPI.getOverdueWorkOrders(),
+              2, // max retries
+              1000, // base delay
+              3000 // max delay
+            )
+            
             get().setWorkOrders(workOrders)
           } catch (error: any) {
             const errorMessage = getApiErrorMessage(error)
@@ -422,7 +477,11 @@ export const useWorkOrderStore = create<WorkOrderState>()(
             filters: {},
             loading: false,
             error: null,
-            pagination: { page: 1, limit: 20, total: 0 },
+            pagination: {
+              page: 1,
+              limit: 20,
+              total: 0,
+            },
             stats: {
               total: 0,
               pending: 0,
@@ -432,7 +491,12 @@ export const useWorkOrderStore = create<WorkOrderState>()(
               overdue: 0,
               dueToday: 0,
               dueThisWeek: 0,
-              byPriority: { low: 0, medium: 0, high: 0, urgent: 0 },
+              byPriority: {
+                low: 0,
+                medium: 0,
+                high: 0,
+                urgent: 0,
+              },
             },
           })
         },
@@ -441,8 +505,10 @@ export const useWorkOrderStore = create<WorkOrderState>()(
         name: 'work-orders-storage',
         partialize: (state) => ({
           workOrders: state.workOrders,
+          selectedWorkOrder: state.selectedWorkOrder,
           filters: state.filters,
           pagination: state.pagination,
+          stats: state.stats,
         }),
       }
     )

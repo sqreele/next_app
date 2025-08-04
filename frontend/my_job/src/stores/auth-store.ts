@@ -3,6 +3,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { usersAPI, RegisterData, RegisterResponse } from '@/services/users-api'
 import { User, LoginCredentials, LoginResponse } from '@/types/user'
+import { retryRequest, waitForConnection } from '@/lib/api-client'
 
 // SSR-safe storage for Zustand persist
 const storage = typeof window !== 'undefined'
@@ -27,6 +28,21 @@ function isTokenExpired(token: string | null): boolean {
   }
 }
 
+// Utility to check if token will expire soon (within 5 minutes)
+function isTokenExpiringSoon(token: string | null): boolean {
+  if (!token) return true
+  try {
+    const [, payload] = token.split('.')
+    const decoded = JSON.parse(atob(payload))
+    if (!decoded.exp) return false
+    const now = Math.floor(Date.now() / 1000)
+    const fiveMinutes = 5 * 60
+    return decoded.exp < (now + fiveMinutes)
+  } catch {
+    return true
+  }
+}
+
 // Export the AuthState interface
 export interface AuthState {
   // State
@@ -40,6 +56,8 @@ export interface AuthState {
   // Private state for preventing race conditions
   _isChecking: boolean
   _lastCheckTime: number
+  _refreshAttempts: number
+  _lastRefreshAttempt: number
   
   // Actions
   setUser: (user: User | null) => void
@@ -54,6 +72,7 @@ export interface AuthState {
   logout: () => void
   getCurrentUser: () => Promise<void>
   checkAuth: () => Promise<boolean>
+  refreshToken: () => Promise<boolean>
   
   // Validation helpers
   checkUsernameAvailability: (username: string) => Promise<boolean>
@@ -65,6 +84,7 @@ export interface AuthState {
   isTechnician: () => boolean
   reset: () => void
   isTokenExpired: () => boolean
+  isTokenExpiringSoon: () => boolean
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -79,6 +99,8 @@ export const useAuthStore = create<AuthState>()(
       userLoading: false, // NEW: initial value
       _isChecking: false,
       _lastCheckTime: 0,
+      _refreshAttempts: 0,
+      _lastRefreshAttempt: 0,
 
       // Basic setters
       setUser: (user) => {
@@ -115,7 +137,12 @@ export const useAuthStore = create<AuthState>()(
         
         set({ loading: true, error: null })
         try {
-          const registerResponse = await usersAPI.register(data)
+          const registerResponse = await retryRequest(
+            () => usersAPI.register(data),
+            3, // max retries
+            1000, // base delay
+            5000 // max delay
+          )
           
           if (registerResponse.access_token) {
             get().setToken(registerResponse.access_token)
@@ -142,7 +169,19 @@ export const useAuthStore = create<AuthState>()(
         
         set({ loading: true, error: null })
         try {
-          const loginResponse: LoginResponse = await usersAPI.login(credentials)
+          // Wait for connection before attempting login
+          const isConnected = await waitForConnection(10000)
+          if (!isConnected) {
+            throw new Error('Unable to connect to server. Please check your connection.')
+          }
+
+          const loginResponse: LoginResponse = await retryRequest(
+            () => usersAPI.login(credentials),
+            3, // max retries
+            1000, // base delay
+            5000 // max delay
+          )
+          
           get().setToken(loginResponse.access_token)
           
           // Fetch user data after setting token
@@ -172,7 +211,9 @@ export const useAuthStore = create<AuthState>()(
           error: null,
           loading: false,
           _isChecking: false,
-          _lastCheckTime: 0
+          _lastCheckTime: 0,
+          _refreshAttempts: 0,
+          _lastRefreshAttempt: 0
         })
         
         // Clear axios headers
@@ -182,6 +223,55 @@ export const useAuthStore = create<AuthState>()(
           }).catch(console.error)
           
           localStorage.removeItem('auth-storage')
+        }
+      },
+
+      // Enhanced token refresh with retry logic
+      refreshToken: async () => {
+        const state = get()
+        const now = Date.now()
+        
+        // Prevent too frequent refresh attempts
+        if (now - state._lastRefreshAttempt < 5000) {
+          return false
+        }
+        
+        // Limit refresh attempts
+        if (state._refreshAttempts >= 3) {
+          console.error('Too many refresh attempts, logging out')
+          get().logout()
+          return false
+        }
+        
+        set({ 
+          _refreshAttempts: state._refreshAttempts + 1,
+          _lastRefreshAttempt: now
+        })
+        
+        try {
+          // Wait for connection before attempting refresh
+          const isConnected = await waitForConnection(5000)
+          if (!isConnected) {
+            throw new Error('No connection to server')
+          }
+
+          const refreshResponse = await retryRequest(
+            () => usersAPI.refreshToken(),
+            2, // max retries for refresh
+            2000, // base delay
+            8000 // max delay
+          )
+          
+          if (refreshResponse.access_token) {
+            get().setToken(refreshResponse.access_token)
+            set({ _refreshAttempts: 0 }) // Reset attempts on success
+            return true
+          }
+          
+          return false
+        } catch (error) {
+          console.error('Token refresh failed:', error)
+          return false
         }
       },
 
@@ -201,7 +291,21 @@ export const useAuthStore = create<AuthState>()(
         set({ userLoading: true, error: null })
         
         try {
-          const user = await usersAPI.getCurrentUser()
+          // Check if token is expired or expiring soon
+          if (isTokenExpired(state.token) || isTokenExpiringSoon(state.token)) {
+            const refreshSuccess = await get().refreshToken()
+            if (!refreshSuccess) {
+              throw new Error('Token refresh failed')
+            }
+          }
+
+          const user = await retryRequest(
+            () => usersAPI.getCurrentUser(),
+            2, // max retries
+            1000, // base delay
+            3000 // max delay
+          )
+          
           set({ 
             user, 
             isAuthenticated: true,
@@ -270,7 +374,12 @@ export const useAuthStore = create<AuthState>()(
       // Validation helpers with error handling
       checkUsernameAvailability: async (username) => {
         try {
-          const result = await usersAPI.checkUsernameAvailability(username)
+          const result = await retryRequest(
+            () => usersAPI.checkUsernameAvailability(username),
+            2, // max retries
+            500, // base delay
+            2000 // max delay
+          )
           return result.available
         } catch (error) {
           console.error('Error checking username availability:', error)
@@ -280,7 +389,12 @@ export const useAuthStore = create<AuthState>()(
 
       checkEmailAvailability: async (email) => {
         try {
-          const result = await usersAPI.checkEmailAvailability(email)
+          const result = await retryRequest(
+            () => usersAPI.checkEmailAvailability(email),
+            2, // max retries
+            500, // base delay
+            2000 // max delay
+          )
           return result.available
         } catch (error) {
           console.error('Error checking email availability:', error)
@@ -306,10 +420,13 @@ export const useAuthStore = create<AuthState>()(
           error: null,
           _isChecking: false,
           _lastCheckTime: 0,
+          _refreshAttempts: 0,
+          _lastRefreshAttempt: 0,
         })
       },
 
       isTokenExpired: () => isTokenExpired(get().token),
+      isTokenExpiringSoon: () => isTokenExpiringSoon(get().token),
     }),
     {
       name: 'auth-storage',
@@ -341,4 +458,5 @@ export type AuthActions = Pick<AuthState,
   | 'register' 
   | 'getCurrentUser' 
   | 'checkAuth'
+  | 'refreshToken'
 >
