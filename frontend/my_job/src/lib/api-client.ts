@@ -40,6 +40,7 @@ export const createErrorHandler = (options: {
     if (error.response) {
       // Server responded with error status
       const { status, data } = error.response
+      const responseData = data as any
       apiError.status = status
       
       // Use custom messages if provided, otherwise use default logic
@@ -48,7 +49,7 @@ export const createErrorHandler = (options: {
       } else {
         switch (status) {
           case 400:
-            apiError.message = data?.message || 'Invalid request data'
+            apiError.message = responseData?.message || 'Invalid request data'
             break
           case 401:
             apiError.message = 'Session expired. Please login again.'
@@ -61,18 +62,18 @@ export const createErrorHandler = (options: {
             break
           case 422:
             // Enhanced validation error handling
-            if (data?.detail && Array.isArray(data.detail)) {
-              apiError.message = data.detail
+            if (responseData?.detail && Array.isArray(responseData.detail)) {
+              apiError.message = responseData.detail
                 .map((err: any) => err.msg || err.message || err)
                 .join(', ')
-            } else if (data?.errors) {
-              apiError.message = Object.values(data.errors)
+            } else if (responseData?.errors) {
+              apiError.message = Object.values(responseData.errors)
                 .flat()
                 .join(', ')
             } else {
-              apiError.message = data?.message || 'Validation failed. Please check your inputs.'
+              apiError.message = responseData?.message || 'Validation failed. Please check your inputs.'
             }
-            apiError.details = data?.detail || data?.errors
+            apiError.details = responseData?.detail || responseData?.errors
             break
           case 429:
             apiError.message = 'Too many requests. Please try again later.'
@@ -81,11 +82,11 @@ export const createErrorHandler = (options: {
             apiError.message = 'Server error. Please try again later.'
             break
           default:
-            apiError.message = data?.message || data?.detail || `Server error (${status})`
+            apiError.message = responseData?.message || responseData?.detail || `Server error (${status})`
         }
       }
       
-      apiError.code = data?.code || `HTTP_${status}`
+      apiError.code = responseData?.code || `HTTP_${status}`
     } else if (error.request) {
       // Request was made but no response received
       apiError.message = 'Network error. Please check your connection.'
@@ -163,7 +164,25 @@ apiClient.interceptors.request.use(
   }
 )
 
-// Response interceptor with enhanced error handling
+// Response interceptor with enhanced error handling and token refresh
+let isRefreshing = false
+let failedQueue: Array<{
+  resolve: (value?: any) => void
+  reject: (reason?: any) => void
+}> = []
+
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach(({ resolve, reject }) => {
+    if (error) {
+      reject(error)
+    } else {
+      resolve(token)
+    }
+  })
+  
+  failedQueue = []
+}
+
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
     // Log successful responses in development
@@ -174,17 +193,85 @@ apiClient.interceptors.response.use(
     return response
   },
   async (error: AxiosError) => {
+    const originalRequest = error.config as any
     const apiError = defaultErrorHandler(error)
     
-    // Handle specific error codes that need immediate action
-    if (apiError.status === 401 && typeof window !== 'undefined') {
-      // Logout user and redirect
+    // Handle 401 errors with token refresh logic
+    if (apiError.status === 401 && typeof window !== 'undefined' && !originalRequest._retry) {
+      console.log('[ResponseInterceptor] 401 received, attempting token refresh...')
+      
+      if (isRefreshing) {
+        // If already refreshing, queue this request
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject })
+        }).then(token => {
+          if (token) {
+            originalRequest.headers['Authorization'] = `Bearer ${token}`
+            return apiClient(originalRequest)
+          }
+          return Promise.reject(apiError)
+        }).catch(err => {
+          return Promise.reject(err)
+        })
+      }
+
+      originalRequest._retry = true
+      isRefreshing = true
+
       try {
+        // Attempt to refresh the token using the current token
+        const authStorage = localStorage.getItem('auth-storage')
+        if (!authStorage) {
+          console.log('[ResponseInterceptor] 401 received, but no auth storage available. Logging out.')
+          throw new Error('No auth storage available')
+        }
+
+        const parsed = JSON.parse(authStorage)
+        if (!parsed.state?.token) {
+          console.log('[ResponseInterceptor] 401 received, but no refresh token available. Logging out.')
+          throw new Error('No refresh token available')
+        }
+
+        // Make refresh request
+        const response = await axios.post('/api/v1/auth/refresh-token', {}, {
+          headers: {
+            'Authorization': `Bearer ${parsed.state.token}`
+          }
+        })
+
+        const { access_token } = response.data
+        
+        // Update the auth store with new token
         const { useAuthStore } = await import('@/stores/auth-store')
-        useAuthStore.getState().logout()
-        window.location.href = '/login'
-      } catch (importError) {
-        console.error('Failed to import auth store:', importError)
+        useAuthStore.getState().setToken(access_token)
+        
+        // Update the original request with new token
+        originalRequest.headers['Authorization'] = `Bearer ${access_token}`
+        
+        // Process the queue with the new token
+        processQueue(null, access_token)
+        
+        // Retry the original request
+        return apiClient(originalRequest)
+        
+      } catch (refreshError) {
+        console.log('[ResponseInterceptor] Token refresh failed, logging out.')
+        
+        // Process queue with error
+        processQueue(refreshError, null)
+        
+        // Logout user and redirect
+        try {
+          const { useAuthStore } = await import('@/stores/auth-store')
+          useAuthStore.getState().logout()
+          window.location.href = '/login'
+        } catch (importError) {
+          console.error('Failed to import auth store:', importError)
+        }
+        
+        return Promise.reject(apiError)
+      } finally {
+        isRefreshing = false
       }
     }
     

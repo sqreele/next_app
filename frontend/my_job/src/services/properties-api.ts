@@ -1,5 +1,6 @@
 // src/services/properties-api.ts
-import apiClient, { AxiosResponse, AxiosError } from '@/lib/api-client'
+import apiClient from '@/lib/api-client'
+import { AxiosResponse, AxiosError } from 'axios'
 
 export interface Property {
   id: number

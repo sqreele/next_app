@@ -98,6 +98,14 @@ class UsersAPI {
   }
 
   /**
+   * Refresh access token
+   */
+  async refreshToken(): Promise<LoginResponse> {
+    const response: AxiosResponse<LoginResponse> = await apiClient.post('/api/v1/auth/refresh-token')
+    return response.data
+  }
+
+  /**
    * Get all users with optional filters
    */
   async getUsers(filters?: UsersFilters): Promise<User[]> {
