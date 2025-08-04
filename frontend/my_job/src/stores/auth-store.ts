@@ -3,6 +3,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { usersAPI, RegisterData, RegisterResponse } from '@/services/users-api'
 import { User, LoginCredentials, LoginResponse } from '@/types/user'
+import { toast } from 'sonner'
 
 // SSR-safe storage for Zustand persist
 const storage = typeof window !== 'undefined'
@@ -21,10 +22,70 @@ function isTokenExpired(token: string | null): boolean {
     const decoded = JSON.parse(atob(payload))
     if (!decoded.exp) return false
     const now = Math.floor(Date.now() / 1000)
-    return decoded.exp < now
+    // Add a 5-minute buffer to refresh before actual expiry
+    return decoded.exp < (now + 300)
   } catch {
     return true
   }
+}
+
+// Token refresh utility with retry logic
+async function refreshTokenWithRetry(refreshToken: string, maxRetries: number = 3): Promise<LoginResponse> {
+  let lastError: Error
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Token refresh attempt ${attempt}/${maxRetries}`)
+      
+      const response = await fetch('/api/v1/auth/refresh', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token: refreshToken })
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error(`Token refresh failed with status ${response.status}:`, errorText)
+        
+        // Don't retry on 401 - invalid refresh token
+        if (response.status === 401) {
+          throw new Error('Refresh token expired or invalid')
+        }
+        
+        // For server errors, we can retry
+        if (response.status >= 500) {
+          throw new Error(`Server error during token refresh: ${response.status}`)
+        }
+        
+        throw new Error(`Token refresh failed: ${response.status}`)
+      }
+
+      const data: LoginResponse = await response.json()
+      console.log('Token refresh successful')
+      return data
+      
+    } catch (error) {
+      lastError = error as Error
+      console.error(`Token refresh attempt ${attempt} failed:`, error)
+      
+      // Don't retry on 401 or if this is the last attempt
+      if (error instanceof Error && 
+          (error.message.includes('401') || error.message.includes('invalid') || attempt === maxRetries)) {
+        throw error
+      }
+      
+      // Exponential backoff for server errors
+      if (attempt < maxRetries) {
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000)
+        console.log(`Retrying token refresh in ${delay}ms...`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+  }
+  
+  throw lastError!
 }
 
 // Export the AuthState interface
@@ -32,18 +93,22 @@ export interface AuthState {
   // State
   user: User | null
   token: string | null
+  refreshToken: string | null
   isAuthenticated: boolean
   loading: boolean
   error: string | null
-  userLoading: boolean // NEW: dedicated flag for getCurrentUser
+  userLoading: boolean
   
   // Private state for preventing race conditions
   _isChecking: boolean
   _lastCheckTime: number
+  _isRefreshing: boolean
+  _refreshPromise: Promise<void> | null
   
   // Actions
   setUser: (user: User | null) => void
   setToken: (token: string | null) => void
+  setRefreshToken: (refreshToken: string | null) => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
   clearError: () => void
@@ -54,6 +119,7 @@ export interface AuthState {
   logout: () => void
   getCurrentUser: () => Promise<void>
   checkAuth: () => Promise<boolean>
+  refreshAccessToken: () => Promise<boolean>
   
   // Validation helpers
   checkUsernameAvailability: (username: string) => Promise<boolean>
@@ -73,12 +139,15 @@ export const useAuthStore = create<AuthState>()(
       // Initial state
       user: null,
       token: null,
+      refreshToken: null,
       isAuthenticated: false,
       loading: false,
       error: null,
-      userLoading: false, // NEW: initial value
+      userLoading: false,
       _isChecking: false,
       _lastCheckTime: 0,
+      _isRefreshing: false,
+      _refreshPromise: null,
 
       // Basic setters
       setUser: (user) => {
@@ -104,25 +173,21 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      setRefreshToken: (refreshToken) => {
+        set({ refreshToken })
+      },
+
       setLoading: (loading) => set({ loading }),
       setError: (error) => set({ error }),
       clearError: () => set({ error: null }),
 
-      // Registration with proper error handling
-      register: async (data) => {
-        const state = get()
-        if (state.loading) throw new Error('Registration already in progress')
-        
+      // Register function
+      register: async (data: RegisterData): Promise<RegisterResponse> => {
         set({ loading: true, error: null })
+        
         try {
-          const registerResponse = await usersAPI.register(data)
-          
-          if (registerResponse.access_token) {
-            get().setToken(registerResponse.access_token)
-            get().setUser(registerResponse.user)
-          }
-          
-          return registerResponse
+          const response = await usersAPI.register(data)
+          return response
         } catch (error: any) {
           const errorMessage = error?.response?.data?.message || 
                              error?.response?.data?.detail ||
@@ -135,18 +200,24 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      // Login with race condition protection
-      login: async (credentials) => {
-        const state = get()
-        if (state.loading) throw new Error('Login already in progress')
-        
+      // Enhanced login function with refresh token handling
+      login: async (credentials: LoginCredentials) => {
         set({ loading: true, error: null })
+        
         try {
-          const loginResponse: LoginResponse = await usersAPI.login(credentials)
-          get().setToken(loginResponse.access_token)
+          const response = await usersAPI.login(credentials)
           
-          // Fetch user data after setting token
-          await get().getCurrentUser()
+          set({ 
+            token: response.access_token,
+            refreshToken: response.refresh_token,
+            user: response.user,
+            isAuthenticated: true,
+            error: null 
+          })
+
+          // Set axios header
+          get().setToken(response.access_token)
+          
         } catch (error: any) {
           const errorMessage = error?.response?.data?.message || 
                              error?.response?.data?.detail ||
@@ -154,7 +225,8 @@ export const useAuthStore = create<AuthState>()(
                              'Login failed'
           set({ 
             error: errorMessage, 
-            token: null, 
+            token: null,
+            refreshToken: null,
             user: null, 
             isAuthenticated: false 
           })
@@ -167,12 +239,15 @@ export const useAuthStore = create<AuthState>()(
       logout: () => {
         set({ 
           user: null, 
-          token: null, 
+          token: null,
+          refreshToken: null,
           isAuthenticated: false, 
           error: null,
           loading: false,
           _isChecking: false,
-          _lastCheckTime: 0
+          _lastCheckTime: 0,
+          _isRefreshing: false,
+          _refreshPromise: null
         })
         
         // Clear axios headers
@@ -185,6 +260,78 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      // Enhanced token refresh with retry logic
+      refreshAccessToken: async (): Promise<boolean> => {
+        const state = get()
+        
+        // Prevent concurrent refresh attempts
+        if (state._isRefreshing && state._refreshPromise) {
+          try {
+            await state._refreshPromise
+            return get().isAuthenticated
+          } catch {
+            return false
+          }
+        }
+
+        if (!state.refreshToken) {
+          console.log('No refresh token available')
+          get().logout()
+          return false
+        }
+
+        console.log('Access token expired, attempting refresh...')
+        set({ _isRefreshing: true })
+
+        const refreshPromise = (async () => {
+          try {
+            const response = await refreshTokenWithRetry(state.refreshToken!)
+            
+            set({
+              token: response.access_token,
+              refreshToken: response.refresh_token || state.refreshToken,
+              user: response.user || state.user,
+              isAuthenticated: true,
+              error: null,
+              _isRefreshing: false,
+              _refreshPromise: null
+            })
+
+            // Update axios header
+            get().setToken(response.access_token)
+            
+            toast.success('Session refreshed successfully')
+            return true
+            
+          } catch (error: any) {
+            console.error('Refresh token failed:', error)
+            
+            // Show user-friendly error message
+            if (error.message.includes('invalid') || error.message.includes('401')) {
+              toast.error('Session expired. Please login again.')
+            } else {
+              toast.error('Session refresh failed. Please try again.')
+            }
+            
+            set({ 
+              error: 'Session refresh failed',
+              _isRefreshing: false,
+              _refreshPromise: null
+            })
+            
+            // Only logout on 401/invalid token errors
+            if (error.message.includes('invalid') || error.message.includes('401')) {
+              get().logout()
+            }
+            
+            return false
+          }
+        })()
+
+        set({ _refreshPromise: refreshPromise })
+        return refreshPromise
+      },
+
       // Fixed getCurrentUser to prevent recursive calls
       getCurrentUser: async () => {
         const state = get()
@@ -193,8 +340,15 @@ export const useAuthStore = create<AuthState>()(
           throw new Error('No token available')
         }
 
+        // Check if token needs refresh first
+        if (isTokenExpired(state.token)) {
+          const refreshed = await get().refreshAccessToken()
+          if (!refreshed) {
+            throw new Error('Unable to refresh token')
+          }
+        }
+
         if (state.userLoading) {
-          // Prevent concurrent fetches
           return
         }
 
@@ -218,15 +372,18 @@ export const useAuthStore = create<AuthState>()(
             userLoading: false
           })
           
-          // If unauthorized, logout
+          // If unauthorized, try to refresh token first
           if (error?.response?.status === 401) {
-            get().logout()
+            const refreshed = await get().refreshAccessToken()
+            if (!refreshed) {
+              get().logout()
+            }
           }
           throw error
         }
       },
 
-      // Fixed checkAuth with proper race condition handling
+      // Enhanced checkAuth with automatic token refresh
       checkAuth: async () => {
         const state = get()
         const now = Date.now()
@@ -236,109 +393,134 @@ export const useAuthStore = create<AuthState>()(
           return state.isAuthenticated
         }
         
-        // Rate limit checks (max once per 5 seconds)
-        if (now - state._lastCheckTime < 5000 && state.isAuthenticated && state.user) {
+        // Rate limit checks (max once per 30 seconds)
+        if (now - state._lastCheckTime < 30000 && state.isAuthenticated && state.user) {
           return true
         }
         
-        // If no token or token expired, definitely not authenticated
-        if (!state.token || isTokenExpired(state.token)) {
-          get().logout()
-          return false
-        }
-
-        // If already authenticated with user data and token is valid, skip check
-        if (state.isAuthenticated && state.user && !isTokenExpired(state.token)) {
-          set({ _lastCheckTime: now })
-          return true
-        }
-
         set({ _isChecking: true, _lastCheckTime: now })
         
         try {
-          await get().getCurrentUser()
+          // If no token, definitely not authenticated
+          if (!state.token) {
+            get().logout()
+            return false
+          }
+
+          // If token is expired, try to refresh
+          if (isTokenExpired(state.token)) {
+            const refreshed = await get().refreshAccessToken()
+            if (!refreshed) {
+              return false
+            }
+          }
+
+          // If we have a valid token but no user data, fetch it
+          if (!state.user) {
+            try {
+              await get().getCurrentUser()
+            } catch (error) {
+              console.error('Failed to get current user during auth check:', error)
+              return false
+            }
+          }
+
           return true
+          
         } catch (error) {
           console.error('Auth check failed:', error)
-          get().logout()
           return false
         } finally {
           set({ _isChecking: false })
         }
       },
 
-      // Validation helpers with error handling
-      checkUsernameAvailability: async (username) => {
+      // Utility functions
+      checkUsernameAvailability: async (username: string) => {
         try {
-          const result = await usersAPI.checkUsernameAvailability(username)
-          return result.available
+          const response = await usersAPI.checkUsernameAvailability(username)
+          return response.available
         } catch (error) {
-          console.error('Error checking username availability:', error)
-          return true // Assume available if check fails
+          console.error('Username availability check failed:', error)
+          return false
         }
       },
 
-      checkEmailAvailability: async (email) => {
+      checkEmailAvailability: async (email: string) => {
         try {
-          const result = await usersAPI.checkEmailAvailability(email)
-          return result.available
+          const response = await usersAPI.checkEmailAvailability(email)
+          return response.available
         } catch (error) {
-          console.error('Error checking email availability:', error)
-          return true // Assume available if check fails
+          console.error('Email availability check failed:', error)
+          return false
         }
       },
 
-      // Utilities
-      hasRole: (role) => {
-        const { user } = get()
-        return user?.profile?.role === role
+      hasRole: (role: string) => {
+        const state = get()
+        return state.user?.positions?.includes(role) || false
       },
 
-      isAdmin: () => get().hasRole('Admin'),
-      isTechnician: () => get().hasRole('Technician'),
+      isAdmin: () => {
+        return get().hasRole('Admin')
+      },
+
+      isTechnician: () => {
+        return get().hasRole('Technician')
+      },
 
       reset: () => {
         set({
           user: null,
           token: null,
+          refreshToken: null,
           isAuthenticated: false,
           loading: false,
           error: null,
+          userLoading: false,
           _isChecking: false,
           _lastCheckTime: 0,
+          _isRefreshing: false,
+          _refreshPromise: null
         })
       },
 
-      isTokenExpired: () => isTokenExpired(get().token),
+      isTokenExpired: () => {
+        const state = get()
+        return isTokenExpired(state.token)
+      }
     }),
     {
       name: 'auth-storage',
       storage,
       partialize: (state) => ({
-        token: state.token,
         user: state.user,
+        token: state.token,
+        refreshToken: state.refreshToken,
         isAuthenticated: state.isAuthenticated,
       }),
     }
   )
 )
 
-// Initialize auth on store creation (only on client side)
+// Auto-refresh token when store is rehydrated
 if (typeof window !== 'undefined') {
-  const state = useAuthStore.getState()
-  if (state.token) {
-    state.setToken(state.token)
+  const checkAndRefreshToken = async () => {
+    const state = useAuthStore.getState()
+    if (state.token && isTokenExpired(state.token) && state.refreshToken) {
+      console.log('Token expired on load, attempting refresh...')
+      await state.refreshAccessToken()
+    }
   }
-}
 
-// Export additional types that might be needed
-export type AuthStore = typeof useAuthStore
-export type AuthActions = Pick<AuthState, 
-  | 'setUser' 
-  | 'setToken' 
-  | 'login' 
-  | 'logout' 
-  | 'register' 
-  | 'getCurrentUser' 
-  | 'checkAuth'
->
+  // Check token on load
+  setTimeout(checkAndRefreshToken, 100)
+  
+  // Set up periodic token check (every 5 minutes)
+  setInterval(() => {
+    const state = useAuthStore.getState()
+    if (state.isAuthenticated && state.token && isTokenExpired(state.token)) {
+      state.refreshAccessToken()
+    }
+  }, 5 * 60 * 1000)
+}
