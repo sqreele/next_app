@@ -149,7 +149,7 @@ try:
         from admin import (
             UserAdmin, PropertyAdmin, RoomAdmin, MachineAdmin, TopicAdmin,
             ProcedureAdmin, PMScheduleAdmin, PMExecutionAdmin, IssueAdmin,
-            InspectionAdmin, PMFileAdmin, UserPropertyAccessAdmin
+            InspectionAdmin, PMFileAdmin, UserPropertyAccessAdmin, JobAdmin
         )
         
         # Add all views to admin
@@ -165,8 +165,9 @@ try:
         admin.add_view(InspectionAdmin)
         admin.add_view(PMFileAdmin)
         admin.add_view(UserPropertyAccessAdmin)
+        admin.add_view(JobAdmin)
         
-        logger.info("✅ SQLAdmin initialized with all 12 views")
+        logger.info("✅ SQLAdmin initialized with all 13 views")
         
     except Exception as e:
         logger.error(f"❌ Failed to import/add admin views: {e}")
