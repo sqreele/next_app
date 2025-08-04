@@ -8,41 +8,49 @@ from typing import Optional
 from datetime import datetime, timedelta
 from jose import jwt
 from passlib.context import CryptContext
+from pydantic import BaseModel
 
 from database import get_db
 from models import User, UserRole
 from schemas import User as UserSchema, UserCreate
 import crud
 from crud import CRUDError
+from security import (
+    verify_password, 
+    get_password_hash, 
+    create_access_token, 
+    create_refresh_token,
+    verify_refresh_token,
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    REFRESH_TOKEN_EXPIRE_DAYS
+)
 
 router = APIRouter()
 
 # Security configuration
 SECRET_KEY = "your-secret-key-here"  # Change this in production
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/token")
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify password against hash"""
-    return pwd_context.verify(plain_password, hashed_password)
+# Token blacklist for logout functionality
+TOKEN_BLACKLIST = set()
 
-def get_password_hash(password: str) -> str:
-    """Hash password"""
-    return pwd_context.hash(password)
+# Pydantic models for request/response
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    """Create JWT access token"""
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
+    expires_in: int
+
+class LoginResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str
+    expires_in: int
 
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
@@ -54,10 +62,20 @@ async def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    
+    # Check if token is blacklisted
+    if token in TOKEN_BLACKLIST:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been invalidated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
-        if username is None:
+        token_type: str = payload.get("type")
+        if username is None or token_type != "access":
             raise credentials_exception
     except jwt.PyJWTError:
         raise credentials_exception
@@ -116,12 +134,12 @@ async def register(
     except CRUDError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.post("/token")
+@router.post("/token", response_model=LoginResponse)
 async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db)
 ):
-    """Login and get access token"""
+    """Login and get access token and refresh token"""
     user = await crud.user.get_by_username(db, username=form_data.username)
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
@@ -130,22 +148,71 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
+    # Create both access and refresh tokens
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    refresh_token_expires = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    refresh_token = create_refresh_token(
+        data={"sub": user.username}, expires_delta=refresh_token_expires
+    )
+    
+    return LoginResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh_token(
+    refresh_request: RefreshTokenRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Refresh access token using refresh token"""
+    # Verify refresh token
+    username = verify_refresh_token(refresh_request.refresh_token)
+    if not username:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Get user from database
+    user = await crud.user.get_by_username(db, username=username)
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Create new access token
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
+
+@router.post("/logout")
+async def logout(
+    current_user: User = Depends(get_current_active_user),
+    token: str = Depends(oauth2_scheme)
+):
+    """Logout and blacklist current token"""
+    # Add token to blacklist
+    TOKEN_BLACKLIST.add(token)
+    return {"message": "Successfully logged out"}
 
 @router.get("/me", response_model=UserSchema)
 async def read_current_user(current_user: User = Depends(get_current_active_user)):
     """Get current user information"""
     return current_user
-
-@router.post("/refresh-token")
-async def refresh_token(current_user: User = Depends(get_current_active_user)):
-    """Refresh access token"""
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": current_user.username}, expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer"}

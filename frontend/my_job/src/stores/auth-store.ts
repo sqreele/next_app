@@ -27,23 +27,39 @@ function isTokenExpired(token: string | null): boolean {
   }
 }
 
+// Utility to get token expiration time
+function getTokenExpiration(token: string | null): number | null {
+  if (!token) return null
+  try {
+    const [, payload] = token.split('.')
+    const decoded = JSON.parse(atob(payload))
+    return decoded.exp ? decoded.exp * 1000 : null // Convert to milliseconds
+  } catch {
+    return null
+  }
+}
+
 // Export the AuthState interface
 export interface AuthState {
   // State
   user: User | null
   token: string | null
+  refreshToken: string | null
   isAuthenticated: boolean
   loading: boolean
   error: string | null
   userLoading: boolean // NEW: dedicated flag for getCurrentUser
+  tokenExpiry: number | null
   
   // Private state for preventing race conditions
   _isChecking: boolean
   _lastCheckTime: number
+  _isRefreshing: boolean
   
   // Actions
   setUser: (user: User | null) => void
   setToken: (token: string | null) => void
+  setRefreshToken: (refreshToken: string | null) => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
   clearError: () => void
@@ -54,6 +70,7 @@ export interface AuthState {
   logout: () => void
   getCurrentUser: () => Promise<void>
   checkAuth: () => Promise<boolean>
+  refreshAccessToken: () => Promise<boolean>
   
   // Validation helpers
   checkUsernameAvailability: (username: string) => Promise<boolean>
@@ -65,6 +82,7 @@ export interface AuthState {
   isTechnician: () => boolean
   reset: () => void
   isTokenExpired: () => boolean
+  shouldRefreshToken: () => boolean
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -73,12 +91,15 @@ export const useAuthStore = create<AuthState>()(
       // Initial state
       user: null,
       token: null,
+      refreshToken: null,
       isAuthenticated: false,
       loading: false,
       error: null,
       userLoading: false, // NEW: initial value
+      tokenExpiry: null,
       _isChecking: false,
       _lastCheckTime: 0,
+      _isRefreshing: false,
 
       // Basic setters
       setUser: (user) => {
@@ -90,7 +111,12 @@ export const useAuthStore = create<AuthState>()(
       },
 
       setToken: (token) => {
-        set({ token, isAuthenticated: !!token })
+        const tokenExpiry = getTokenExpiration(token)
+        set({ 
+          token, 
+          isAuthenticated: !!token,
+          tokenExpiry 
+        })
         
         // Update axios default headers safely
         if (typeof window !== 'undefined') {
@@ -102,6 +128,10 @@ export const useAuthStore = create<AuthState>()(
             }
           }).catch(console.error)
         }
+      },
+
+      setRefreshToken: (refreshToken) => {
+        set({ refreshToken })
       },
 
       setLoading: (loading) => set({ loading }),
@@ -119,6 +149,9 @@ export const useAuthStore = create<AuthState>()(
           
           if (registerResponse.access_token) {
             get().setToken(registerResponse.access_token)
+            if (registerResponse.refresh_token) {
+              get().setRefreshToken(registerResponse.refresh_token)
+            }
             get().setUser(registerResponse.user)
           }
           
@@ -144,6 +177,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           const loginResponse: LoginResponse = await usersAPI.login(credentials)
           get().setToken(loginResponse.access_token)
+          get().setRefreshToken(loginResponse.refresh_token)
           
           // Fetch user data after setting token
           await get().getCurrentUser()
@@ -155,6 +189,7 @@ export const useAuthStore = create<AuthState>()(
           set({ 
             error: errorMessage, 
             token: null, 
+            refreshToken: null,
             user: null, 
             isAuthenticated: false 
           })
@@ -164,15 +199,29 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      logout: () => {
+      logout: async () => {
+        const state = get()
+        
+        // Try to logout on server if we have a token
+        if (state.token) {
+          try {
+            await usersAPI.logout()
+          } catch (error) {
+            console.warn('Server logout failed:', error)
+          }
+        }
+        
         set({ 
           user: null, 
           token: null, 
+          refreshToken: null,
           isAuthenticated: false, 
           error: null,
           loading: false,
+          tokenExpiry: null,
           _isChecking: false,
-          _lastCheckTime: 0
+          _lastCheckTime: 0,
+          _isRefreshing: false
         })
         
         // Clear axios headers
@@ -182,6 +231,34 @@ export const useAuthStore = create<AuthState>()(
           }).catch(console.error)
           
           localStorage.removeItem('auth-storage')
+        }
+      },
+
+      // Refresh access token
+      refreshAccessToken: async () => {
+        const state = get()
+        
+        if (!state.refreshToken || state._isRefreshing) {
+          return false
+        }
+        
+        if (isTokenExpired(state.refreshToken)) {
+          get().logout()
+          return false
+        }
+        
+        set({ _isRefreshing: true, error: null })
+        
+        try {
+          const refreshResponse = await usersAPI.refreshToken(state.refreshToken)
+          get().setToken(refreshResponse.access_token)
+          return true
+        } catch (error: any) {
+          console.error('Token refresh failed:', error)
+          get().logout()
+          return false
+        } finally {
+          set({ _isRefreshing: false })
         }
       },
 
@@ -241,8 +318,22 @@ export const useAuthStore = create<AuthState>()(
           return true
         }
         
-        // If no token or token expired, definitely not authenticated
+        // If no token or token expired, try to refresh
         if (!state.token || isTokenExpired(state.token)) {
+          if (state.refreshToken && !isTokenExpired(state.refreshToken)) {
+            const refreshed = await get().refreshAccessToken()
+            if (refreshed) {
+              // Token was refreshed, now get user data
+              try {
+                await get().getCurrentUser()
+                return true
+              } catch (error) {
+                console.error('Failed to get user after token refresh:', error)
+                get().logout()
+                return false
+              }
+            }
+          }
           get().logout()
           return false
         }
@@ -301,23 +392,37 @@ export const useAuthStore = create<AuthState>()(
         set({
           user: null,
           token: null,
+          refreshToken: null,
           isAuthenticated: false,
           loading: false,
           error: null,
+          tokenExpiry: null,
           _isChecking: false,
           _lastCheckTime: 0,
+          _isRefreshing: false,
         })
       },
 
       isTokenExpired: () => isTokenExpired(get().token),
+      
+      shouldRefreshToken: () => {
+        const state = get()
+        if (!state.token || !state.tokenExpiry) return false
+        
+        // Refresh token if it expires in the next 5 minutes
+        const fiveMinutesFromNow = Date.now() + (5 * 60 * 1000)
+        return state.tokenExpiry < fiveMinutesFromNow
+      },
     }),
     {
       name: 'auth-storage',
       storage,
       partialize: (state) => ({
         token: state.token,
+        refreshToken: state.refreshToken,
         user: state.user,
         isAuthenticated: state.isAuthenticated,
+        tokenExpiry: state.tokenExpiry,
       }),
     }
   )
@@ -336,9 +441,11 @@ export type AuthStore = typeof useAuthStore
 export type AuthActions = Pick<AuthState, 
   | 'setUser' 
   | 'setToken' 
+  | 'setRefreshToken'
   | 'login' 
   | 'logout' 
   | 'register' 
   | 'getCurrentUser' 
   | 'checkAuth'
+  | 'refreshAccessToken'
 >
