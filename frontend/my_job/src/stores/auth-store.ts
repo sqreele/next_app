@@ -3,6 +3,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { usersAPI, RegisterData, RegisterResponse } from '@/services/users-api'
 import { User, LoginCredentials, LoginResponse } from '@/types/user'
+import { authAPI } from '@/services/auth-api'
 
 // SSR-safe storage for Zustand persist
 const storage = typeof window !== 'undefined'
@@ -25,6 +26,25 @@ function isTokenExpired(token: string | null): boolean {
   } catch {
     return true
   }
+}
+
+// Utility to get token expiration time
+function getTokenExpirationTime(token: string | null): number | null {
+  if (!token) return null
+  try {
+    const [, payload] = token.split('.')
+    const decoded = JSON.parse(atob(payload))
+    return decoded.exp ? decoded.exp * 1000 : null // Convert to milliseconds
+  } catch {
+    return null
+  }
+}
+
+// Utility to get time until token expires (in milliseconds)
+function getTimeUntilExpiration(token: string | null): number {
+  const expTime = getTokenExpirationTime(token)
+  if (!expTime) return 0
+  return Math.max(0, expTime - Date.now())
 }
 
 // Export the AuthState interface
@@ -54,6 +74,8 @@ export interface AuthState {
   logout: () => void
   getCurrentUser: () => Promise<void>
   checkAuth: () => Promise<boolean>
+  refreshToken: () => Promise<boolean>
+  setupTokenRefresh: () => void
   
   // Validation helpers
   checkUsernameAvailability: (username: string) => Promise<boolean>
@@ -101,6 +123,11 @@ export const useAuthStore = create<AuthState>()(
               delete apiClient.defaults.headers.common['Authorization']
             }
           }).catch(console.error)
+        }
+        
+        // Set up proactive token refresh
+        if (token && typeof window !== 'undefined') {
+          get().setupTokenRefresh()
         }
       },
 
@@ -182,6 +209,77 @@ export const useAuthStore = create<AuthState>()(
           }).catch(console.error)
           
           localStorage.removeItem('auth-storage')
+          
+          // Clear token refresh timer
+          if ((window as any).tokenRefreshTimer) {
+            clearTimeout((window as any).tokenRefreshTimer)
+            delete (window as any).tokenRefreshTimer
+          }
+        }
+      },
+
+      // NEW: Refresh token method
+      refreshToken: async () => {
+        const state = get()
+        
+        if (!state.token) {
+          console.error('No token available for refresh')
+          return false
+        }
+
+        try {
+          const response = await authAPI.refreshToken()
+          const { access_token } = response
+          
+          if (access_token) {
+            get().setToken(access_token)
+            console.log('Token refreshed successfully')
+            return true
+          } else {
+            console.error('No access token received from refresh')
+            return false
+          }
+        } catch (error: any) {
+          console.error('Token refresh failed:', error)
+          // If refresh fails, logout the user
+          get().logout()
+          return false
+        }
+      },
+
+      // NEW: Setup proactive token refresh
+      setupTokenRefresh: () => {
+        const state = get()
+        
+        if (!state.token || typeof window === 'undefined') {
+          return
+        }
+
+        // Clear any existing timer
+        if ((window as any).tokenRefreshTimer) {
+          clearTimeout((window as any).tokenRefreshTimer)
+        }
+
+        const timeUntilExpiration = getTimeUntilExpiration(state.token)
+        
+        console.log(`Token expires in ${Math.round(timeUntilExpiration / 1000 / 60)} minutes`)
+        
+        // If token expires in less than 5 minutes, refresh it now
+        if (timeUntilExpiration < 5 * 60 * 1000) {
+          console.log('Token expires soon, refreshing now...')
+          get().refreshToken()
+          return
+        }
+
+        // Set up refresh 5 minutes before expiration
+        const refreshTime = timeUntilExpiration - (5 * 60 * 1000)
+        
+        if (refreshTime > 0) {
+          console.log(`Setting up token refresh in ${Math.round(refreshTime / 1000 / 60)} minutes`)
+          (window as any).tokenRefreshTimer = setTimeout(() => {
+            console.log('Proactive token refresh triggered')
+            get().refreshToken()
+          }, refreshTime)
         }
       },
 
@@ -328,6 +426,8 @@ if (typeof window !== 'undefined') {
   const state = useAuthStore.getState()
   if (state.token) {
     state.setToken(state.token)
+    // Set up token refresh for existing token
+    state.setupTokenRefresh()
   }
 }
 

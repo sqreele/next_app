@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 SECRET_KEY = os.getenv("SECRET_KEY", "a_very_secret_key_that_should_be_in_env")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 60  # Increased to 1 hour to reduce 401 errors
 
 # OAuth2 schemes
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
