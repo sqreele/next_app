@@ -1,6 +1,6 @@
 import apiClient from '@/lib/api-client'
 import { AxiosResponse } from 'axios'
-import { User, CreateUserData, LoginCredentials, LoginResponse } from '@/types/user'
+import { User, CreateUserData, LoginCredentials, LoginResponse, RefreshResponse } from '@/types/user'
 
 export interface RegisterData {
   username: string
@@ -16,6 +16,7 @@ export interface RegisterData {
 export interface RegisterResponse {
   user: User
   access_token?: string
+  refresh_token?: string
   message: string
 }
 
@@ -31,7 +32,7 @@ export interface UsersFilters {
 class UsersAPI {
   // Use the correct path that matches your FastAPI routes
   private readonly endpoint = '/api/v1/users'
-  private readonly authEndpoint = '/api/v1/users'
+  private readonly authEndpoint = '/api/v1/auth'
 
   /**
    * Register new user
@@ -88,11 +89,39 @@ class UsersAPI {
   }
 
   /**
+   * Refresh access token
+   */
+  async refreshToken(refreshToken: string): Promise<RefreshResponse> {
+    const response: AxiosResponse<RefreshResponse> = await apiClient.post(
+      `${this.authEndpoint}/refresh`,
+      { refresh_token: refreshToken },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    )
+    return response.data
+  }
+
+  /**
+   * Logout user
+   */
+  async logout(): Promise<void> {
+    try {
+      await apiClient.post(`${this.authEndpoint}/logout`)
+    } catch (error) {
+      // Don't throw error on logout failure
+      console.warn('Logout request failed:', error)
+    }
+  }
+
+  /**
    * Get current user profile
    */
   async getCurrentUser(): Promise<User> {
     console.log('🔍 Fetching current user from /api/v1/auth/me')
-    const response: AxiosResponse<User> = await apiClient.get('/api/v1/users/me')
+    const response: AxiosResponse<User> = await apiClient.get(`${this.authEndpoint}/me`)
     console.log('🔍 User response:', response.data)
     return response.data
   }

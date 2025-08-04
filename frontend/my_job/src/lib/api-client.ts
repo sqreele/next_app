@@ -132,9 +132,9 @@ export const authErrorHandler = createErrorHandler({
   }
 })
 
-// Request interceptor for adding auth token
+// Request interceptor for adding auth token and automatic refresh
 apiClient.interceptors.request.use(
-  (config) => {
+  async (config) => {
     // Get token from localStorage (for SSR safety)
     if (typeof window !== 'undefined') {
       const authStorage = localStorage.getItem('auth-storage')
@@ -142,7 +142,28 @@ apiClient.interceptors.request.use(
         try {
           const parsed = JSON.parse(authStorage)
           if (parsed.state?.token) {
-            config.headers.Authorization = `Bearer ${parsed.state.token}`
+            // Check if token should be refreshed
+            const { useAuthStore } = await import('@/stores/auth-store')
+            const authStore = useAuthStore.getState()
+            
+            if (authStore.shouldRefreshToken() && !authStore._isRefreshing) {
+              try {
+                await authStore.refreshAccessToken()
+              } catch (error) {
+                console.warn('Failed to refresh token:', error)
+              }
+            }
+            
+            // Get the updated token
+            const updatedAuthStorage = localStorage.getItem('auth-storage')
+            if (updatedAuthStorage) {
+              const updatedParsed = JSON.parse(updatedAuthStorage)
+              if (updatedParsed.state?.token) {
+                config.headers.Authorization = `Bearer ${updatedParsed.state.token}`
+              }
+            } else {
+              config.headers.Authorization = `Bearer ${parsed.state.token}`
+            }
           }
         } catch (error) {
           console.error('Error parsing auth storage:', error)
@@ -163,7 +184,7 @@ apiClient.interceptors.request.use(
   }
 )
 
-// Response interceptor with enhanced error handling
+// Response interceptor with enhanced error handling and automatic token refresh
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
     // Log successful responses in development
@@ -176,15 +197,40 @@ apiClient.interceptors.response.use(
   async (error: AxiosError) => {
     const apiError = defaultErrorHandler(error)
     
-    // Handle specific error codes that need immediate action
+    // Handle 401 errors with automatic token refresh
     if (apiError.status === 401 && typeof window !== 'undefined') {
-      // Logout user and redirect
       try {
         const { useAuthStore } = await import('@/stores/auth-store')
-        useAuthStore.getState().logout()
+        const authStore = useAuthStore.getState()
+        
+        // Try to refresh token if we have a refresh token
+        if (authStore.refreshToken && !authStore._isRefreshing) {
+          try {
+            const refreshed = await authStore.refreshAccessToken()
+            if (refreshed && error.config) {
+              // Retry the original request with new token
+              const newToken = useAuthStore.getState().token
+              if (newToken && error.config.headers) {
+                error.config.headers.Authorization = `Bearer ${newToken}`
+                return apiClient.request(error.config)
+              }
+            }
+          } catch (refreshError) {
+            console.error('Token refresh failed:', refreshError)
+          }
+        }
+        
+        // If refresh failed or no refresh token, logout
+        console.log('[ResponseInterceptor] 401 received, but no refresh token available. Logging out.')
+        authStore.logout()
         window.location.href = '/login'
       } catch (importError) {
         console.error('Failed to import auth store:', importError)
+        // Fallback logout
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('auth-storage')
+          window.location.href = '/login'
+        }
       }
     }
     

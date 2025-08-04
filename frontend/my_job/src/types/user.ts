@@ -47,19 +47,30 @@ export interface LoginCredentials {
 
 export interface LoginResponse {
   access_token: string
+  refresh_token: string
   token_type: string
+  expires_in: number
+}
+
+export interface RefreshResponse {
+  access_token: string
+  token_type: string
+  expires_in: number
 }
 
 export interface RegisterResponse {
   user: User
   access_token?: string
+  refresh_token?: string
   message: string
 }
 
 export interface AuthState {
   user: User | null
   token: string | null
+  refreshToken: string | null
   isAuthenticated: boolean
   loading: boolean
   error: string | null
+  tokenExpiry: number | null
 }
