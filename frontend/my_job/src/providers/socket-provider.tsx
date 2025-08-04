@@ -5,6 +5,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react'
 // @ts-ignore
 import { io, Socket } from 'socket.io-client'
 import { useAuth } from './auth-provider'
+import API_CONFIG from '@/config/api-config'
 
 interface SocketContextType {
   socket: Socket | null
@@ -23,7 +24,10 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (user) {
-      const socketInstance = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'ws://localhost:3001', {
+      // Use configuration for socket URL
+      const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || API_CONFIG.ENDPOINTS.WEBSOCKET
+      
+      const socketInstance = io(socketUrl, {
         auth: {
           token: localStorage.getItem('auth-token'),
         },

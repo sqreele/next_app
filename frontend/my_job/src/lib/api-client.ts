@@ -1,6 +1,7 @@
 // frontend/my_job/src/lib/api-client.ts
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios'
 import { toast } from 'sonner'
+import API_CONFIG, { ensureRelativeUrl, buildApiUrl } from '@/config/api-config'
 
 // Enhanced error types for better type safety
 interface ApiError {
@@ -12,11 +13,10 @@ interface ApiError {
 
 // Create axios instance with default config
 const apiClient: AxiosInstance = axios.create({
-  // For Docker setup, use relative URLs (no baseURL needed)
-  timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  // Use configuration from api-config
+  baseURL: API_CONFIG.BASE_URL,
+  timeout: API_CONFIG.TIMEOUT,
+  headers: API_CONFIG.DEFAULT_HEADERS,
 })
 
 // Enhanced error handler with specific logic for different scenarios
@@ -48,16 +48,16 @@ export const createErrorHandler = (options: {
       } else {
         switch (status) {
           case 400:
-            apiError.message = data?.message || 'Invalid request data'
+            apiError.message = data?.message || API_CONFIG.ERROR_MESSAGES.VALIDATION_ERROR
             break
           case 401:
-            apiError.message = 'Session expired. Please login again.'
+            apiError.message = API_CONFIG.ERROR_MESSAGES.UNAUTHORIZED
             break
           case 403:
-            apiError.message = 'You do not have permission to perform this action.'
+            apiError.message = API_CONFIG.ERROR_MESSAGES.FORBIDDEN
             break
           case 404:
-            apiError.message = 'Resource not found'
+            apiError.message = API_CONFIG.ERROR_MESSAGES.NOT_FOUND
             break
           case 422:
             // Enhanced validation error handling
@@ -80,6 +80,12 @@ export const createErrorHandler = (options: {
           case 500:
             apiError.message = 'Server error. Please try again later.'
             break
+          case 502:
+          case 503:
+          case 504:
+          case 525:
+            apiError.message = API_CONFIG.ERROR_MESSAGES.SERVER_ERROR
+            break
           default:
             apiError.message = data?.message || data?.detail || `Server error (${status})`
         }
@@ -88,7 +94,7 @@ export const createErrorHandler = (options: {
       apiError.code = data?.code || `HTTP_${status}`
     } else if (error.request) {
       // Request was made but no response received
-      apiError.message = 'Network error. Please check your connection.'
+      apiError.message = API_CONFIG.ERROR_MESSAGES.NETWORK_ERROR
       apiError.code = 'NETWORK_ERROR'
     } else {
       // Something else happened
@@ -132,9 +138,14 @@ export const authErrorHandler = createErrorHandler({
   }
 })
 
-// Request interceptor for adding auth token
+// Request interceptor for adding auth token and preventing external domain usage
 apiClient.interceptors.request.use(
   (config) => {
+    // Ensure URLs are relative and prevent external domain usage
+    if (config.url) {
+      config.url = ensureRelativeUrl(config.url)
+    }
+
     // Get token from localStorage (for SSR safety)
     if (typeof window !== 'undefined') {
       const authStorage = localStorage.getItem('auth-storage')
