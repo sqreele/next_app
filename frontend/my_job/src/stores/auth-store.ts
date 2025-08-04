@@ -243,6 +243,7 @@ export const useAuthStore = create<AuthState>()(
         
         // If no token or token expired, definitely not authenticated
         if (!state.token || isTokenExpired(state.token)) {
+          console.log('Token is missing or expired, logging out')
           get().logout()
           return false
         }
@@ -329,6 +330,53 @@ if (typeof window !== 'undefined') {
   if (state.token) {
     state.setToken(state.token)
   }
+  
+  // Set up automatic token expiration monitoring
+  const CHECK_INTERVAL = 60000 // Check every minute
+  const WARNING_THRESHOLD = 300000 // Warn 5 minutes before expiration
+  
+  setInterval(() => {
+    const currentState = useAuthStore.getState()
+    if (currentState.token && currentState.isAuthenticated) {
+      try {
+        const [, payload] = currentState.token.split('.')
+        const decoded = JSON.parse(atob(payload))
+        
+        if (decoded.exp) {
+          const expiresAt = decoded.exp * 1000 // Convert to milliseconds
+          const now = Date.now()
+          const timeUntilExpiration = expiresAt - now
+          
+          // If token expires in less than 5 minutes, show warning
+          if (timeUntilExpiration > 0 && timeUntilExpiration < WARNING_THRESHOLD) {
+            const minutes = Math.ceil(timeUntilExpiration / 60000)
+            console.warn(`⚠️ Token expires in ${minutes} minute(s). Consider refreshing your session.`)
+            
+            // You could show a toast notification here
+            if (typeof window !== 'undefined' && window.confirm) {
+              // Only show this once per session
+              const warningShown = sessionStorage.getItem('token-warning-shown')
+              if (!warningShown) {
+                sessionStorage.setItem('token-warning-shown', 'true')
+                // Import toast dynamically to avoid SSR issues
+                import('sonner').then(({ toast }) => {
+                  toast.warning(`Your session expires in ${minutes} minute(s). Please save your work.`)
+                }).catch(() => {}) // Ignore toast import errors
+              }
+            }
+          }
+          
+          // If token is expired, logout
+          if (timeUntilExpiration <= 0) {
+            console.log('Token has expired, logging out automatically')
+            currentState.logout()
+          }
+        }
+      } catch (error) {
+        console.error('Error checking token expiration:', error)
+      }
+    }
+  }, CHECK_INTERVAL)
 }
 
 // Export additional types that might be needed
