@@ -2,6 +2,7 @@
 import React from 'react'
 import { Metadata } from 'next'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
+import { DashboardErrorBoundary } from '@/components/dashboard/error-boundary'
 import { TechnicianStatus } from '@/components/dashboard/dashboard-overview'
 import { QuickStats } from '@/components/dashboard/quick-stats'
 import { RecentWorkOrders } from '@/components/dashboard/recent-work-orders'
@@ -23,6 +24,28 @@ export const metadata: Metadata = {
   title: 'Dashboard - PMCS',
   description: 'Plant Maintenance Control System Dashboard',
 }
+
+// Error fallback component for individual sections
+const DashboardSectionError = ({ title, onRetry }: { title: string; onRetry?: () => void }) => (
+  <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
+    <div className="flex items-center gap-2 mb-6">
+      <ExclamationTriangleIcon className="w-5 h-5 text-red-600" />
+      <h2 className="text-xl font-semibold text-gray-800">{title}</h2>
+    </div>
+    <div className="text-center py-8">
+      <ExclamationTriangleIcon className="w-12 h-12 text-red-400 mx-auto mb-4" />
+      <p className="text-gray-600 mb-4">Unable to load {title.toLowerCase()} data</p>
+      {onRetry && (
+        <button
+          onClick={onRetry}
+          className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+        >
+          Try Again
+        </button>
+      )}
+    </div>
+  </div>
+)
 
 export default function DashboardPage() {
   return (
@@ -47,80 +70,112 @@ export default function DashboardPage() {
             <QuickActions />
           </div>
 
-          {/* Quick Stats */}
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
-            <QuickStats />
-          </div>
+          {/* Quick Stats with Error Boundary */}
+          <DashboardErrorBoundary
+            fallback={<DashboardSectionError title="Quick Stats" />}
+          >
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
+              <QuickStats />
+            </div>
+          </DashboardErrorBoundary>
 
           {/* Main Content Grid */}
           <div className="grid gap-8 grid-cols-1 lg:grid-cols-3">
             {/* Left/Main Content */}
             <div className="lg:col-span-2 space-y-8">
               {/* Overview Section */}
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
-                <div className="flex items-center gap-2 mb-6">
-                  <ChartBarIcon className="w-5 h-5 text-green-600" />
-                  <h2 className="text-xl font-semibold text-gray-800">Overview</h2>
+              <DashboardErrorBoundary
+                fallback={<DashboardSectionError title="Overview" />}
+              >
+                <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
+                  <div className="flex items-center gap-2 mb-6">
+                    <ChartBarIcon className="w-5 h-5 text-green-600" />
+                    <h2 className="text-xl font-semibold text-gray-800">Overview</h2>
+                  </div>
+                  <TechnicianStatus />
                 </div>
-                <TechnicianStatus />
-              </div>
+              </DashboardErrorBoundary>
 
               {/* Performance Section */}
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
-                <div className="flex items-center gap-2 mb-6">
-                  <CogIcon className="w-5 h-5 text-blue-600" />
-                  <h2 className="text-xl font-semibold text-gray-800">Performance</h2>
+              <DashboardErrorBoundary
+                fallback={<DashboardSectionError title="Performance" />}
+              >
+                <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
+                  <div className="flex items-center gap-2 mb-6">
+                    <CogIcon className="w-5 h-5 text-blue-600" />
+                    <h2 className="text-xl font-semibold text-gray-800">Performance</h2>
+                  </div>
+                  <PerformanceCharts />
                 </div>
-                <PerformanceCharts />
-              </div>
+              </DashboardErrorBoundary>
 
               {/* Recent Work Orders Section */}
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
-                <div className="flex items-center gap-2 mb-6">
-                  <ClockIcon className="w-5 h-5 text-purple-600" />
-                  <h2 className="text-xl font-semibold text-gray-800">Recent Work Orders</h2>
+              <DashboardErrorBoundary
+                fallback={<DashboardSectionError title="Recent Work Orders" />}
+              >
+                <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
+                  <div className="flex items-center gap-2 mb-6">
+                    <ClockIcon className="w-5 h-5 text-purple-600" />
+                    <h2 className="text-xl font-semibold text-gray-800">Recent Work Orders</h2>
+                  </div>
+                  <RecentWorkOrders />
                 </div>
-                <RecentWorkOrders />
-              </div>
+              </DashboardErrorBoundary>
             </div>
 
             {/* Right/Sidebar */}
             <div className="space-y-8">
               {/* Upcoming Jobs */}
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <ClockIcon className="w-5 h-5 text-orange-600" />
-                  <h2 className="text-lg font-semibold text-gray-700">Upcoming Jobs</h2>
+              <DashboardErrorBoundary
+                fallback={<DashboardSectionError title="Upcoming Jobs" />}
+              >
+                <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <ClockIcon className="w-5 h-5 text-orange-600" />
+                    <h2 className="text-lg font-semibold text-gray-700">Upcoming Jobs</h2>
+                  </div>
+                  <UpcomingJobs />
                 </div>
-                <UpcomingJobs />
-              </div>
+              </DashboardErrorBoundary>
 
               {/* Technician Status */}
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <UserGroupIcon className="w-5 h-5 text-green-600" />
-                  <h2 className="text-lg font-semibold text-gray-700">Technician Status</h2>
+              <DashboardErrorBoundary
+                fallback={<DashboardSectionError title="Technician Status" />}
+              >
+                <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <UserGroupIcon className="w-5 h-5 text-green-600" />
+                    <h2 className="text-lg font-semibold text-gray-700">Technician Status</h2>
+                  </div>
+                  <TechnicianStatus />
                 </div>
-                <TechnicianStatus />
-              </div>
+              </DashboardErrorBoundary>
 
               {/* Asset Alerts */}
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <ExclamationTriangleIcon className="w-5 h-5 text-red-600" />
-                  <h2 className="text-lg font-semibold text-gray-700">Asset Alerts</h2>
+              <DashboardErrorBoundary
+                fallback={<DashboardSectionError title="Asset Alerts" />}
+              >
+                <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <ExclamationTriangleIcon className="w-5 h-5 text-red-600" />
+                    <h2 className="text-lg font-semibold text-gray-700">Asset Alerts</h2>
+                  </div>
+                  <AssetAlerts />
                 </div>
-                <AssetAlerts />
-              </div>
+              </DashboardErrorBoundary>
 
               {/* Inventory Status */}
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <CheckCircleIcon className="w-5 h-5 text-blue-600" />
-                  <h2 className="text-lg font-semibold text-gray-700">Inventory Status</h2>
+              <DashboardErrorBoundary
+                fallback={<DashboardSectionError title="Inventory Status" />}
+              >
+                <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border-0 p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <CheckCircleIcon className="w-5 h-5 text-blue-600" />
+                    <h2 className="text-lg font-semibold text-gray-700">Inventory Status</h2>
+                  </div>
+                  <InventoryStatus />
                 </div>
-                <InventoryStatus />
-              </div>
+              </DashboardErrorBoundary>
             </div>
           </div>
         </div>
