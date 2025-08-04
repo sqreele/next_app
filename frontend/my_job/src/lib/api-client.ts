@@ -176,15 +176,24 @@ apiClient.interceptors.response.use(
   async (error: AxiosError) => {
     const apiError = defaultErrorHandler(error)
     
-    // Handle specific error codes that need immediate action
+    // Handle 401 errors with improved logging that matches the original error format
     if (apiError.status === 401 && typeof window !== 'undefined') {
-      // Logout user and redirect
+      // Log the specific error message that matches the original format
+      console.error('[ResponseInterceptor] 401 received, but no refresh token available. Logging out.')
+      
       try {
         const { useAuthStore } = await import('@/stores/auth-store')
-        useAuthStore.getState().logout()
+        const authStore = useAuthStore.getState()
+        authStore.logout()
+        
+        // Show user-friendly notification
+        toast.error('Your session has expired. Please log in again.')
+        
+        // Redirect to login
         window.location.href = '/login'
       } catch (importError) {
         console.error('Failed to import auth store:', importError)
+        window.location.href = '/login'
       }
     }
     
