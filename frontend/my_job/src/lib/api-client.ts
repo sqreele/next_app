@@ -10,10 +10,88 @@ interface ApiError {
   details?: any
 }
 
+// Circuit breaker state management
+class CircuitBreaker {
+  private failures: number = 0
+  private lastFailureTime: number = 0
+  private readonly threshold: number = 5
+  private readonly timeout: number = 60000 // 1 minute
+  private state: 'CLOSED' | 'OPEN' | 'HALF_OPEN' = 'CLOSED'
+
+  canExecute(): boolean {
+    if (this.state === 'CLOSED') return true
+    
+    if (this.state === 'OPEN') {
+      if (Date.now() - this.lastFailureTime >= this.timeout) {
+        this.state = 'HALF_OPEN'
+        return true
+      }
+      return false
+    }
+    
+    // HALF_OPEN state
+    return true
+  }
+
+  onSuccess(): void {
+    this.failures = 0
+    this.state = 'CLOSED'
+  }
+
+  onFailure(): void {
+    this.failures++
+    this.lastFailureTime = Date.now()
+    
+    if (this.failures >= this.threshold) {
+      this.state = 'OPEN'
+    }
+  }
+
+  getState(): string {
+    return this.state
+  }
+}
+
+// Global circuit breaker instance
+const circuitBreaker = new CircuitBreaker()
+
+// Network status tracking
+class NetworkMonitor {
+  private isOnline: boolean = true
+  private listeners: Array<(online: boolean) => void> = []
+
+  constructor() {
+    if (typeof window !== 'undefined') {
+      this.isOnline = navigator.onLine
+      window.addEventListener('online', () => this.setOnline(true))
+      window.addEventListener('offline', () => this.setOnline(false))
+    }
+  }
+
+  private setOnline(online: boolean): void {
+    this.isOnline = online
+    this.listeners.forEach(listener => listener(online))
+  }
+
+  public isNetworkOnline(): boolean {
+    return this.isOnline
+  }
+
+  public onNetworkChange(listener: (online: boolean) => void): () => void {
+    this.listeners.push(listener)
+    return () => {
+      const index = this.listeners.indexOf(listener)
+      if (index > -1) this.listeners.splice(index, 1)
+    }
+  }
+}
+
+const networkMonitor = new NetworkMonitor()
+
 // Create axios instance with default config
 const apiClient: AxiosInstance = axios.create({
   // For Docker setup, use relative URLs (no baseURL needed)
-  timeout: 10000,
+  timeout: 30000, // Increased timeout for slow connections
   headers: {
     'Content-Type': 'application/json',
   },
@@ -24,11 +102,13 @@ export const createErrorHandler = (options: {
   showToast?: boolean
   logError?: boolean
   customMessages?: Record<number, string>
+  retryable?: boolean
 } = {}) => {
   const { 
     showToast = true, 
     logError = true, 
-    customMessages = {} 
+    customMessages = {},
+    retryable = false
   } = options
 
   return (error: AxiosError): ApiError => {
@@ -78,7 +158,19 @@ export const createErrorHandler = (options: {
             apiError.message = 'Too many requests. Please try again later.'
             break
           case 500:
-            apiError.message = 'Server error. Please try again later.'
+            apiError.message = 'Server error. Our team has been notified.'
+            break
+          case 502:
+            apiError.message = 'Service temporarily unavailable. Please try again in a moment.'
+            break
+          case 503:
+            apiError.message = 'Service temporarily unavailable due to maintenance.'
+            break
+          case 504:
+            apiError.message = 'Request timeout. Please try again.'
+            break
+          case 525:
+            apiError.message = 'SSL connection error. Please check your connection and try again.'
             break
           default:
             apiError.message = data?.message || data?.detail || `Server error (${status})`
@@ -88,8 +180,16 @@ export const createErrorHandler = (options: {
       apiError.code = data?.code || `HTTP_${status}`
     } else if (error.request) {
       // Request was made but no response received
-      apiError.message = 'Network error. Please check your connection.'
-      apiError.code = 'NETWORK_ERROR'
+      if (!networkMonitor.isNetworkOnline()) {
+        apiError.message = 'No internet connection. Please check your network.'
+        apiError.code = 'OFFLINE'
+      } else if (error.code === 'ECONNABORTED') {
+        apiError.message = 'Request timeout. Please try again.'
+        apiError.code = 'TIMEOUT'
+      } else {
+        apiError.message = 'Network error. Please check your connection.'
+        apiError.code = 'NETWORK_ERROR'
+      }
     } else {
       // Something else happened
       apiError.message = error.message || 'Request failed'
@@ -104,6 +204,8 @@ export const createErrorHandler = (options: {
         url: error.config?.url,
         method: error.config?.method,
         details: apiError.details,
+        circuitBreakerState: circuitBreaker.getState(),
+        networkOnline: networkMonitor.isNetworkOnline(),
         originalError: error
       })
     }
@@ -121,7 +223,8 @@ export const workOrderErrorHandler = createErrorHandler({
     422: 'Please check your work order details and try again',
     409: 'This work order conflicts with an existing one',
     400: 'Invalid work order data provided'
-  }
+  },
+  retryable: true
 })
 
 export const authErrorHandler = createErrorHandler({
@@ -131,6 +234,73 @@ export const authErrorHandler = createErrorHandler({
     403: 'Access denied. Please contact your administrator.'
   }
 })
+
+// Helper function to determine if an error is retryable
+const isRetryableError = (error: AxiosError): boolean => {
+  if (!error.response) return true // Network errors are retryable
+  
+  const status = error.response.status
+  // Retry on server errors but not client errors
+  return status >= 500 || status === 408 || status === 429 || status === 502 || status === 503 || status === 504 || status === 525
+}
+
+// Enhanced retry function with exponential backoff and jitter
+export const retryRequest = async <T>(
+  requestFn: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 1000,
+  maxDelay: number = 30000
+): Promise<T> => {
+  let lastError: Error
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Check circuit breaker
+      if (!circuitBreaker.canExecute()) {
+        throw new Error('Service temporarily unavailable due to repeated failures')
+      }
+
+      // Check network connectivity
+      if (!networkMonitor.isNetworkOnline()) {
+        throw new Error('No internet connection')
+      }
+
+      const result = await requestFn()
+      circuitBreaker.onSuccess()
+      return result
+    } catch (error) {
+      lastError = error as Error
+      circuitBreaker.onFailure()
+      
+      // Don't retry on certain status codes
+      if (error && typeof error === 'object' && 'status' in error) {
+        const status = (error as ApiError).status
+        if (status && [400, 401, 403, 404, 422].includes(status)) {
+          throw error
+        }
+      }
+      
+      // Don't retry if not a retryable error
+      if (error instanceof Error && 'response' in error && !isRetryableError(error as AxiosError)) {
+        throw error
+      }
+      
+      if (attempt === maxRetries) {
+        throw lastError
+      }
+      
+      // Exponential backoff with jitter and max delay cap
+      const exponentialDelay = Math.min(baseDelay * Math.pow(2, attempt - 1), maxDelay)
+      const jitter = Math.random() * 1000
+      const delay = exponentialDelay + jitter
+      
+      console.log(`Retrying request in ${Math.round(delay)}ms (attempt ${attempt}/${maxRetries})`)
+      await new Promise(resolve => setTimeout(resolve, delay))
+    }
+  }
+  
+  throw lastError!
+}
 
 // Request interceptor for adding auth token
 apiClient.interceptors.request.use(
@@ -215,52 +385,66 @@ export const makeRequest = async <T>(
   }
 }
 
+// Enhanced request functions with automatic retry
+export const makeResilientRequest = async <T>(
+  requestFn: () => Promise<AxiosResponse<T>>,
+  options: {
+    maxRetries?: number
+    errorHandler?: (error: AxiosError) => ApiError
+    showLoadingToast?: boolean
+  } = {}
+): Promise<T> => {
+  const {
+    maxRetries = 3,
+    errorHandler = defaultErrorHandler,
+    showLoadingToast = false
+  } = options
+
+  if (showLoadingToast) {
+    toast.loading('Loading...', { id: 'request-loading' })
+  }
+
+  try {
+    const result = await retryRequest(
+      async () => {
+        const response = await requestFn()
+        return response.data
+      },
+      maxRetries
+    )
+
+    if (showLoadingToast) {
+      toast.dismiss('request-loading')
+    }
+
+    return result
+  } catch (error) {
+    if (showLoadingToast) {
+      toast.dismiss('request-loading')
+    }
+
+    if (errorHandler && error instanceof Error) {
+      const apiError = errorHandler(error as AxiosError)
+      throw apiError
+    }
+    throw error
+  }
+}
+
 // Specialized request functions
 export const makeWorkOrderRequest = async <T>(
   requestFn: () => Promise<AxiosResponse<T>>
 ): Promise<T> => {
-  return makeRequest(requestFn, workOrderErrorHandler)
+  return makeResilientRequest(requestFn, {
+    errorHandler: workOrderErrorHandler,
+    maxRetries: 2
+  })
 }
 
 export const makeAuthRequest = async <T>(
   requestFn: () => Promise<AxiosResponse<T>>
 ): Promise<T> => {
   return makeRequest(requestFn, authErrorHandler)
-}
-
-// Request retry utility with exponential backoff
-export const retryRequest = async <T>(
-  requestFn: () => Promise<T>,
-  maxRetries: number = 3,
-  baseDelay: number = 1000
-): Promise<T> => {
-  let lastError: Error
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await requestFn()
-    } catch (error) {
-      lastError = error as Error
-      
-      // Don't retry on certain status codes
-      if (error && typeof error === 'object' && 'status' in error) {
-        const status = (error as ApiError).status
-        if (status && [400, 401, 403, 404, 422].includes(status)) {
-          throw error
-        }
-      }
-      
-      if (attempt === maxRetries) {
-        throw lastError
-      }
-      
-      // Exponential backoff with jitter
-      const delay = baseDelay * Math.pow(2, attempt - 1) + Math.random() * 1000
-      await new Promise(resolve => setTimeout(resolve, delay))
-    }
-  }
-  
-  throw lastError!
 }
 
 // Cancel token utilities for managing request cancellation
@@ -271,6 +455,19 @@ export const createCancelToken = () => {
     cancel: (reason?: string) => controller.abort(reason)
   }
 }
+
+// Health check utility
+export const healthCheck = async (): Promise<boolean> => {
+  try {
+    await apiClient.get('/health', { timeout: 5000 })
+    return true
+  } catch {
+    return false
+  }
+}
+
+// Export network monitor for components
+export { networkMonitor }
 
 export default apiClient
 

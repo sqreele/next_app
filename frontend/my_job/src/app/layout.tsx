@@ -5,6 +5,8 @@ import { ThemeProvider } from "@/providers/theme-provider";
 import { AuthProvider } from "@/providers/auth-provider";
 import { Toaster } from "sonner";
 import { SimpleNavigation } from "@/components/SimpleNavigation";
+import ErrorBoundary from "@/components/error/error-boundary";
+import NetworkStatus from "@/components/common/network-status";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,15 +33,24 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-white flex flex-col`}
       >
-        <ThemeProvider>
-          <AuthProvider>
-            <SimpleNavigation />
-            <main className="flex-1 overflow-auto">
-              {children}
-            </main>
-            <Toaster />
-          </AuthProvider>
-        </ThemeProvider>
+        <ErrorBoundary
+          onError={(error, errorInfo) => {
+            // Log to external error tracking service
+            console.error('Application Error:', error, errorInfo)
+            // You can add error reporting here (e.g., Sentry, LogRocket)
+          }}
+        >
+          <ThemeProvider>
+            <AuthProvider>
+              <SimpleNavigation />
+              <NetworkStatus />
+              <main className="flex-1 overflow-auto">
+                {children}
+              </main>
+              <Toaster />
+            </AuthProvider>
+          </ThemeProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );
