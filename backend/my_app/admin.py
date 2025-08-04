@@ -10,7 +10,7 @@ from typing import Any
 from database import get_db
 from models import (
     User, Property, Room, Machine, Topic, Procedure, PMSchedule, PMExecution,
-    Issue, Inspection, PMFile, UserPropertyAccess,
+    Issue, Inspection, PMFile, UserPropertyAccess, Job, JobStatus,
     UserRole, FrequencyType, PMStatus, IssueStatus, IssuePriority,
     InspectionResult, ImageType, AccessLevel, machine_procedure_association
 )
@@ -908,3 +908,52 @@ class UserPropertyAccessAdmin(ModelView, model=UserPropertyAccess):
     name = "User Property Access"
     name_plural = "User Property Accesses"  # Fixed: Correct plural form
     icon = "fa-solid fa-key"
+
+
+class JobAdmin(ModelView, model=Job):
+    column_list = [
+        Job.id, Job.title, "user_name", "property_name", "topic_name",
+        Job.status, Job.created_at, Job.completed_at
+    ]
+    column_details_list = [
+        Job.id, Job.title, Job.description, "user_name", "property_name", 
+        "topic_name", "room_name", Job.status, Job.notes, Job.before_image,
+        Job.after_image, Job.export_data, Job.pdf_file_path, Job.started_at,
+        Job.completed_at, Job.created_at, Job.updated_at
+    ]
+    form_columns = [
+        Job.user_id, Job.property_id, Job.topic_id, Job.room_id,
+        Job.title, Job.description, Job.status, Job.notes,
+        Job.before_image, Job.after_image, Job.export_data, Job.pdf_file_path,
+        Job.started_at, Job.completed_at
+    ]
+    column_searchable_list = [Job.title, Job.description, Job.notes]
+    column_sortable_list = [Job.id, Job.title, Job.status, Job.created_at, Job.completed_at]
+    column_filters = [Job.user_id, Job.property_id, Job.topic_id, Job.room_id, Job.status]
+    
+    column_formatters = {
+        'user_name': safe_formatter(lambda m, a: safe_get_user_full_name(m, 'user')),
+        'property_name': safe_formatter(lambda m, a: safe_get_relationship_name(m, 'property')),
+        'topic_name': safe_formatter(lambda m, a: safe_get_relationship_name(m, 'topic', 'title')),
+        'room_name': safe_formatter(lambda m, a: safe_get_relationship_name(m, 'room')),
+        'status': safe_formatter(lambda m, a: format_enum_badge(m, 'status')),
+        'before_image': safe_formatter(lambda m, a: format_image_preview(m, 'before_image')),
+        'after_image': safe_formatter(lambda m, a: format_image_preview(m, 'after_image')),
+        'started_at': safe_formatter(lambda m, a: format_datetime(m, 'started_at')),
+        'completed_at': safe_formatter(lambda m, a: format_datetime(m, 'completed_at')),
+        'created_at': safe_formatter(lambda m, a: format_datetime(m, 'created_at')),
+        'updated_at': safe_formatter(lambda m, a: format_datetime(m, 'updated_at')),
+    }
+    
+    def get_query(self, request):
+        """Optimize query with proper joins."""
+        return super().get_query(request).options(
+            joinedload(Job.user),
+            joinedload(Job.property),
+            joinedload(Job.topic),
+            joinedload(Job.room)
+        )
+    
+    name = "Job"
+    name_plural = "Jobs"
+    icon = "fa-solid fa-briefcase"

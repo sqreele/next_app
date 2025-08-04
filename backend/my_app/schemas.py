@@ -9,7 +9,8 @@ from enum import Enum
 # Import enums from models
 from models import (
     UserRole, FrequencyType, PMStatus, IssueStatus, IssuePriority,
-    InspectionResult, ImageType, AccessLevel, WorkOrderType, WorkOrderStatus
+    InspectionResult, ImageType, AccessLevel, WorkOrderType, WorkOrderStatus,
+    JobStatus
 )
 
 # Base schemas with enhanced configuration
@@ -616,3 +617,52 @@ class ExportResult(BaseSchema):
     file_name: str
     created_at: datetime
     expires_at: datetime
+
+# Job Schemas
+class JobBase(BaseSchema):
+    property_id: int = Field(..., gt=0)
+    topic_id: int = Field(..., gt=0)
+    room_id: Optional[int] = Field(None, gt=0)
+    title: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = Field(None, max_length=2000)
+    status: JobStatus = JobStatus.PENDING
+    notes: Optional[str] = Field(None, max_length=2000)
+    export_data: Optional[str] = Field(None, max_length=5000)  # JSON field
+    pdf_file_path: Optional[str] = Field(None, max_length=500)
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+class JobCreate(JobBase):
+    pass
+
+class JobUpdate(BaseSchema):
+    property_id: Optional[int] = Field(None, gt=0)
+    topic_id: Optional[int] = Field(None, gt=0)
+    room_id: Optional[int] = Field(None, gt=0)
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = Field(None, max_length=2000)
+    status: Optional[JobStatus] = None
+    notes: Optional[str] = Field(None, max_length=2000)
+    export_data: Optional[str] = Field(None, max_length=5000)
+    pdf_file_path: Optional[str] = Field(None, max_length=500)
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+class JobResponse(JobBase):
+    id: int
+    user_id: int
+    created_at: datetime
+    updated_at: datetime
+    user: Optional[UserSummary] = None
+    property: Optional[Property] = None
+    topic: Optional[Topic] = None
+    room: Optional[Room] = None
+    before_image: Optional[str] = None
+    after_image: Optional[str] = None
+
+class JobListResponse(BaseSchema):
+    items: List[JobResponse]
+    total: int
+    page: int
+    size: int
+    pages: int
