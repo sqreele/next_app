@@ -1,6 +1,13 @@
 // frontend/my_job/src/lib/api-client.ts
-import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios'
+import axios, { AxiosInstance, AxiosResponse, AxiosError, AxiosRequestConfig } from 'axios'
 import { toast } from 'sonner'
+
+// Extend AxiosRequestConfig to include _retry property
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    _retry?: boolean
+  }
+}
 
 // Enhanced error types for better type safety
 interface ApiError {
@@ -18,6 +25,25 @@ const apiClient: AxiosInstance = axios.create({
     'Content-Type': 'application/json',
   },
 })
+
+// Track if we're currently refreshing the token
+let isRefreshing = false
+let failedQueue: Array<{
+  resolve: (value?: any) => void
+  reject: (error?: any) => void
+}> = []
+
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach(({ resolve, reject }) => {
+    if (error) {
+      reject(error)
+    } else {
+      resolve(token)
+    }
+  })
+  
+  failedQueue = []
+}
 
 // Enhanced error handler with specific logic for different scenarios
 export const createErrorHandler = (options: {
@@ -163,7 +189,7 @@ apiClient.interceptors.request.use(
   }
 )
 
-// Response interceptor with enhanced error handling
+// Response interceptor with enhanced error handling and token refresh
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
     // Log successful responses in development
@@ -174,19 +200,87 @@ apiClient.interceptors.response.use(
     return response
   },
   async (error: AxiosError) => {
-    const apiError = defaultErrorHandler(error)
+    const originalRequest = error.config
     
-    // Handle specific error codes that need immediate action
-    if (apiError.status === 401 && typeof window !== 'undefined') {
-      // Logout user and redirect
-      try {
-        const { useAuthStore } = await import('@/stores/auth-store')
-        useAuthStore.getState().logout()
-        window.location.href = '/login'
-      } catch (importError) {
-        console.error('Failed to import auth store:', importError)
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+      if (isRefreshing) {
+        // If we're already refreshing, queue this request
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject })
+        }).then(token => {
+          originalRequest.headers.Authorization = `Bearer ${token}`
+          return apiClient(originalRequest)
+        }).catch(err => {
+          return Promise.reject(err)
+        })
       }
+
+      originalRequest._retry = true
+      isRefreshing = true
+
+      try {
+        // Attempt to refresh the token using the auth store
+        const { useAuthStore } = await import('@/stores/auth-store')
+        const authStore = useAuthStore.getState()
+        
+        // Check if we have a valid token to refresh
+        if (!authStore.token) {
+          throw new Error('No token available for refresh')
+        }
+
+        // Use the auth store's refreshToken method
+        const refreshSuccess = await authStore.refreshToken()
+        
+        if (refreshSuccess) {
+          // Get the new token from the store
+          const newToken = useAuthStore.getState().token
+          
+          if (newToken) {
+            // Update the original request with the new token
+            originalRequest.headers.Authorization = `Bearer ${newToken}`
+            
+            // Process queued requests
+            processQueue(null, newToken)
+            
+            // Retry the original request
+            return apiClient(originalRequest)
+          } else {
+            throw new Error('No access token received from refresh')
+          }
+        } else {
+          throw new Error('Token refresh failed')
+        }
+              } catch (refreshError) {
+          console.error('Token refresh failed:', refreshError)
+          
+          // Process queued requests with error
+          processQueue(refreshError, null)
+          
+          // If refresh fails, logout user and redirect with user-friendly message
+          if (typeof window !== 'undefined') {
+            try {
+              const { useAuthStore } = await import('@/stores/auth-store')
+              useAuthStore.getState().logout()
+              
+              // Show user-friendly message before redirecting
+              toast.error('Your session has expired. Please log in again.')
+              
+              // Small delay to show the message before redirect
+              setTimeout(() => {
+                window.location.href = '/login'
+              }, 1000)
+            } catch (importError) {
+              console.error('Failed to import auth store:', importError)
+            }
+          }
+          
+          return Promise.reject(refreshError)
+        } finally {
+          isRefreshing = false
+        }
     }
+    
+    const apiError = defaultErrorHandler(error)
     
     // Show toast for user-facing errors (not 401 as we handle it above)
     if (apiError.status !== 401) {
